@@ -1,0 +1,8 @@
+amt-auth[django]==0.2.1
+Django>=5.2,<5.3
+djangorestframework>=3.16
+django-cors-headers>=4.6
+django-filter>=25.1
+drf-spectacular>=0.28
+psycopg[binary]>=3.2
+python-dotenv>=1.0

@@ -1,0 +1,235 @@
+from datetime import timedelta
+
+from django.utils import timezone
+
+from apps.events.models import Event, Registration
+from tests.conftest import in_days, sign_in
+
+
+def event_data(org, **overrides):
+    return {
+        "organization_id": org.id,
+        "title": "Intro to APIs",
+        "event_type": "workshop",
+        "delivery_mode": "hybrid",
+        "venue": "Lab 3",
+        "online_url": "https://meet.example.com/apis",
+        "starts_at": in_days(7),
+        "ends_at": in_days(7.1),
+        **overrides,
+    }
+
+
+def create_event(client, org, publish=True, **overrides):
+    response = client.post("/api/events/", event_data(org, **overrides), format="json")
+    assert response.status_code == 201, response.content
+    event = response.json()
+    if publish:
+        response = client.post(
+            f"/api/events/{event['id']}/transition/", {"status": "published"}, format="json"
+        )
+        assert response.status_code == 200, response.content
+        event = response.json()
+    return event
+
+
+def test_only_those_who_manage_the_organization_create_events(admin, bob, org, other_org):
+    assert bob.post("/api/events/", event_data(org), format="json").status_code == 403
+    assert admin.post("/api/events/", event_data(other_org), format="json").status_code == 403
+    assert admin.post("/api/events/", event_data(org), format="json").status_code == 201
+
+
+def test_event_organiser_role_is_enough(admin, bob, org):
+    admin.post(
+        f"/api/organizations/{org.id}/roles/",
+        {"email": "bob@example.com", "role": "event_organiser"}, format="json",
+    )
+    assert bob.post("/api/events/", event_data(org), format="json").status_code == 201
+    # ...but it is not the hackathon manager role.
+    assert bob.get("/api/me/").json()["organizations"][0]["can_manage_hackathons"] is False
+
+
+def test_event_must_end_after_it_starts(admin, org):
+    response = admin.post(
+        "/api/events/", event_data(org, ends_at=in_days(6)), format="json"
+    )
+    assert response.status_code == 400
+    assert "ends_at" in response.json()
+
+
+def test_drafts_are_hidden_until_published(admin, bob, anonymous, org):
+    event = create_event(admin, org, publish=False)
+    url = f"/api/events/{event['id']}/"
+    assert anonymous.get(url).status_code == 404
+    assert bob.get(url).status_code == 404
+    assert admin.get(url).json()["can_manage"] is True
+    assert anonymous.get("/api/events/").json()["count"] == 0
+
+    admin.post(f"{url}transition/", {"status": "published"}, format="json")
+    assert anonymous.get(url).status_code == 200
+    assert bob.get(url).json()["can_manage"] is False
+    assert anonymous.get("/api/events/").json()["count"] == 1
+
+
+def test_status_moves_only_forward(admin, org):
+    event = create_event(admin, org)
+    url = f"/api/events/{event['id']}/transition/"
+    assert admin.post(url, {"status": "draft"}, format="json").status_code == 400
+    assert admin.post(url, {"status": "completed"}, format="json").status_code == 200
+    assert admin.post(url, {"status": "cancelled"}, format="json").status_code == 400
+
+
+def test_others_cannot_edit_or_publish(admin, bob, org):
+    event = create_event(admin, org, publish=False)
+    url = f"/api/events/{event['id']}/"
+    admin.post(f"{url}transition/", {"status": "published"}, format="json")
+    assert bob.patch(url, {"title": "Hijacked"}, format="json").status_code == 403
+    assert bob.post(f"{url}transition/", {"status": "cancelled"}, format="json").status_code == 403
+    assert bob.get(f"{url}registrations/").status_code == 403
+    assert bob.get(f"{url}stats/").status_code == 403
+
+
+def test_register_and_cancel(admin, bob, anonymous, org):
+    event = create_event(admin, org)
+    url = f"/api/events/{event['id']}/register/"
+    assert anonymous.post(url).status_code in (401, 403)
+
+    body = bob.post(url).json()
+    assert body["my_registration"]["status"] == "registered"
+    assert body["registered_count"] == 1
+    assert bob.post(url).status_code == 400  # already registered
+
+    assert bob.delete(url).json()["my_registration"]["status"] == "cancelled"
+    assert bob.post(url).json()["my_registration"]["status"] == "registered"
+    assert bob.get("/api/events/?scope=mine").json()["count"] == 1
+    assert admin.get("/api/events/?scope=mine").json()["count"] == 0
+
+
+def test_join_link_is_only_for_people_who_are_coming(admin, bob, anonymous, org):
+    event = create_event(admin, org)
+    url = f"/api/events/{event['id']}/"
+    assert anonymous.get(url).json()["online_url"] == ""
+    assert bob.get(url).json()["online_url"] == ""
+    bob.post(f"{url}register/")
+    assert bob.get(url).json()["online_url"] == "https://meet.example.com/apis"
+    assert admin.get(url).json()["online_url"] == "https://meet.example.com/apis"
+
+
+def test_full_event_waitlists_then_promotes(admin, bob, carol, org):
+    event = create_event(admin, org, capacity=1)
+    url = f"/api/events/{event['id']}/register/"
+    assert bob.post(url).json()["my_registration"]["status"] == "registered"
+    waiting = carol.post(url).json()
+    assert waiting["my_registration"]["status"] == "waitlisted"
+    assert waiting["spots_left"] == 0
+
+    bob.delete(url)  # bob frees the place, carol gets it
+    assert carol.get(f"/api/events/{event['id']}/").json()["my_registration"]["status"] == (
+        "registered"
+    )
+
+
+def test_registration_closes_at_the_deadline(admin, bob, org):
+    event = create_event(admin, org, registration_deadline=in_days(1))
+    Event.objects.filter(id=event["id"]).update(
+        registration_deadline=timezone.now() - timedelta(hours=1)
+    )
+    assert bob.post(f"/api/events/{event['id']}/register/").status_code == 400
+
+
+def test_qr_check_in(admin, bob, carol, org):
+    event = create_event(admin, org)
+    other = create_event(admin, org, title="Other event")
+    url = f"/api/events/{event['id']}/"
+    ticket = bob.post(f"{url}register/").json()["my_registration"]["ticket_code"]
+
+    # Attendees cannot check themselves in, and a ticket only works at its own event.
+    assert bob.post(f"{url}check-in/", {"ticket_code": ticket}, format="json").status_code == 403
+    wrong = admin.post(
+        f"/api/events/{other['id']}/check-in/", {"ticket_code": ticket}, format="json"
+    )
+    assert wrong.status_code == 404
+
+    first = admin.post(f"{url}check-in/", {"ticket_code": ticket}, format="json")
+    assert first.status_code == 200
+    assert first.json()["already_checked_in"] is False
+    assert first.json()["person"]["name"] == "Bob"
+    again = admin.post(f"{url}check-in/", {"ticket_code": ticket}, format="json")
+    assert again.json()["already_checked_in"] is True
+
+    # Organisers can also tick someone on the list.
+    carol.post(f"{url}register/")
+    registration = Registration.objects.get(event_id=event["id"], profile=carol.profile)
+    by_list = admin.post(f"{url}check-in/", {"registration": registration.id}, format="json")
+    assert by_list.status_code == 200
+
+    stats = admin.get(f"{url}stats/").json()
+    assert (stats["registered"], stats["checked_in"], stats["attendance_rate"]) == (2, 2, 1.0)
+    assert bob.delete(f"{url}register/").status_code == 400  # already attended
+
+
+def test_cancelled_registration_cannot_check_in(admin, bob, org):
+    event = create_event(admin, org)
+    url = f"/api/events/{event['id']}/"
+    ticket = bob.post(f"{url}register/").json()["my_registration"]["ticket_code"]
+    bob.delete(f"{url}register/")
+    assert admin.post(f"{url}check-in/", {"ticket_code": ticket}, format="json").status_code == 400
+
+
+def test_feedback_and_certificate_are_for_attendees(admin, bob, carol, anonymous, org):
+    event = create_event(admin, org)
+    url = f"/api/events/{event['id']}/"
+    ticket = bob.post(f"{url}register/").json()["my_registration"]["ticket_code"]
+    carol.post(f"{url}register/")  # registers but never shows up
+    admin.post(f"{url}check-in/", {"ticket_code": ticket}, format="json")
+
+    assert carol.post(f"{url}feedback/", {"rating": 5}, format="json").status_code == 403
+    assert bob.post(f"{url}feedback/", {"rating": 6}, format="json").status_code == 400
+    assert bob.post(f"{url}feedback/", {"rating": 4, "comment": "Good"}, format="json").status_code == 200
+    assert bob.post(f"{url}feedback/", {"rating": 5}, format="json").status_code == 200  # revised
+    assert bob.get(f"{url}feedback/").status_code == 403
+    assert [f["rating"] for f in admin.get(f"{url}feedback/").json()] == [5]
+    assert admin.get(f"{url}stats/").json()["average_rating"] == 5
+
+    # No certificate until the event is over.
+    assert bob.get(f"{url}certificate/").status_code == 404
+    admin.post(f"{url}transition/", {"status": "completed"}, format="json")
+    certificate = bob.get(f"{url}certificate/").json()
+    assert certificate["recipient"] == "Bob"
+    assert carol.get(f"{url}certificate/").status_code == 404
+
+    verified = anonymous.get(f"/api/certificates/{certificate['certificate_code']}/")
+    assert verified.status_code == 200
+    assert verified.json()["event"] == "Intro to APIs"
+    assert anonymous.get(f"/api/certificates/{ticket}/").status_code == 404
+
+
+def test_announcements_and_resources(admin, bob, anonymous, org):
+    event = create_event(admin, org)
+    url = f"/api/events/{event['id']}/"
+    note = {"title": "Bring a laptop", "body": "And a charger."}
+    assert bob.post(f"{url}announcements/", note, format="json").status_code == 403
+    created = admin.post(f"{url}announcements/", note, format="json")
+    assert created.status_code == 201
+    link = {"title": "Slides", "url": "https://example.com/slides"}
+    assert admin.post(f"{url}resources/", link, format="json").status_code == 201
+
+    assert [a["title"] for a in anonymous.get(f"{url}announcements/").json()] == ["Bring a laptop"]
+    assert [r["title"] for r in anonymous.get(f"{url}resources/").json()] == ["Slides"]
+    assert bob.delete(f"{url}announcements/{created.json()['id']}/").status_code == 403
+    assert admin.delete(f"{url}announcements/{created.json()['id']}/").status_code == 204
+
+
+def test_organizations_do_not_see_each_others_drafts(admin, org, other_org):
+    rival = sign_in("rita", admin_of=[other_org])
+    event = create_event(admin, org, publish=False)
+    assert rival.get(f"/api/events/{event['id']}/").status_code == 404
+    assert rival.get("/api/events/?scope=managed").json()["count"] == 0
+    assert admin.get("/api/events/?scope=managed").json()["count"] == 1
+
+
+def test_only_drafts_can_be_deleted(admin, org):
+    draft = create_event(admin, org, publish=False)
+    live = create_event(admin, org)
+    assert admin.delete(f"/api/events/{draft['id']}/").status_code == 204
+    assert admin.delete(f"/api/events/{live['id']}/").status_code == 400
