@@ -26,6 +26,13 @@ services:
     volumes:
       - keycloak-data:/opt/keycloak/data
       - ./scripts:/scripts:ro
+      - ./keycloak/themes/amt:/opt/keycloak/themes/amt:ro # login theme; start-dev reloads edits
+
+  # Catches the realm's email (verification, password reset). Inbox at http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "8025:8025"
 
 volumes:
   db-data:

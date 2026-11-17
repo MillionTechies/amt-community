@@ -35,3 +35,9 @@ export function useSignIn() {
   const auth = useAuth()
   return () => void auth.signinRedirect(signInArgs())
 }
+
+/** Send the visitor straight to Keycloak's sign-up form (OIDC `prompt=create`). */
+export function useSignUp() {
+  const auth = useAuth()
+  return () => void auth.signinRedirect({ ...signInArgs(), prompt: 'create' })
+}

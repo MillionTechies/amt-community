@@ -15,7 +15,7 @@ organisations, scoped roles), Events and Hackathons.
 You need Docker, Python 3.12 and Node 22.
 
 ```bash
-# 1. PostgreSQL (port 5433) and Keycloak (port 8080)
+# 1. PostgreSQL (port 5433), Keycloak (port 8080) and Mailpit (port 8025)
 docker compose up -d
 
 # 2. Create the dev realm, clients and sample users. Once, after Keycloak is up.
@@ -45,6 +45,24 @@ Sample users (the password is the username):
 | `carol` | A member with no organisation |
 
 Keycloak's own admin console is at http://localhost:8080 (`admin` / `admin`).
+Email the realm sends (sign-up verification, password reset) lands in Mailpit at
+http://localhost:8025.
+
+### Sign-up and the login theme
+
+Anyone can create an account from the **Join** button. New members confirm their email
+first, then choose a password from the link in that email (Keycloak's recommended order).
+
+The sign-in and sign-up pages use the `amt` login theme in `keycloak/themes/amt/`, which
+extends Keycloak's own `keycloak.v2` theme with the Community layout, colours and wording.
+`start-dev` does not cache themes, so edits show on the next page load.
+
+A realm created before sign-up was added needs its settings once:
+
+```bash
+docker compose up -d   # mounts the theme and starts Mailpit
+docker compose exec -T keycloak bash /scripts/keycloak-realm-settings.sh
+```
 API docs are at http://localhost:8000/api/docs/.
 
 ## Tests

@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../api'
 import type { CommunityEvent, Hackathon, Paginated } from '../api'
 import { StatusBadge, formatDate, label } from '../components/ui'
-import { useMe, useSignIn } from '../hooks'
+import { useMe, useSignIn, useSignUp } from '../hooks'
 
 const wrap = 'mx-auto w-full max-w-6xl px-4 sm:px-6'
 const month = new Intl.DateTimeFormat('en-GB', { month: 'short' })
@@ -260,6 +260,7 @@ export default function Home() {
   const auth = useAuth()
   const me = useMe()
   const signIn = useSignIn()
+  const signUp = useSignUp()
   const events = useQuery({
     queryKey: ['events', 'home'],
     queryFn: () => api<Paginated<CommunityEvent>>('/events/?when=upcoming&status=published&ordering=starts_at'),
@@ -314,7 +315,7 @@ export default function Home() {
                 See hackathons
               </Link>
               {!auth.isAuthenticated && (
-                <button type="button" onClick={signIn} className="px-3 py-3 text-sm font-semibold text-brand-700 hover:text-brand-900">
+                <button type="button" onClick={signUp} className="px-3 py-3 text-sm font-semibold text-brand-700 hover:text-brand-900">
                   Join free
                 </button>
               )}
@@ -443,7 +444,7 @@ export default function Home() {
               Browse events <Arrow />
             </Link>
             {!auth.isAuthenticated && (
-              <button type="button" onClick={signIn} className="rounded-full px-6 py-3 text-sm font-semibold text-white ring-1 ring-white/50 transition hover:bg-white/10">
+              <button type="button" onClick={signUp} className="rounded-full px-6 py-3 text-sm font-semibold text-white ring-1 ring-white/50 transition hover:bg-white/10">
                 Create your account
               </button>
             )}

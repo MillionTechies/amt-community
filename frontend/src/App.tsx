@@ -6,7 +6,7 @@ import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 
 import { setToken } from './api'
 import { Button, Empty, Spinner } from './components/ui'
-import { useMe, useSignIn } from './hooks'
+import { useMe, useSignIn, useSignUp } from './hooks'
 import CertificatePage from './pages/Certificate'
 import Dashboard from './pages/Dashboard'
 import EventDetail from './pages/EventDetail'
@@ -39,6 +39,7 @@ function Header() {
   const auth = useAuth()
   const me = useMe()
   const signIn = useSignIn()
+  const signUp = useSignUp()
   const [open, setOpen] = useState(false)
   const link = ({ isActive }: { isActive: boolean }) =>
     `rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? 'bg-brand-50 text-brand-800' : 'text-stone-700 hover:bg-stone-100'}`
@@ -69,7 +70,10 @@ function Header() {
               <Button variant="secondary" onClick={() => void auth.signoutRedirect()}>Sign out</Button>
             </>
           ) : (
-            <Button onClick={signIn} disabled={auth.isLoading}>Sign in</Button>
+            <>
+              <Button variant="ghost" className="whitespace-nowrap px-3" onClick={signIn} disabled={auth.isLoading}>Sign in</Button>
+              <Button onClick={signUp} disabled={auth.isLoading}>Join</Button>
+            </>
           )}
           <button
             type="button"

@@ -1,0 +1,533 @@
+/*
+ * A Million Techies login theme, on top of keycloak.v2 (PatternFly 5).
+ * Colours and type match the Community web app (frontend/src/index.css).
+ */
+
+:root {
+  --amt-brand-50: #ecfdf7;
+  --amt-brand-100: #d0f7e8;
+  --amt-brand-200: #a3edd3;
+  --amt-brand-500: #12a37f;
+  --amt-brand-600: #0b8a6b;
+  --amt-brand-700: #0a6e57;
+  --amt-brand-800: #0b5747;
+  --amt-ink: #10201c;
+  --amt-stone-50: #fafaf9;
+  --amt-stone-200: #e7e5e4;
+  --amt-stone-300: #d6d3d1;
+  --amt-stone-500: #78716c;
+  --amt-stone-600: #57534e;
+  --amt-red: #b42318;
+  --amt-display: "Bricolage Grotesque", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --amt-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* PatternFly tokens, so every built-in page picks up the brand. */
+  --pf-v5-global--primary-color--100: var(--amt-brand-600);
+  --pf-v5-global--primary-color--200: var(--amt-brand-700);
+  --pf-v5-global--active-color--100: var(--amt-brand-600);
+  --pf-v5-global--link--Color: var(--amt-brand-700);
+  --pf-v5-global--link--Color--hover: var(--amt-brand-800);
+  --pf-v5-global--FontFamily--text: var(--amt-sans);
+  --pf-v5-global--FontFamily--heading: var(--amt-display);
+  --pf-v5-global--Color--100: var(--amt-ink);
+  --pf-v5-global--Color--200: var(--amt-stone-600);
+  --pf-v5-global--BorderColor--100: var(--amt-stone-200);
+  --pf-v5-global--danger-color--100: var(--amt-red);
+}
+
+/* --- page layout ------------------------------------------------------------ */
+
+html.login-pf,
+.login-pf body {
+  height: auto;
+  min-height: 100%;
+  background: var(--amt-stone-50);
+  color: var(--amt-ink);
+  font-family: var(--amt-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.amt-shell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 992px) {
+  .amt-shell {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  }
+}
+
+/* Brand panel: only on wide screens. */
+.amt-brand {
+  display: none;
+}
+
+@media (min-width: 992px) {
+  .amt-brand {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 3rem;
+    overflow: hidden;
+    padding: 3rem clamp(2.5rem, 4vw, 4.5rem);
+    background: var(--amt-ink);
+    color: #fff;
+  }
+}
+
+.amt-brand > * {
+  position: relative;
+}
+
+.amt-brand .amt-brand__grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 90% 70% at 30% 40%, black 20%, transparent 100%);
+}
+
+.amt-brand .amt-brand__glow {
+  position: absolute;
+  right: -10rem;
+  bottom: -10rem;
+  width: 30rem;
+  height: 30rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(18 163 127 / 0.35), transparent 70%);
+}
+
+.amt-eyebrow {
+  margin: 0 0 1.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--amt-brand-200);
+}
+
+.amt-brand__title {
+  margin: 0;
+  max-width: 30rem;
+  font-family: var(--amt-display);
+  font-size: clamp(2.5rem, 3.6vw, 3.75rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.amt-brand__title em {
+  font-style: normal;
+  color: var(--amt-brand-500);
+}
+
+.amt-brand__lede {
+  margin: 1.5rem 0 0;
+  max-width: 26rem;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--amt-brand-100);
+}
+
+.amt-points {
+  margin: 2rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.9rem;
+  color: var(--amt-brand-100);
+}
+
+.amt-points li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.amt-points li::before {
+  content: "";
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--amt-brand-500)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M6 10.5l2.5 2.5L14 7.5' fill='none' stroke='%2310201c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 100% no-repeat;
+}
+
+/* A small admission pass, echoing the event tickets in the app. */
+.amt-pass {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 22rem;
+  padding: 1.1rem 1.4rem;
+  border-radius: 1.25rem;
+  background: rgb(255 255 255 / 0.05);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+}
+
+.amt-pass p {
+  margin: 0;
+}
+
+.amt-pass__label {
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--amt-brand-200);
+}
+
+.amt-pass__value {
+  margin-top: 0.25rem !important;
+  font-family: var(--amt-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+
+.amt-pass__code {
+  display: flex;
+  gap: 2px;
+  height: 2rem;
+}
+
+.amt-pass__code span {
+  background: rgb(255 255 255 / 0.85);
+}
+
+/* Logo */
+.amt-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 700;
+  color: var(--amt-ink);
+  text-decoration: none;
+}
+
+.amt-logo:hover {
+  text-decoration: none;
+  color: var(--amt-ink);
+}
+
+.amt-logo--light {
+  color: #fff;
+}
+
+.amt-logo b {
+  color: var(--amt-brand-500);
+}
+
+.amt-logo__mark {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.55rem;
+  background: var(--amt-brand-600);
+  color: #fff;
+  font-size: 0.75rem;
+}
+
+.amt-logo__name {
+  color: var(--amt-brand-700);
+}
+
+/* Form side */
+.amt-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.5rem 1rem 2rem;
+}
+
+@media (min-width: 576px) {
+  .amt-panel {
+    padding: 2rem 2rem 2.5rem;
+  }
+}
+
+.amt-panel__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 28rem;
+  margin-bottom: 2.5rem;
+}
+
+@media (min-width: 992px) {
+  .amt-panel__top {
+    max-width: none;
+    justify-content: flex-end;
+  }
+  .amt-panel__top .amt-logo {
+    display: none;
+  }
+}
+
+.amt-back {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--amt-stone-600);
+  text-decoration: none;
+}
+
+.amt-back:hover {
+  color: var(--amt-ink);
+  text-decoration: none;
+}
+
+.amt-legal {
+  margin: 2.5rem 0 0;
+  max-width: 28rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--amt-stone-500);
+}
+
+/* --- the form card (PatternFly's login main, restyled) ----------------------- */
+
+.amt .pf-v5-c-login__main {
+  align-self: center;
+  width: 100%;
+  max-width: 28rem;
+  margin: auto 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  grid-area: auto;
+}
+
+.amt .pf-v5-c-login__main-header {
+  border-top: 0;
+  padding: 0 0 1.75rem;
+  row-gap: 0.5rem;
+}
+
+.amt #kc-page-title {
+  font-family: var(--amt-display);
+  font-size: clamp(2rem, 6vw, 2.5rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--amt-ink);
+}
+
+.amt .pf-v5-c-login__main-body,
+.amt .pf-v5-c-login__main-footer {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.amt .pf-v5-c-login__main-body {
+  padding-bottom: 0;
+}
+
+.amt .pf-v5-c-form {
+  --pf-v5-c-form--GridGap: 1.25rem;
+}
+
+/* Labels */
+.amt .pf-v5-c-form__label-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--amt-ink);
+}
+
+.amt .pf-v5-c-form__label-required {
+  color: var(--amt-brand-600);
+}
+
+/* Inputs: rounded, one border, a soft brand ring on focus. */
+/* PatternFly puts the same class on the wrapper <span> and on the <input> inside it;
+   style the wrapper and keep the input transparent so the wrapper's border shows. */
+.amt input.pf-v5-c-form-control,
+.amt .pf-v5-c-form-control > :is(input, select, textarea) {
+  background: transparent;
+}
+
+.amt span.pf-v5-c-form-control {
+  --pf-v5-c-form-control--PaddingTop: 0.7rem;
+  --pf-v5-c-form-control--PaddingBottom: 0.7rem;
+  --pf-v5-c-form-control--inset--base: 0.9rem;
+  border-radius: 0.75rem;
+  background: #fff;
+  transition: box-shadow 0.15s ease;
+}
+
+.amt .pf-v5-c-form-control::before {
+  border: 1px solid var(--amt-stone-300) !important;
+  border-radius: inherit;
+}
+
+.amt .pf-v5-c-form-control::after {
+  border: 0 !important;
+}
+
+.amt .pf-v5-c-form-control:hover::before {
+  border-color: var(--amt-stone-500) !important;
+}
+
+.amt .pf-v5-c-form-control:focus-within {
+  box-shadow: 0 0 0 4px rgb(18 163 127 / 0.18);
+}
+
+.amt .pf-v5-c-form-control:focus-within::before {
+  border-color: var(--amt-brand-600) !important;
+}
+
+.amt .pf-v5-c-form-control.pf-m-error::before {
+  border-color: var(--amt-red) !important;
+}
+
+.amt .pf-v5-c-form-control.pf-m-error:focus-within {
+  box-shadow: 0 0 0 4px rgb(180 35 24 / 0.15);
+}
+
+.amt .pf-v5-c-form-control > :is(input, select, textarea) {
+  outline: none;
+}
+
+.amt span.pf-v5-c-form-control.pf-m-readonly {
+  background: var(--amt-stone-50);
+}
+
+/* The password eye button sits beside the input as one control. */
+.amt .pf-v5-c-input-group__item .pf-v5-c-button.pf-m-control {
+  border-radius: 0 0.75rem 0.75rem 0;
+}
+
+.amt .pf-v5-c-input-group__item .pf-v5-c-button.pf-m-control::after {
+  border-color: var(--amt-stone-300);
+  border-radius: inherit;
+}
+
+.amt .pf-v5-c-input-group > .pf-v5-c-input-group__item.pf-m-fill .pf-v5-c-form-control:has(+ *),
+.amt .pf-v5-c-input-group > .pf-v5-c-input-group__item.pf-m-fill:not(:last-child) .pf-v5-c-form-control {
+  border-radius: 0.75rem 0 0 0.75rem;
+}
+
+/* Checkboxes */
+.amt .pf-v5-c-check__input {
+  accent-color: var(--amt-brand-600);
+}
+
+/* Buttons: ink pill for the main action, like the app's primary CTA. */
+.amt .pf-v5-c-button {
+  --pf-v5-c-button--BorderRadius: 999px;
+  --pf-v5-c-button--FontWeight: 600;
+  font-family: var(--amt-sans);
+}
+
+.amt .pf-v5-c-button.pf-m-primary {
+  --pf-v5-c-button--m-primary--BackgroundColor: var(--amt-ink);
+  --pf-v5-c-button--m-primary--hover--BackgroundColor: var(--amt-brand-800);
+  --pf-v5-c-button--m-primary--focus--BackgroundColor: var(--amt-brand-800);
+  --pf-v5-c-button--m-primary--active--BackgroundColor: var(--amt-brand-800);
+  --pf-v5-c-button--PaddingTop: 0.8rem;
+  --pf-v5-c-button--PaddingBottom: 0.8rem;
+  transition: background-color 0.15s ease;
+}
+
+.amt .pf-v5-c-button.pf-m-secondary {
+  --pf-v5-c-button--m-secondary--Color: var(--amt-ink);
+  --pf-v5-c-button--m-secondary--hover--Color: var(--amt-ink);
+  --pf-v5-c-button--m-secondary--focus--Color: var(--amt-ink);
+  --pf-v5-c-button--m-secondary--after--BorderColor: var(--amt-stone-300);
+  --pf-v5-c-button--m-secondary--hover--after--BorderColor: var(--amt-stone-500);
+  --pf-v5-c-button--m-secondary--focus--after--BorderColor: var(--amt-stone-500);
+  --pf-v5-c-button--m-secondary--hover--BackgroundColor: #fff;
+  --pf-v5-c-button--m-secondary--PaddingTop: 0.8rem;
+}
+
+.amt .pf-v5-c-button.pf-m-control {
+  --pf-v5-c-button--BorderRadius: 0;
+}
+
+.amt .pf-v5-c-button:focus-visible {
+  outline: 2px solid var(--amt-brand-600);
+  outline-offset: 2px;
+}
+
+.amt #kc-form-buttons,
+.amt .pf-v5-c-form__actions {
+  margin-top: 0.5rem;
+}
+
+/* Links */
+.amt a {
+  color: var(--amt-brand-700);
+  font-weight: 600;
+}
+
+.amt a:hover {
+  color: var(--amt-brand-800);
+}
+
+/* "New to the community? Create account" and "Back to sign in" */
+.amt #kc-info,
+.amt #kc-form-options {
+  margin-top: 0.5rem;
+}
+
+.amt #kc-info-wrapper,
+.amt #kc-registration {
+  width: 100%;
+  text-align: center;
+  font-size: 0.925rem;
+  color: var(--amt-stone-600);
+}
+
+.amt .pf-v5-c-login__main-footer-band {
+  border-top: 1px solid var(--amt-stone-200);
+  padding-top: 1.5rem;
+  justify-content: center;
+}
+
+/* Alerts */
+.amt .pf-v5-c-alert {
+  --pf-v5-c-alert--BoxShadow: none;
+  --pf-v5-c-alert--BorderTopWidth: 0;
+  border-radius: 0.875rem;
+  background: var(--amt-stone-50);
+  box-shadow: inset 0 0 0 1px var(--amt-stone-200);
+}
+
+.amt .pf-v5-c-alert.pf-m-danger {
+  background: #fef3f2;
+  box-shadow: inset 0 0 0 1px #fecdca;
+}
+
+.amt .pf-v5-c-alert.pf-m-success {
+  background: var(--amt-brand-50);
+  box-shadow: inset 0 0 0 1px var(--amt-brand-200);
+}
+
+.amt .pf-v5-c-alert.pf-m-success .pf-v5-c-alert__icon,
+.amt .pf-v5-c-alert.pf-m-success .pf-v5-c-alert__title {
+  color: var(--amt-brand-800);
+}
+
+/* Required-fields hint on the sign-up form */
+.amt .subtitle {
+  font-size: 0.8rem;
+  color: var(--amt-stone-500);
+}
+
+/* Social sign-in buttons, if identity providers are added later. */
+.amt #kc-social-providers .pf-v5-c-button.pf-m-tertiary {
+  border-radius: 999px;
+}
+
+.amt .kc-login-divider {
+  font-size: 0.8rem;
+  color: var(--amt-stone-500);
+}
