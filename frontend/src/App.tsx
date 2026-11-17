@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from 'react-oidc-context'
-import { Link, NavLink, Route, Routes } from 'react-router-dom'
+import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 
 import { setToken } from './api'
 import { Button, Empty, Spinner } from './components/ui'
@@ -96,6 +96,8 @@ function Header() {
 export default function App() {
   const auth = useAuth()
   const queryClient = useQueryClient()
+  // The landing page lays out its own full-width sections.
+  const isLanding = useLocation().pathname === '/'
   // Every request made while rendering below must carry the current token.
   setToken(auth.user?.access_token)
   useEffect(() => {
@@ -106,7 +108,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+      <main className={isLanding ? 'w-full flex-1' : 'mx-auto w-full max-w-6xl flex-1 px-4 py-8'}>
         {auth.isLoading ? (
           <Spinner />
         ) : (
