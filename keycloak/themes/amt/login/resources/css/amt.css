@@ -453,6 +453,11 @@ html.login-pf,
   --pf-v5-c-button--m-secondary--PaddingTop: 0.8rem;
 }
 
+/* PatternFly draws button borders on ::after; keep them on the pill shape. */
+.amt .pf-v5-c-button::after {
+  border-radius: inherit;
+}
+
 .amt .pf-v5-c-button.pf-m-control {
   --pf-v5-c-button--BorderRadius: 0;
 }

@@ -49,8 +49,19 @@ Keycloak's own admin console is at http://localhost:8080 (`admin` / `admin`).
 ### Sign-up and the login theme
 
 Anyone can create an account from the **Join** button and sets a password on the sign-up
-form. No mail server is configured yet, so email verification and "Forgot password?" are
-off; `scripts/keycloak-realm-settings.sh` says what to turn on once SMTP is set up.
+form.
+
+"Forgot password?" is on, but it emails a reset link, so **reset emails only arrive once a
+mail server is connected**. Until then Keycloak says an email is on its way and none comes.
+Connect one with your provider's SMTP details (the password stays in Keycloak):
+
+```bash
+docker compose exec -T -e SMTP_HOST=smtp.example.com -e SMTP_PORT=587 \
+  -e SMTP_USER=... -e SMTP_PASSWORD=... -e SMTP_FROM=no-reply@amilliontechies.com \
+  keycloak bash /scripts/keycloak-email.sh
+```
+
+Add `-e VERIFY_EMAIL=true` to also make new members confirm their email address.
 
 The sign-in and sign-up pages use the `amt` login theme in `keycloak/themes/amt/`, which
 extends Keycloak's own `keycloak.v2` theme with the Community layout, colours and wording.

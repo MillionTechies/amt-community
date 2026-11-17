@@ -20,18 +20,17 @@ kc config credentials --server "$KEYCLOAK_URL" --realm master \
 
 # Branded login pages (keycloak/themes/amt) and self-service sign-up.
 #
-# No mail server is set up yet, so everything that sends email stays off:
-# email verification and "Forgot password?". New members set their password on
-# the sign-up form. Once SMTP is configured, turn on verifyEmail and
-# resetPasswordAllowed and fill in smtpServer.
+# "Forgot password?" emails a reset link, so it only delivers once a mail
+# server is configured with keycloak-email.sh. Email verification stays off
+# until then too: new members set their password on the sign-up form.
+# The mail server itself is left alone here, so rerunning this keeps it.
 kc update "realms/$REALM" \
   -s 'displayName=A Million Techies' \
   -s loginTheme=amt \
   -s registrationAllowed=true \
   -s rememberMe=true \
   -s verifyEmail=false \
-  -s resetPasswordAllowed=false \
-  -s 'smtpServer={}' \
+  -s resetPasswordAllowed=true \
   -s loginWithEmailAllowed=true \
   -s duplicateEmailsAllowed=false \
   -s bruteForceProtected=true \
@@ -41,4 +40,4 @@ kc update "realms/$REALM" \
 frontend="$(kc get clients -r "$REALM" -q clientId=amt-frontend --fields id --format csv --noquotes)"
 kc update "clients/$frontend" -r "$REALM" -s "rootUrl=$FRONTEND_URL" -s "baseUrl=$FRONTEND_URL/"
 
-echo "Realm '$REALM': sign-up on, login theme 'amt', email features off."
+echo "Realm '$REALM': sign-up and forgot password on, login theme 'amt'."
