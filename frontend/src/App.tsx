@@ -5,6 +5,7 @@ import { useAuth } from 'react-oidc-context'
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 
 import { setToken } from './api'
+import { LogoTile } from './components/brand'
 import { Button, Empty, Spinner } from './components/ui'
 import { useMe, useSignIn, useSignUp } from './hooks'
 import CertificatePage from './pages/Certificate'
@@ -53,10 +54,10 @@ function Header() {
     </>
   )
   return (
-    <header className="no-print sticky top-0 z-10 border-b border-stone-200 bg-white/95 backdrop-blur">
+    <header className="no-print sticky top-0 z-10 border-b border-stone-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
         <Link to="/" className="flex items-center gap-2 font-bold">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-xs text-white">1M</span>
+          <LogoTile className="h-8 w-8" />
           <span className="hidden sm:inline">A Million Techies</span>
           <span className="text-brand-700">Community</span>
         </Link>
@@ -137,8 +138,21 @@ export default function App() {
           </Routes>
         )}
       </main>
-      <footer className="no-print border-t border-stone-200 py-6 text-center text-sm text-stone-500">
-        A Million Techies Community. Connect, collaborate, participate and build.
+      <footer className="no-print border-t border-stone-200 bg-white">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-stone-500 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-center gap-2">
+            <LogoTile className="h-6 w-6" />
+            <span>
+              Community is part of <a className="font-semibold text-ink hover:text-brand-700" href="https://amilliontechies.com">A Million Techies</a>. Learn. Build. Grow.
+            </span>
+          </p>
+          <nav className="flex flex-wrap gap-x-5 gap-y-2 font-medium">
+            <a className="hover:text-ink" href="https://amilliontechies.com">amilliontechies.com</a>
+            <a className="hover:text-ink" href="https://learn.amilliontechies.com">Courses</a>
+            <Link className="hover:text-ink" to="/events">Events</Link>
+            <Link className="hover:text-ink" to="/hackathons">Hackathons</Link>
+          </nav>
+        </div>
       </footer>
     </div>
   )

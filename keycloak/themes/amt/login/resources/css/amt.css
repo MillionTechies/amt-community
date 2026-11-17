@@ -1,17 +1,18 @@
 /*
  * A Million Techies login theme, on top of keycloak.v2 (PatternFly 5).
- * Colours and type match the Community web app (frontend/src/index.css).
+ * Colours and type match the Community web app (frontend/src/index.css), which uses
+ * the A Million Techies green.
  */
 
 :root {
-  --amt-brand-50: #ecfdf7;
-  --amt-brand-100: #d0f7e8;
-  --amt-brand-200: #a3edd3;
-  --amt-brand-500: #12a37f;
-  --amt-brand-600: #0b8a6b;
-  --amt-brand-700: #0a6e57;
-  --amt-brand-800: #0b5747;
-  --amt-ink: #10201c;
+  --amt-brand-50: #f0fdf4;
+  --amt-brand-100: #dcfce7;
+  --amt-brand-200: #bbf7d0;
+  --amt-brand-500: #22c55e;
+  --amt-brand-600: #16a34a;
+  --amt-brand-700: #15803d;
+  --amt-brand-800: #166534;
+  --amt-ink: #0c1410;
   --amt-stone-50: #fafaf9;
   --amt-stone-200: #e7e5e4;
   --amt-stone-300: #d6d3d1;
@@ -101,7 +102,7 @@ html.login-pf,
   width: 30rem;
   height: 30rem;
   border-radius: 50%;
-  background: radial-gradient(circle, rgb(18 163 127 / 0.35), transparent 70%);
+  background: radial-gradient(circle, rgb(22 163 74 / 0.35), transparent 70%);
 }
 
 .amt-eyebrow {
@@ -233,7 +234,11 @@ html.login-pf,
   border-radius: 0.55rem;
   background: var(--amt-brand-600);
   color: #fff;
-  font-size: 0.75rem;
+}
+
+.amt-logo__mark svg {
+  width: 62%;
+  height: 62%;
 }
 
 .amt-logo__name {
@@ -377,7 +382,7 @@ html.login-pf,
 }
 
 .amt .pf-v5-c-form-control:focus-within {
-  box-shadow: 0 0 0 4px rgb(18 163 127 / 0.18);
+  box-shadow: 0 0 0 4px rgb(22 163 74 / 0.18);
 }
 
 .amt .pf-v5-c-form-control:focus-within::before {
@@ -522,12 +527,56 @@ html.login-pf,
   color: var(--amt-stone-500);
 }
 
-/* Social sign-in buttons, if identity providers are added later. */
+/* "Continue with Google" and any other identity providers. */
+.amt #kc-social-providers .pf-v5-c-login__main-body {
+  padding: 0 !important;
+}
+
 .amt #kc-social-providers .pf-v5-c-button.pf-m-tertiary {
+  --pf-v5-c-button--m-tertiary--BackgroundColor: #fff;
+  --pf-v5-c-button--m-tertiary--hover--BackgroundColor: #fff;
+  --pf-v5-c-button--m-tertiary--focus--BackgroundColor: #fff;
+  --pf-v5-c-button--m-tertiary--Color: var(--amt-ink);
+  --pf-v5-c-button--m-tertiary--hover--Color: var(--amt-ink);
+  --pf-v5-c-button--m-tertiary--focus--Color: var(--amt-ink);
+  --pf-v5-c-button--m-tertiary--after--BorderColor: var(--amt-stone-300);
+  --pf-v5-c-button--m-tertiary--hover--after--BorderColor: var(--amt-stone-500);
+  --pf-v5-c-button--m-tertiary--focus--after--BorderColor: var(--amt-stone-500);
+  --pf-v5-c-button--PaddingTop: 0.75rem;
+  --pf-v5-c-button--PaddingBottom: 0.75rem;
   border-radius: 999px;
+  justify-content: center !important;
+  gap: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.amt #kc-social-providers .pf-v5-c-button.pf-m-tertiary::after {
+  border-radius: inherit;
+}
+
+.amt #kc-social-providers .pf-v5-c-button .pf-v5-u-m-auto {
+  margin: 0 !important;
+}
+
+.amt #kc-social-providers img {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .amt .kc-login-divider {
+  margin: 1.5rem 0 1.25rem;
   font-size: 0.8rem;
   color: var(--amt-stone-500);
+}
+
+/* On sign-up the providers come first; show the "or" divider after them. */
+.amt .amt-social-first {
+  display: flex;
+  flex-direction: column-reverse;
+  margin-bottom: 0.25rem;
+}
+
+.amt .amt-social-first .kc-login-divider {
+  margin: 1.25rem 0 0.25rem;
 }

@@ -1,6 +1,7 @@
 <#import "field.ftl" as field>
 <#import "footer.ftl" as loginFooter>
 <#import "theme-resources.ftl" as themeResourceTags>
+<#import "social-providers.ftl" as identityProviders>
 <#macro username>
   <#assign label>
     <#if !realm.loginWithEmailAllowed>${msg("username")}<#elseif !realm.registrationEmailAsUsername>${msg("usernameOrEmail")}<#else>${msg("email")}</#if>
@@ -155,12 +156,12 @@
     <div class="amt-brand__grid"></div>
     <div class="amt-brand__glow"></div>
     <div class="amt-logo amt-logo--light">
-      <span class="amt-logo__mark">1M</span>
+      <span class="amt-logo__mark"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="26" height="18" rx="3"/><path d="m10.5 10-3 3 3 3M21.5 10l3 3-3 3M17.5 9l-3 8M16 22v4M10.5 27h11"/></svg></span>
       <span>A Million Techies <b>Community</b></span>
     </div>
     <div class="amt-brand__pitch">
       <#if joining>
-        <p class="amt-eyebrow">Join free</p>
+        <p class="amt-eyebrow">Join A Million Techies, free</p>
         <p class="amt-brand__title">One account for every event you go to.</p>
         <ul class="amt-points">
           <li>Register for workshops, meetups and hackathons</li>
@@ -169,8 +170,8 @@
         </ul>
       <#else>
         <p class="amt-eyebrow">A Million Techies Community</p>
-        <p class="amt-brand__title">Learn it. Then build it <em>together</em>.</p>
-        <p class="amt-brand__lede">Workshops, meetups and hackathons run by universities, developer communities and A Million Techies.</p>
+        <p class="amt-brand__title">Learn. Build. Grow. <em>Together.</em></p>
+        <p class="amt-brand__lede">One A Million Techies account for workshops, meetups and hackathons, where learners and mentors build together.</p>
       </#if>
     </div>
     <div class="amt-pass">
@@ -185,10 +186,10 @@
   <div class="amt-panel">
     <div class="amt-panel__top">
       <#if homeUrl?has_content>
-        <a class="amt-logo" href="${homeUrl}"><span class="amt-logo__mark">1M</span><span class="amt-logo__name">Community</span></a>
+        <a class="amt-logo" href="${homeUrl}"><span class="amt-logo__mark"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="26" height="18" rx="3"/><path d="m10.5 10-3 3 3 3M21.5 10l3 3-3 3M17.5 9l-3 8M16 22v4M10.5 27h11"/></svg></span><span class="amt-logo__name">Community</span></a>
         <a class="amt-back" href="${homeUrl}">&larr; Back to Community</a>
       <#else>
-        <span class="amt-logo"><span class="amt-logo__mark">1M</span><span class="amt-logo__name">Community</span></span>
+        <span class="amt-logo"><span class="amt-logo__mark"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="26" height="18" rx="3"/><path d="m10.5 10-3 3 3 3M21.5 10l3 3-3 3M17.5 9l-3 8M16 22v4M10.5 27h11"/></svg></span><span class="amt-logo__name">Community</span></span>
       </#if>
     </div>
     <main class="${properties.kcLoginMain!}">
@@ -234,6 +235,14 @@
         </#if>
       </div>
       <div class="${properties.kcLoginMainBody!}">
+        <#-- Keycloak's register.ftl has no social section. Offer the same providers on
+             sign-up, above the form: joining with Google is the quickest path. -->
+        <#if pageId == "register" && social?? && social.providers?has_content>
+            <div class="amt-social-first">
+                <@identityProviders.show social=social/>
+            </div>
+        </#if>
+
         <#if !(auth?has_content && auth.showUsername() && !auth.showResetCredentials())>
             <#if displayRequiredFields>
                 <div class="${properties.kcContentWrapperClass!}">
@@ -318,7 +327,7 @@
             <@loginFooter.content/>
         </div>
     </main>
-    <p class="amt-legal">&copy; A Million Techies. Connect, collaborate, participate and build.</p>
+    <p class="amt-legal">&copy; A Million Techies. Learn. Build. Grow.</p>
   </div>
 </div>
 </body>
