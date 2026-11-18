@@ -19,6 +19,7 @@ from apps.events.serializers import (
     TransitionSerializer,
     event_context,
 )
+from apps.integrations import service
 from apps.notifications import emails
 
 ROLE = access.Role.EVENT_ORGANISER
@@ -113,6 +114,7 @@ class EventViewSet(viewsets.ModelViewSet):
         before = emails.snapshot(serializer.instance)
         event = serializer.save()
         emails.event_changed(event, before)
+        service.push_changes(event)
 
     def perform_destroy(self, event):
         access.require_manage(self.request, event.organization_id, ROLE)
@@ -135,6 +137,7 @@ class EventViewSet(viewsets.ModelViewSet):
         event.save(update_fields=["status", "updated_at"])
         if target == Event.Status.CANCELLED:
             emails.event_cancelled(event)
+        service.push_changes(event)
         return Response(self.get_serializer(event).data)
 
     @action(detail=True, methods=["post", "delete"], permission_classes=[permissions.IsAuthenticated])

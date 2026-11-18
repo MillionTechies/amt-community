@@ -16,6 +16,7 @@ from apps.accounts.models import Profile
 def _db(db, settings):
     # Send emails straight away, into django.core.mail.outbox.
     settings.EMAIL_DELIVERY = "inline"
+    settings.BACKGROUND_TASKS = "inline"
 
 
 def make_org(alias: str) -> Organization:

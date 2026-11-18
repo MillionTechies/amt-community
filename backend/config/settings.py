@@ -119,6 +119,23 @@ DEFAULT_FROM_EMAIL = os.environ.get(
     "DEFAULT_FROM_EMAIL", "A Million Techies Community <community@amilliontechies.com>"
 )
 
+# --- connected accounts: Google, Microsoft, Zoom ---------------------------------------
+# Organisers connect these to create Meet, Teams or Zoom meetings and to keep events in
+# their own calendars. Each needs an OAuth app registered with the provider; see README.
+# The redirect URI to register is <API_URL>/api/integrations/<google|microsoft|zoom>/callback/
+API_URL = os.environ.get("API_URL", "http://localhost:8000").rstrip("/")
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
+MICROSOFT_OAUTH_CLIENT_ID = os.environ.get("MICROSOFT_OAUTH_CLIENT_ID", "")
+MICROSOFT_OAUTH_CLIENT_SECRET = os.environ.get("MICROSOFT_OAUTH_CLIENT_SECRET", "")
+MICROSOFT_OAUTH_TENANT = os.environ.get("MICROSOFT_OAUTH_TENANT", "common")
+ZOOM_OAUTH_CLIENT_ID = os.environ.get("ZOOM_OAUTH_CLIENT_ID", "")
+ZOOM_OAUTH_CLIENT_SECRET = os.environ.get("ZOOM_OAUTH_CLIENT_SECRET", "")
+# Encrypts their tokens at rest. Defaults to one derived from DJANGO_SECRET_KEY.
+INTEGRATIONS_ENCRYPTION_KEY = os.environ.get("INTEGRATIONS_ENCRYPTION_KEY", "")
+# "thread" calls the providers after the request; "inline" (tests) calls them straight away.
+BACKGROUND_TASKS = os.environ.get("BACKGROUND_TASKS", "thread")
+
 # --- uploaded images ---------------------------------------------------------
 # On local disk by default. Set MEDIA_S3_BUCKET to keep them in S3-compatible storage
 # (AWS S3, DigitalOcean Spaces, Cloudflare R2) instead.

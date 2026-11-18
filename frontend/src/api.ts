@@ -321,3 +321,29 @@ export interface RoleAssignment {
   person: Person
   email: string
 }
+
+/** A service organisers can connect: Google, Microsoft or Zoom. */
+export interface Integration {
+  id: 'google' | 'microsoft' | 'zoom'
+  name: string
+  /** What its meetings are called ("Google Meet"), or "" if it makes none. */
+  meeting_name: string
+  has_calendar: boolean
+  /** Whether this server has the provider's OAuth app set up. */
+  configured: boolean
+  connected: boolean
+  account_email: string
+}
+
+/** An event's copy in an organiser's calendar or meeting tool. */
+export interface EventLink {
+  id: number
+  provider: Integration['id']
+  provider_name: string
+  account_email: string
+  is_meeting: boolean
+  join_url: string
+  /** Added through the signed-in organiser's own account. */
+  mine: boolean
+  synced_at: string
+}

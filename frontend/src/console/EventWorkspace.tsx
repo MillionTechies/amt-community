@@ -19,6 +19,7 @@ import {
 import { useAct } from '../hooks'
 import { EVENT_TYPE_LABELS } from '../pages/Events'
 import { DailyBars } from './charts'
+import { MeetingPanel } from './MeetingPanel'
 import { ConsoleHeader, FilterChips, Kpi, Meter, Panel, relative } from './shared'
 
 type Ctx = { event: CommunityEvent }
@@ -181,6 +182,7 @@ export function EventOverview() {
               ))}
             </ul>
           </Panel>
+          <MeetingPanel event={e} />
           <Panel title="Details" action={<Link to={`${base}/edit`} className="text-sm font-semibold text-brand-700 hover:underline">Edit</Link>}>
             <dl className="space-y-3 text-sm">
               {[

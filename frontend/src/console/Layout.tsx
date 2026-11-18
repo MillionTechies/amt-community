@@ -108,6 +108,13 @@ function Sidebar({ onNavigate }: { onNavigate: () => void }) {
           </div>
         )}
 
+        <div>
+          <p className="mb-2 px-3 font-mono text-[11px] font-semibold uppercase tracking-wider text-stone-500 before:content-['//_']">You</p>
+          <div className="space-y-0.5">
+            <NavLink to="/manage/integrations" className={navItem}><NavIcon name="external" />Connected accounts</NavLink>
+          </div>
+        </div>
+
         {(access.team || access.platform) && (
           <div>
             <p className="mb-2 px-3 font-mono text-[11px] font-semibold uppercase tracking-wider text-stone-500 before:content-['//_']">Organisation</p>
@@ -150,6 +157,7 @@ const CRUMB_LABELS: Record<string, string> = {
   hackathons: 'Hackathons',
   team: 'Team and roles',
   platform: 'Platform',
+  integrations: 'Connected accounts',
   new: 'New',
   ...Object.fromEntries([...EVENT_SECTIONS, ...HACKATHON_SECTIONS].filter((s) => s.to).map((s) => [s.to, s.label])),
 }

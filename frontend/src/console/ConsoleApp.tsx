@@ -8,6 +8,7 @@ import EventWorkspace, { EventCheckIn, EventContent, EventFeedback, EventOvervie
 import HackathonWorkspace, {
   HackathonJudges, HackathonLeaderboard, HackathonOverview, HackathonSetup, HackathonTeams,
 } from './HackathonWorkspace'
+import Integrations from './Integrations'
 import ConsoleLayout from './Layout'
 import { EventsList, HackathonsList } from './Lists'
 import Overview from './Overview'
@@ -39,6 +40,7 @@ export default function ConsoleApp() {
         <Route path="edit" element={<HackathonForm />} />
       </Route>
       <Route path="team" element={<Team />} />
+      <Route path="integrations" element={<Integrations />} />
       <Route path="platform" element={<Platform />} />
       <Route path="*" element={<Empty>This page does not exist. <Link className="font-semibold text-brand-700" to="/manage">Back to the console</Link></Empty>} />
     </Route>

@@ -11,3 +11,5 @@ Pillow>=11
 django-storages[s3]>=1.14
 icalendar>=6
 segno>=1.6
+httpx>=0.27
+cryptography>=42

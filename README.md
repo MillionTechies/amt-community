@@ -112,6 +112,39 @@ verification email. If someone signs in with Google using the email of an existi
 Keycloak asks them to confirm it is theirs before linking the two.
 API docs are at http://localhost:8000/api/docs/.
 
+### Google, Microsoft and Zoom (connected accounts)
+
+Organisers can connect their own Google, Microsoft or Zoom account under **Console →
+Connected accounts**, then, in an event, create a Google Meet, Teams or Zoom meeting with
+one click (it becomes the join link) or keep the event in their Google or Outlook calendar.
+Those copies follow every change to the event and are removed if it is cancelled. Pasting a
+meeting link by hand always works, with or without any of this.
+
+Each service needs an OAuth app, registered once by an admin. The redirect URI is
+`<API_URL>/api/integrations/<google|microsoft|zoom>/callback/`, so locally
+`http://localhost:8000/api/integrations/google/callback/`. Put the keys in `backend/.env`.
+
+- **Google**: in the [Google Cloud console](https://console.cloud.google.com/), create a
+  project, enable the **Google Calendar API**, configure the OAuth consent screen with the
+  `.../auth/calendar.events` scope, then create an **OAuth client ID** (Web application)
+  with the redirect URI. Set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`.
+  While the app is in "Testing", only the test users you list can connect.
+- **Microsoft**: in the [Azure portal](https://portal.azure.com/), go to **Microsoft Entra ID
+  → App registrations → New registration**, allow work, school and personal accounts, and
+  add the redirect URI as a **Web** platform. Create a client secret, and add the delegated
+  Microsoft Graph permissions `User.Read`, `Calendars.ReadWrite`, `offline_access`, `openid`
+  and `email`. Set `MICROSOFT_OAUTH_CLIENT_ID`, `MICROSOFT_OAUTH_CLIENT_SECRET` and, to
+  limit it to your organisation, `MICROSOFT_OAUTH_TENANT`. Teams links need an account
+  with Microsoft Teams.
+- **Zoom**: in the [Zoom App Marketplace](https://marketplace.zoom.us/), build a **General
+  app** with user-managed OAuth, add the redirect URI (and to the allow list), and the
+  scopes `user:read:user`, `meeting:write:meeting`, `meeting:update:meeting` and
+  `meeting:delete:meeting`. Set `ZOOM_OAUTH_CLIENT_ID` and `ZOOM_OAUTH_CLIENT_SECRET`. If
+  Zoom refuses an `http://localhost` redirect, use an HTTPS tunnel and set `API_URL` to it.
+
+Tokens are stored encrypted (`INTEGRATIONS_ENCRYPTION_KEY`, or a key derived from
+`DJANGO_SECRET_KEY`).
+
 ## Tests
 
 ```bash
