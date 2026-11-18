@@ -1,23 +1,27 @@
-/** A Million Techies brand marks: the monitor logo, and the rhino used as an accent. */
+/** A Million Techies brand marks: the official logo, and the rhino used as an accent. */
 
-/** The A Million Techies monitor (cursor and code on screen), as on amilliontechies.com. */
+const mask = "url('/amt-mark.png') center / contain no-repeat"
+
+/**
+ * The official A Million Techies mark (monitor with cursor and code, over a keyboard),
+ * from public/amt-mark.png. Applied as a mask, so it takes the current text colour.
+ */
 export function LogoMark({ className = '' }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="4" width="26" height="18" rx="3" />
-      <path d="m10.5 10-3 3 3 3M21.5 10l3 3-3 3M17.5 9l-3 8" />
-      <path d="M16 22v4M10.5 27h11" />
-    </svg>
-  )
+  return <span className={`inline-block bg-current ${className}`} style={{ mask, WebkitMask: mask }} aria-hidden="true" />
 }
 
-/** The logo as a tile: a white monitor on A Million Techies green. */
+/** The mark as a tile: white on A Million Techies green. */
 export function LogoTile({ className = 'h-9 w-9' }: { className?: string }) {
   return (
     <span className={`grid place-items-center rounded-xl bg-brand-600 text-white ${className}`}>
-      <LogoMark className="h-[62%] w-[62%]" />
+      <LogoMark className="h-[72%] w-[72%]" />
     </span>
   )
+}
+
+/** The full official logo with the "A Million Techies" wordmark, in its original ink colour. */
+export function Logo({ className = 'h-24 w-24' }: { className?: string }) {
+  return <img src="/amt-logo.png" alt="A Million Techies" className={className} />
 }
 
 /** Side-on white rhino, grazing. Drawn in currentColor; `far` colours the far legs, `fold` the skin folds. */

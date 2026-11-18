@@ -236,9 +236,13 @@ html.login-pf,
   color: #fff;
 }
 
-.amt-logo__mark svg {
-  width: 62%;
-  height: 62%;
+/* The official mark (img/mark.png) as a mask, so it takes the tile's text colour. */
+.amt-logo__mark i {
+  width: 72%;
+  height: 72%;
+  background: currentColor;
+  -webkit-mask: url("../img/mark.png") center / contain no-repeat;
+  mask: url("../img/mark.png") center / contain no-repeat;
 }
 
 .amt-logo__name {

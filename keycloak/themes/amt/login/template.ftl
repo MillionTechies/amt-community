@@ -40,7 +40,7 @@
         </#list>
     </#if>
     <title>${title!}</title>
-    <link rel="icon" type="image/svg+xml" href="${url.resourcesPath}/img/favicon.svg" />
+    <link rel="icon" type="image/png" href="${url.resourcesPath}/img/favicon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Inter:wght@400..700&display=swap" />
@@ -156,7 +156,7 @@
     <div class="amt-brand__grid"></div>
     <div class="amt-brand__glow"></div>
     <div class="amt-logo amt-logo--light">
-      <span class="amt-logo__mark"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="26" height="18" rx="3"/><path d="m10.5 10-3 3 3 3M21.5 10l3 3-3 3M17.5 9l-3 8M16 22v4M10.5 27h11"/></svg></span>
+      <span class="amt-logo__mark"><i></i></span>
       <span>A Million Techies <b>Community</b></span>
     </div>
     <div class="amt-brand__pitch">
@@ -186,10 +186,10 @@
   <div class="amt-panel">
     <div class="amt-panel__top">
       <#if homeUrl?has_content>
-        <a class="amt-logo" href="${homeUrl}"><span class="amt-logo__mark"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="26" height="18" rx="3"/><path d="m10.5 10-3 3 3 3M21.5 10l3 3-3 3M17.5 9l-3 8M16 22v4M10.5 27h11"/></svg></span><span class="amt-logo__name">Community</span></a>
+        <a class="amt-logo" href="${homeUrl}"><span class="amt-logo__mark"><i></i></span><span class="amt-logo__name">Community</span></a>
         <a class="amt-back" href="${homeUrl}">&larr; Back to Community</a>
       <#else>
-        <span class="amt-logo"><span class="amt-logo__mark"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="26" height="18" rx="3"/><path d="m10.5 10-3 3 3 3M21.5 10l3 3-3 3M17.5 9l-3 8M16 22v4M10.5 27h11"/></svg></span><span class="amt-logo__name">Community</span></span>
+        <span class="amt-logo"><span class="amt-logo__mark"><i></i></span><span class="amt-logo__name">Community</span></span>
       </#if>
     </div>
     <main class="${properties.kcLoginMain!}">
