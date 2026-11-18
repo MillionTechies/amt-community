@@ -15,7 +15,7 @@ organisations, scoped roles), Events and Hackathons.
 You need Docker, Python 3.12 and Node 22.
 
 ```bash
-# 1. PostgreSQL (port 5433) and Keycloak (port 8080)
+# 1. PostgreSQL (port 5433), Keycloak (port 8080) and Mailpit (inbox on port 8025)
 docker compose up -d
 
 # 2. Create the dev realm, clients and sample users. Once, after Keycloak is up.
@@ -28,6 +28,8 @@ cp .env.example .env
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py amt_sync      # copy organisations from Keycloak
 .venv/bin/python manage.py runserver
+# In a second terminal: sends reminders and retries failed emails
+.venv/bin/python manage.py run_worker
 
 # 4. Web app on http://localhost:5173
 cd frontend
@@ -45,6 +47,20 @@ Sample users (the password is the username):
 | `carol` | A member with no organisation |
 
 Keycloak's own admin console is at http://localhost:8080 (`admin` / `admin`).
+
+### Email
+
+Community emails people when they register, come off the waiting list, or get an
+announcement, when an event's time, place or link changes, when it is cancelled, and a
+day and an hour before it starts. Invites (`.ics`) are attached, so the event lands in
+Google, Outlook or Apple Calendar and updates there when it changes.
+
+Locally every email goes to Mailpit: open http://localhost:8025 to read them. Nothing
+leaves your machine. Emails are queued in the `OutboundEmail` table and sent right after
+the request; `run_worker` sends reminders and retries anything that failed, so keep it
+running (in production, as its own process or container). To send for real, point the
+`EMAIL_*` settings in `backend/.env` at any SMTP service (Google Workspace, Microsoft 365,
+SendGrid, Mailgun, Amazon SES).
 
 ### Sign-up and the login theme
 

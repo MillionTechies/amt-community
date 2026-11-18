@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "apps.hackathons",
     "apps.content",
     "apps.integrations",
+    "apps.notifications",
 ]
 
 MIDDLEWARE = [
@@ -110,6 +111,10 @@ EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "false").lower() == "true"
 EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "false").lower() == "true"
 EMAIL_TIMEOUT = 20
+# How queued emails leave: "thread" sends right after the request on a background thread,
+# "worker" leaves everything to `manage.py run_worker`. The worker also sends reminders and
+# retries failures, so run it in every environment.
+EMAIL_DELIVERY = os.environ.get("EMAIL_DELIVERY", "thread")
 DEFAULT_FROM_EMAIL = os.environ.get(
     "DEFAULT_FROM_EMAIL", "A Million Techies Community <community@amilliontechies.com>"
 )

@@ -397,12 +397,12 @@ export function EventContent() {
   const { slug: id } = useEvent()
   const announcements = useQuery({ queryKey: ['event', String(id), 'announcements'], queryFn: () => api<Announcement[]>(`/events/${id}/announcements/`) })
   const resources = useQuery({ queryKey: ['event', String(id), 'resources'], queryFn: () => api<Resource[]>(`/events/${id}/resources/`) })
-  const [note, setNote] = useState({ title: '', body: '' })
+  const [note, setNote] = useState({ title: '', body: '', notify: true })
   const [link, setLink] = useState({ title: '', url: '', description: '' })
-  const post = useAct(() => api(`/events/${id}/announcements/`, { method: 'POST', body: note }))
+  const post = useAct(() => api<Announcement & { emailed_to?: number }>(`/events/${id}/announcements/`, { method: 'POST', body: note }))
   const add = useAct(() => api(`/events/${id}/resources/`, { method: 'POST', body: link }))
   const remove = useAct((path: string) => api(`/events/${id}/${path}/`, { method: 'DELETE' }))
-  const submit = (action: typeof post, reset: () => void) => (ev: FormEvent) => {
+  const submit = (action: { mutate: (v: undefined, o: { onSuccess: () => void }) => void }, reset: () => void) => (ev: FormEvent) => {
     ev.preventDefault()
     action.mutate(undefined, { onSuccess: reset })
   }
@@ -410,12 +410,17 @@ export function EventContent() {
     <div className="grid gap-6 lg:grid-cols-2">
       <Panel title="Announcements">
         <p className="mb-4 text-sm text-stone-600">Shown on the event page to everyone registered.</p>
-        <form className="space-y-3" onSubmit={submit(post, () => setNote({ title: '', body: '' }))}>
+        <form className="space-y-3" onSubmit={submit(post, () => setNote({ title: '', body: '', notify: note.notify }))}>
           <Field label="Title"><Input required value={note.title} onChange={(ev) => setNote({ ...note, title: ev.target.value })} /></Field>
           <Field label="Message" group>
             <RichTextEditor value={note.body} onChange={(body) => setNote((n) => ({ ...n, body }))} placeholder="What do attendees need to know?" minHeight="8rem" />
           </Field>
           <ErrorNote error={post.error} />
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={note.notify} onChange={(ev) => setNote({ ...note, notify: ev.target.checked })} />
+            Also email everyone registered
+          </label>
+          {post.data?.emailed_to !== undefined && <Notice>Posted and emailed to {post.data.emailed_to} {post.data.emailed_to === 1 ? 'person' : 'people'}.</Notice>}
           <Button type="submit" disabled={post.isPending || !note.body}>Post announcement</Button>
         </form>
         <ul className="mt-5 divide-y divide-stone-100 border-t border-stone-200">

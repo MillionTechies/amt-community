@@ -1,0 +1,22 @@
+{% autoescape off %}{{ heading }}
+
+{% for paragraph in paragraphs %}{{ paragraph }}
+
+{% endfor %}{% for label, before, after in changes %}{{ label }}: {% if before %}{{ before }} -> {% endif %}{{ after }}
+{% endfor %}{% if changes %}
+{% endif %}{% if body_text %}{{ body_text }}
+
+{% endif %}{% for label, value in details %}{{ label }}: {{ value }}
+{% endfor %}{% if join_url %}
+{{ join_label }}: {{ join_url }}
+{% endif %}{% if ticket %}
+Your ticket code: {{ ticket }}
+{% endif %}{% if button_url %}
+{{ button_label }}: {{ button_url }}
+{% endif %}{% if calendar_note %}
+{{ calendar_note }}
+{% endif %}
+--
+A Million Techies Community. Learn. Build. Grow.
+{{ community_url }}
+{% endautoescape %}

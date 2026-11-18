@@ -13,8 +13,9 @@ from apps.accounts.models import Profile
 
 
 @pytest.fixture(autouse=True)
-def _db(db):
-    pass
+def _db(db, settings):
+    # Send emails straight away, into django.core.mail.outbox.
+    settings.EMAIL_DELIVERY = "inline"
 
 
 def make_org(alias: str) -> Organization:

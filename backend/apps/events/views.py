@@ -19,6 +19,7 @@ from apps.events.serializers import (
     TransitionSerializer,
     event_context,
 )
+from apps.notifications import emails
 
 ROLE = access.Role.EVENT_ORGANISER
 PUBLIC_STATUSES = [Event.Status.PUBLISHED, Event.Status.COMPLETED, Event.Status.CANCELLED]
@@ -109,7 +110,9 @@ class EventViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         access.require_manage(self.request, serializer.instance.organization_id, ROLE)
-        serializer.save()
+        before = emails.snapshot(serializer.instance)
+        event = serializer.save()
+        emails.event_changed(event, before)
 
     def perform_destroy(self, event):
         access.require_manage(self.request, event.organization_id, ROLE)
@@ -130,6 +133,8 @@ class EventViewSet(viewsets.ModelViewSet):
             )
         event.status = target
         event.save(update_fields=["status", "updated_at"])
+        if target == Event.Status.CANCELLED:
+            emails.event_cancelled(event)
         return Response(self.get_serializer(event).data)
 
     @action(detail=True, methods=["post", "delete"], permission_classes=[permissions.IsAuthenticated])
@@ -157,7 +162,8 @@ class EventViewSet(viewsets.ModelViewSet):
                     registration.created_at = timezone.now()  # rejoin at the back of the queue
                     registration.save(update_fields=["status", "created_at"])
                 else:
-                    event.registrations.create(profile=profile, status=new_status)
+                    registration = event.registrations.create(profile=profile, status=new_status)
+                emails.registration_changed(registration)
             else:
                 registration = event.registrations.filter(profile=profile).first()
                 if registration is None or registration.status == Registration.Status.CANCELLED:
@@ -174,6 +180,7 @@ class EventViewSet(viewsets.ModelViewSet):
                     if waiting:
                         waiting.status = Registration.Status.REGISTERED
                         waiting.save(update_fields=["status"])
+                        emails.promoted(waiting)
         event = self.get_object()
         return Response(self.get_serializer(event).data)
 
@@ -335,7 +342,10 @@ class AnnouncementViewSet(EventChildViewSet):
     serializer_class = AnnouncementSerializer
 
     def save(self, serializer, event):
-        serializer.save(event=event, created_by=access.profile_of(self.request))
+        notify = serializer.validated_data.pop("notify", False)
+        announcement = serializer.save(event=event, created_by=access.profile_of(self.request))
+        if notify:
+            announcement.emailed_to = emails.announcement(announcement)
 
 
 class ResourceViewSet(EventChildViewSet):

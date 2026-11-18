@@ -109,9 +109,13 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
 
 class AnnouncementSerializer(serializers.ModelSerializer):
+    # Write-only: also email everyone registered. The reply says how many were emailed.
+    notify = serializers.BooleanField(write_only=True, required=False, default=False)
+    emailed_to = serializers.IntegerField(read_only=True, required=False)
+
     class Meta:
         model = Announcement
-        fields = ["id", "title", "body", "created_at"]
+        fields = ["id", "title", "body", "created_at", "notify", "emailed_to"]
 
     def validate_body(self, value):
         return richtext.clean(value)
