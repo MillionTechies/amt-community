@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "apps.events",
     "apps.hackathons",
     "apps.content",
+    "apps.integrations",
 ]
 
 MIDDLEWARE = [
@@ -94,6 +95,24 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+
+# The member-facing site, for links in emails and calendar invites.
+COMMUNITY_URL = os.environ.get("COMMUNITY_URL", "http://localhost:5173").rstrip("/")
+
+# --- email ------------------------------------------------------------------
+# Any SMTP service works (Google Workspace, Microsoft 365, SendGrid, Mailgun, Amazon SES).
+# Locally, docker-compose runs Mailpit: mail goes to http://localhost:8025, never out.
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "1025"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "false").lower() == "true"
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "false").lower() == "true"
+EMAIL_TIMEOUT = 20
+DEFAULT_FROM_EMAIL = os.environ.get(
+    "DEFAULT_FROM_EMAIL", "A Million Techies Community <community@amilliontechies.com>"
+)
 
 # --- uploaded images ---------------------------------------------------------
 # On local disk by default. Set MEDIA_S3_BUCKET to keep them in S3-compatible storage

@@ -5,6 +5,7 @@ from apps.accounts import access
 from apps.accounts.serializers import OrganizationSerializer, PersonSerializer
 from apps.content import richtext
 from apps.events.models import Announcement, Event, Feedback, Registration, Resource
+from apps.integrations import meetings
 
 
 class MyRegistrationSerializer(serializers.ModelSerializer):
@@ -60,9 +61,16 @@ class EventSerializer(serializers.ModelSerializer):
         # The join link is for people who are coming, and for the organisers.
         registration = self.context.get("my_registrations", {}).get(event.id)
         attending = registration and registration.status == Registration.Status.REGISTERED
+        # Which service the meeting is on is not secret, so everyone sees it.
+        data["meeting_provider"] = meetings.detect(event.online_url)
         if not (attending or data["can_manage"]):
             data["online_url"] = ""
         return data
+
+    def validate_online_url(self, value):
+        if value and not value.startswith("https://"):
+            raise serializers.ValidationError("Use the https:// link your meeting tool gives you.")
+        return value
 
     def validate_organization_id(self, value):
         if not Organization.objects.filter(id=value, deleted_at=None).exists():

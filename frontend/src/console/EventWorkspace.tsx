@@ -186,7 +186,8 @@ export function EventOverview() {
               {[
                 ['Type', EVENT_TYPE_LABELS[e.event_type] ?? label(e.event_type)],
                 ['Format', label(e.delivery_mode)],
-                ['Venue', e.venue || (e.online_url ? 'Online' : 'Not set')],
+                ['Venue', e.venue || 'Not set'],
+                ['Online', e.delivery_mode === 'in_person' ? 'No' : e.meeting_provider?.name ?? (e.online_url ? 'Link added' : 'No link yet')],
                 ['Places', e.capacity ? String(e.capacity) : 'No limit'],
                 ['Registration closes', e.registration_deadline ? formatDateTime(e.registration_deadline) : 'When the event ends'],
                 ['Registration', e.registration_open ? 'Open' : 'Closed'],

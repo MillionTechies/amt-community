@@ -144,6 +144,8 @@ export interface CommunityEvent {
   delivery_mode: string
   venue: string
   online_url: string
+  /** The web-conferencing service the meeting link is on, if we recognise it. */
+  meeting_provider: { id: string; name: string } | null
   starts_at: string
   ends_at: string
   registration_deadline: string | null

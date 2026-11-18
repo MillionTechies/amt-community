@@ -10,6 +10,7 @@ import {
   Badge, Button, Card, ErrorNote, Field, LinkButton, Notice, Prose, Section, Spinner, StatusBadge,
   Textarea, formatDateTime, formatRange, label,
 } from '../components/ui'
+import { AddToCalendar } from '../components/AddToCalendar'
 import { RichText } from '../components/RichText'
 import { useAct, useSignIn } from '../hooks'
 
@@ -89,11 +90,25 @@ export default function EventDetail() {
         <Card className="space-y-3">
           <Detail label="When">{formatRange(e.starts_at, e.ends_at)}</Detail>
           {e.venue && <Detail label="Where">{e.venue}</Detail>}
-          {e.online_url && (
-            <Detail label="Join online">
-              <a className="break-all text-brand-700 hover:underline" href={e.online_url} target="_blank" rel="noreferrer">
-                {e.online_url}
-              </a>
+          {e.delivery_mode !== 'in_person' && (
+            <Detail label="Online">
+              {e.online_url ? (
+                <span className="block space-y-2">
+                  <a
+                    className="btn-prompt inline-flex items-center gap-2 rounded-lg bg-ink px-3 py-2 font-mono text-xs font-semibold uppercase tracking-wider text-white hover:bg-stone-800"
+                    href={e.online_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Join {e.meeting_provider ? `on ${e.meeting_provider.name}` : 'the meeting'}
+                  </a>
+                  <span className="block break-all text-xs text-stone-500">{e.online_url}</span>
+                </span>
+              ) : (
+                <span className="text-stone-600">
+                  {e.meeting_provider ? `On ${e.meeting_provider.name}. ` : ''}The link appears here once you register.
+                </span>
+              )}
             </Detail>
           )}
           {e.registration_deadline && <Detail label="Register by">{formatDateTime(e.registration_deadline)}</Detail>}
@@ -103,6 +118,7 @@ export default function EventDetail() {
               : `${e.registered_count} of ${e.capacity} taken`}
           </Detail>
 
+          {e.status !== 'draft' && e.status !== 'cancelled' && new Date(e.ends_at).getTime() > Date.now() && <AddToCalendar event={e} />}
           <div className="space-y-3 border-t border-stone-200 pt-4">
             {mine ? (
               <>

@@ -9,3 +9,4 @@ python-dotenv>=1.0
 nh3>=0.3
 Pillow>=11
 django-storages[s3]>=1.14
+icalendar>=6

@@ -12,6 +12,8 @@ urlpatterns = [
     path("auth/", include("amt_auth.django.urls")),
     path("api/stats/", community_stats),
     path("api/", include("apps.accounts.urls")),
+    # Calendar files first, so the events router never sees "calendar.ics".
+    path("api/", include("apps.integrations.urls")),
     path("api/", include("apps.events.urls")),
     path("api/", include("apps.hackathons.urls")),
     path("api/", include("apps.content.urls")),
