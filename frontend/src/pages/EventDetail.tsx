@@ -10,6 +10,7 @@ import {
   Badge, Button, Card, ErrorNote, Field, LinkButton, Notice, Prose, Section, Spinner, StatusBadge,
   Textarea, formatDateTime, formatRange, label,
 } from '../components/ui'
+import { RichText } from '../components/RichText'
 import { useAct, useSignIn } from '../hooks'
 
 export default function EventDetail() {
@@ -52,7 +53,7 @@ export default function EventDetail() {
           {e.summary && <p className="mt-3 text-lg text-stone-700">{e.summary}</p>}
         </div>
         {e.status === 'cancelled' && <Notice tone="amber">This event has been cancelled.</Notice>}
-        {e.description && <Section title="About this event"><Prose>{e.description}</Prose></Section>}
+        {e.description && <Section title="About this event"><RichText html={e.description} /></Section>}
         {e.eligibility && <Section title="Who can attend"><Prose>{e.eligibility}</Prose></Section>}
         {!!announcements.data?.length && (
           <Section title="Announcements">
@@ -61,7 +62,7 @@ export default function EventDetail() {
                 <li key={a.id}>
                   <p className="font-semibold">{a.title}</p>
                   <p className="text-xs text-stone-500">{formatDateTime(a.created_at)}</p>
-                  <Prose>{a.body}</Prose>
+                  <RichText html={a.body} />
                 </li>
               ))}
             </ul>

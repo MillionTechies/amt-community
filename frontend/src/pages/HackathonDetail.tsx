@@ -11,6 +11,7 @@ import {
   Badge, Button, Card, ErrorNote, Field, Input, LinkButton, Notice, Prose, Section, Select, Spinner,
   StatusBadge, Textarea, formatDateTime,
 } from '../components/ui'
+import { RichText } from '../components/RichText'
 import { useAct, useSignIn } from '../hooks'
 
 export default function HackathonDetail() {
@@ -35,7 +36,7 @@ export default function HackathonDetail() {
         {h.status === 'cancelled' && <Notice tone="amber">This hackathon has been cancelled.</Notice>}
         {h.status === 'judging' && <Notice tone="amber">Submissions are closed and the judges are scoring projects.</Notice>}
         {h.results_published && <Results id={h.slug} />}
-        {h.description && <Section title="About"><Prose>{h.description}</Prose></Section>}
+        {h.description && <Section title="About"><RichText html={h.description} /></Section>}
         {!!h.challenges.length && (
           <Section title="Challenges">
             <ul className="space-y-4">

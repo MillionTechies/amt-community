@@ -10,8 +10,10 @@ import type { Announcement, CommunityEvent, EventStats, Feedback, Registration, 
 import { DataTable, downloadCsv } from '../components/DataTable'
 import type { Col } from '../components/DataTable'
 import { Icon } from '../components/icons'
+import { RichText } from '../components/RichText'
+import { RichTextEditor } from '../components/RichTextEditor'
 import {
-  Badge, Button, Empty, ErrorNote, Field, Input, LinkButton, Notice, Spinner, StatusBadge, Textarea,
+  Badge, Button, Empty, ErrorNote, Field, Input, LinkButton, Notice, Spinner, StatusBadge,
   formatDateTime, formatRange, label,
 } from '../components/ui'
 import { useAct } from '../hooks'
@@ -409,16 +411,18 @@ export function EventContent() {
         <p className="mb-4 text-sm text-stone-600">Shown on the event page to everyone registered.</p>
         <form className="space-y-3" onSubmit={submit(post, () => setNote({ title: '', body: '' }))}>
           <Field label="Title"><Input required value={note.title} onChange={(ev) => setNote({ ...note, title: ev.target.value })} /></Field>
-          <Field label="Message"><Textarea required rows={3} value={note.body} onChange={(ev) => setNote({ ...note, body: ev.target.value })} /></Field>
+          <Field label="Message" group>
+            <RichTextEditor value={note.body} onChange={(body) => setNote((n) => ({ ...n, body }))} placeholder="What do attendees need to know?" minHeight="8rem" />
+          </Field>
           <ErrorNote error={post.error} />
-          <Button type="submit" disabled={post.isPending}>Post announcement</Button>
+          <Button type="submit" disabled={post.isPending || !note.body}>Post announcement</Button>
         </form>
         <ul className="mt-5 divide-y divide-stone-100 border-t border-stone-200">
           {announcements.data?.map((a) => (
             <li key={a.id} className="flex items-start justify-between gap-2 py-3">
               <div>
                 <p className="font-semibold">{a.title}</p>
-                <p className="text-sm text-stone-600">{a.body}</p>
+                <RichText html={a.body} className="text-sm" />
                 <p className="mt-1 text-xs text-stone-500">{formatDateTime(a.created_at)}</p>
               </div>
               <Button variant="ghost" onClick={() => window.confirm('Remove this announcement?') && remove.mutate(`announcements/${a.id}`)}>Remove</Button>

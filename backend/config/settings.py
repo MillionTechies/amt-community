@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.events",
     "apps.hackathons",
+    "apps.content",
 ]
 
 MIDDLEWARE = [
@@ -93,6 +94,30 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+
+# --- uploaded images ---------------------------------------------------------
+# On local disk by default. Set MEDIA_S3_BUCKET to keep them in S3-compatible storage
+# (AWS S3, DigitalOcean Spaces, Cloudflare R2) instead.
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+if os.environ.get("MEDIA_S3_BUCKET"):
+    STORAGES["default"] = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": os.environ["MEDIA_S3_BUCKET"],
+            "endpoint_url": os.environ.get("MEDIA_S3_ENDPOINT_URL") or None,
+            "region_name": os.environ.get("MEDIA_S3_REGION") or None,
+            "access_key": os.environ.get("MEDIA_S3_ACCESS_KEY_ID"),
+            "secret_key": os.environ.get("MEDIA_S3_SECRET_ACCESS_KEY"),
+            "custom_domain": os.environ.get("MEDIA_S3_CUSTOM_DOMAIN") or None,
+            "querystring_auth": False,  # images in public descriptions need plain URLs
+            "file_overwrite": False,
+        },
+    }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- API -------------------------------------------------------------------

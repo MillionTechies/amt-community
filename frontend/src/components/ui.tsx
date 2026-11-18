@@ -169,18 +169,23 @@ export function Field({
   hint,
   error,
   children,
+  group = false,
 }: {
   label: string
   hint?: string
   error?: string
   children: ReactNode
+  /** For a control with several parts (like the rich text editor), which cannot sit in a <label>. */
+  group?: boolean
 }) {
+  const caption = <span className="mb-1.5 block font-mono text-xs font-semibold uppercase tracking-wider text-stone-700">{text}</span>
   return (
     <div>
-      <label className="block">
-        <span className="mb-1.5 block font-mono text-xs font-semibold uppercase tracking-wider text-stone-700">{text}</span>
-        {children}
-      </label>
+      {group ? (
+        <div role="group" aria-label={text}>{caption}{children}</div>
+      ) : (
+        <label className="block">{caption}{children}</label>
+      )}
       {hint && !error && <p className="mt-1 text-xs text-stone-500">{hint}</p>}
       {error && <p role="alert" className="mt-1 text-xs text-red-700">{error}</p>}
     </div>

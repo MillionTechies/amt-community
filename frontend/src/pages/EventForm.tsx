@@ -9,6 +9,7 @@ import {
   Button, Card, Empty, ErrorNote, Field, Input, PageHeader, Select, Spinner, Textarea,
   fromLocalInput, toLocalInput,
 } from '../components/ui'
+import { RichTextEditor } from '../components/RichTextEditor'
 import { useAct, useMe } from '../hooks'
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from './Events'
 
@@ -107,8 +108,8 @@ export default function EventForm() {
         <Field label="Summary" hint="One or two sentences shown on the events list." error={errors.summary}>
           <Input maxLength={300} value={form.summary} onChange={set('summary')} />
         </Field>
-        <Field label="Description" error={errors.description}>
-          <Textarea rows={6} value={form.description} onChange={set('description')} />
+        <Field label="Description" error={errors.description} group hint="Headings, text sizes, lists, links, images and YouTube videos.">
+          <RichTextEditor value={form.description} onChange={(description) => setForm((f) => ({ ...f, description }))} placeholder="What happens at this event, who it is for, what to bring…" />
         </Field>
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="Type">

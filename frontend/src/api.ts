@@ -55,6 +55,23 @@ export async function api<T = unknown>(
   return body as T
 }
 
+/** Upload an image for a description or announcement; returns its address. */
+export async function uploadImage(file: File): Promise<string> {
+  const body = new FormData()
+  body.append('file', file)
+  const headers: Record<string, string> = {}
+  if (currentToken) headers.Authorization = `Bearer ${currentToken}`
+  let response: Response
+  try {
+    response = await fetch(`${BASE}/api/uploads/`, { method: 'POST', headers, body })
+  } catch {
+    throw new ApiError(0, 'Could not reach the server. Check your connection and try again.')
+  }
+  const data = await response.json().catch(() => null)
+  if (!response.ok) throw toError(response.status, data)
+  return (data as { url: string }).url
+}
+
 /** Public, community-wide counts (GET /api/stats/). */
 export interface CommunityStats {
   members: number

@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from apps.accounts import access
 from apps.accounts.serializers import OrganizationSerializer, PersonSerializer
+from apps.content import richtext
 from apps.events.models import Announcement, Event, Feedback, Registration, Resource
 
 
@@ -38,6 +39,9 @@ class EventSerializer(serializers.ModelSerializer):
             "spots_left", "registration_open", "can_manage", "my_registration", "created_at",
         ]
         read_only_fields = ["status", "created_at"]
+
+    def validate_description(self, value):
+        return richtext.clean(value)
 
     def get_spots_left(self, event) -> int | None:
         if event.capacity is None:
@@ -100,6 +104,9 @@ class AnnouncementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Announcement
         fields = ["id", "title", "body", "created_at"]
+
+    def validate_body(self, value):
+        return richtext.clean(value)
 
 
 class ResourceSerializer(serializers.ModelSerializer):
