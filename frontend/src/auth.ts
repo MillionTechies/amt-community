@@ -16,10 +16,18 @@ export const oidcConfig: AuthProviderProps = {
   // Keycloak redirects back with ?code=...; drop it from the address bar.
   onSigninCallback: () => {
     window.history.replaceState({}, document.title, window.location.pathname)
+    // Let the app send organisers to their console once it knows their roles.
+    try {
+      sessionStorage.setItem(JUST_SIGNED_IN, '1')
+    } catch {
+      // Without storage, everyone simply stays where they signed in.
+    }
   },
 }
 
-/** Where to return after signing in: the page the member was on. */
-export function signInArgs() {
-  return { redirect_uri: window.location.origin + window.location.pathname }
+export const JUST_SIGNED_IN = 'amt.justSignedIn'
+
+/** Where to return after signing in: the page the member was on, or `path`. */
+export function signInArgs(path = window.location.pathname) {
+  return { redirect_uri: window.location.origin + path }
 }

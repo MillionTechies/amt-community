@@ -5,14 +5,15 @@ import { Link } from 'react-router-dom'
 const cx = (...parts: (string | false | undefined | null)[]) => parts.filter(Boolean).join(' ')
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost'
+// House style: mono, uppercase button text; primary buttons carry a ">" prompt (see index.css).
 const variants: Record<Variant, string> = {
-  primary: 'bg-brand-600 text-white hover:bg-brand-700',
-  secondary: 'bg-white text-ink border border-stone-300 hover:bg-stone-100',
-  danger: 'bg-white text-red-700 border border-red-200 hover:bg-red-50',
+  primary: 'btn-prompt bg-brand-600 text-white shadow-[inset_0_-2px_0_rgb(0_0_0/0.18)] hover:bg-brand-700',
+  secondary: 'bg-white text-ink border border-stone-300 hover:border-ink hover:bg-stone-50',
+  danger: 'bg-white text-red-700 border border-red-200 hover:border-red-400 hover:bg-red-50',
   ghost: 'text-brand-700 hover:bg-brand-50',
 }
 const buttonBase =
-  'inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600'
+  'inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 font-mono text-[0.8125rem] font-semibold uppercase tracking-[0.06em] transition disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600'
 
 export function Button({
   variant = 'primary',
@@ -40,7 +41,7 @@ export function LinkButton({
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cx('rounded-xl border border-stone-200 bg-white p-5 shadow-sm', className)}>
+    <div className={cx('rounded-xl border border-stone-200 bg-white p-5 shadow-[0_1px_0_rgb(0_0_0/0.03)]', className)}>
       {children}
     </div>
   )
@@ -86,7 +87,7 @@ const statusLabel: Record<string, string> = { published: 'Open' }
 
 export function Badge({ children, tone = 'grey' }: { children: ReactNode; tone?: string }) {
   return (
-    <span className={cx('inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold', tones[tone])}>
+    <span className={cx('inline-block rounded-md px-2 py-0.5 font-mono text-[0.6875rem] font-semibold uppercase tracking-wider', tones[tone])}>
       {children}
     </span>
   )
@@ -106,14 +107,18 @@ export function PageHeader({
   title,
   subtitle,
   action,
+  eyebrow,
 }: {
   title: string
   subtitle?: ReactNode
   action?: ReactNode
+  /** A short mono label above the title, shown as "// eyebrow". */
+  eyebrow?: string
 }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
+        {eyebrow && <p className="eyebrow mb-2">{eyebrow}</p>}
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1>
         {subtitle && <p className="mt-1 text-stone-600">{subtitle}</p>}
       </div>
@@ -173,7 +178,7 @@ export function Field({
   return (
     <div>
       <label className="block">
-        <span className="mb-1 block text-sm font-medium">{text}</span>
+        <span className="mb-1.5 block font-mono text-xs font-semibold uppercase tracking-wider text-stone-700">{text}</span>
         {children}
       </label>
       {hint && !error && <p className="mt-1 text-xs text-stone-500">{hint}</p>}
@@ -213,7 +218,7 @@ export function Tabs<T extends string>({
           aria-selected={tab.id === current}
           onClick={() => onChange(tab.id)}
           className={cx(
-            '-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-semibold',
+            '-mb-px whitespace-nowrap border-b-2 px-4 py-2 font-mono text-xs font-semibold uppercase tracking-wider',
             tab.id === current
               ? 'border-brand-600 text-brand-700'
               : 'border-transparent text-stone-600 hover:text-ink',
@@ -229,8 +234,8 @@ export function Tabs<T extends string>({
 export function Stat({ label: text, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-xl border border-stone-200 bg-white p-4">
-      <div className="text-2xl font-bold">{value}</div>
-      <div className="text-sm text-stone-600">{text}</div>
+      <div className="font-mono text-2xl font-bold tabular-nums tracking-tight">{value}</div>
+      <div className="mt-1 text-sm text-stone-600">{text}</div>
     </div>
   )
 }

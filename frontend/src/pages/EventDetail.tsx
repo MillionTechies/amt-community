@@ -13,23 +13,23 @@ import {
 import { useAct, useSignIn } from '../hooks'
 
 export default function EventDetail() {
-  const { id } = useParams()
+  const { slug } = useParams()
   const auth = useAuth()
   const signIn = useSignIn()
   const navigate = useNavigate()
-  const event = useQuery({ queryKey: ['event', id], queryFn: () => api<CommunityEvent>(`/events/${id}/`) })
+  const event = useQuery({ queryKey: ['event', slug], queryFn: () => api<CommunityEvent>(`/events/${slug}/`) })
   const announcements = useQuery({
-    queryKey: ['event', id, 'announcements'],
-    queryFn: () => api<Announcement[]>(`/events/${id}/announcements/`),
+    queryKey: ['event', slug, 'announcements'],
+    queryFn: () => api<Announcement[]>(`/events/${slug}/announcements/`),
   })
   const resources = useQuery({
-    queryKey: ['event', id, 'resources'],
-    queryFn: () => api<Resource[]>(`/events/${id}/resources/`),
+    queryKey: ['event', slug, 'resources'],
+    queryFn: () => api<Resource[]>(`/events/${slug}/resources/`),
   })
-  const register = useAct(() => api(`/events/${id}/register/`, { method: 'POST' }))
-  const cancel = useAct(() => api(`/events/${id}/register/`, { method: 'DELETE' }))
+  const register = useAct(() => api(`/events/${slug}/register/`, { method: 'POST' }))
+  const cancel = useAct(() => api(`/events/${slug}/register/`, { method: 'DELETE' }))
   const certificate = useAct(async () => {
-    const data = await api<Certificate>(`/events/${id}/certificate/`)
+    const data = await api<Certificate>(`/events/${slug}/certificate/`)
     navigate(`/certificates/${data.certificate_code}`)
   })
 
@@ -81,7 +81,7 @@ export default function EventDetail() {
             </ul>
           </Section>
         )}
-        {mine?.checked_in_at && <FeedbackForm eventId={e.id} done={mine.has_feedback} />}
+        {mine?.checked_in_at && <FeedbackForm eventId={e.slug} done={mine.has_feedback} />}
       </div>
 
       <aside className="space-y-4">
@@ -154,8 +154,8 @@ export default function EventDetail() {
           <Card className="space-y-3">
             <p className="text-sm font-semibold">You organise this event</p>
             <div className="flex flex-wrap gap-2">
-              <LinkButton to={`/events/${e.id}/manage`}>Manage</LinkButton>
-              <LinkButton to={`/events/${e.id}/edit`} variant="secondary">Edit details</LinkButton>
+              <LinkButton to={`/manage/events/${e.slug}`}>Manage</LinkButton>
+              <LinkButton to={`/manage/events/${e.slug}/edit`} variant="secondary">Edit details</LinkButton>
             </div>
           </Card>
         )}
@@ -176,7 +176,7 @@ function Detail({ label: text, children }: { label: string; children: React.Reac
   )
 }
 
-function FeedbackForm({ eventId, done }: { eventId: number; done: boolean }) {
+function FeedbackForm({ eventId, done }: { eventId: string; done: boolean }) {
   const [rating, setRating] = useState(0)
   const [comment, setComment] = useState('')
   const send = useAct(() =>

@@ -10,9 +10,9 @@ collection = {"get": "list", "post": "create"}
 item = {"delete": "destroy"}
 
 urlpatterns = router.urls + [
-    path("events/<int:event_pk>/announcements/", views.AnnouncementViewSet.as_view(collection)),
-    path("events/<int:event_pk>/announcements/<int:pk>/", views.AnnouncementViewSet.as_view(item)),
-    path("events/<int:event_pk>/resources/", views.ResourceViewSet.as_view(collection)),
-    path("events/<int:event_pk>/resources/<int:pk>/", views.ResourceViewSet.as_view(item)),
+    path("events/<slug:event_slug>/announcements/", views.AnnouncementViewSet.as_view(collection)),
+    path("events/<slug:event_slug>/announcements/<int:pk>/", views.AnnouncementViewSet.as_view(item)),
+    path("events/<slug:event_slug>/resources/", views.ResourceViewSet.as_view(collection)),
+    path("events/<slug:event_slug>/resources/<int:pk>/", views.ResourceViewSet.as_view(item)),
     path("certificates/<uuid:code>/", views.verify_certificate),
 ]

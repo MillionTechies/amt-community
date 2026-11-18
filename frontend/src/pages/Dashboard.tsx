@@ -29,7 +29,7 @@ export default function Dashboard() {
         {events.isLoading ? (
           <Spinner />
         ) : events.data?.results.length ? (
-          <div className={grid}>{events.data.results.map((e) => <EventCard key={e.id} event={e} />)}</div>
+          <div className={grid}>{events.data.results.map((e) => <EventCard key={e.slug} event={e} />)}</div>
         ) : (
           <Empty>
             <p className="mb-4">You have not registered for any events yet.</p>
@@ -42,7 +42,7 @@ export default function Dashboard() {
         {hackathons.isLoading ? (
           <Spinner />
         ) : hackathons.data?.results.length ? (
-          <div className={grid}>{hackathons.data.results.map((h) => <HackathonCard key={h.id} hackathon={h} />)}</div>
+          <div className={grid}>{hackathons.data.results.map((h) => <HackathonCard key={h.slug} hackathon={h} />)}</div>
         ) : (
           <Empty>
             <p className="mb-4">You are not taking part in or judging any hackathons.</p>

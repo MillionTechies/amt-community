@@ -25,20 +25,20 @@ def create_hackathon(client, org, publish=True, **overrides):
     response = client.post("/api/hackathons/", hackathon_data(org, **overrides), format="json")
     assert response.status_code == 201, response.content
     hackathon = response.json()
-    url = f"/api/hackathons/{hackathon['id']}/"
+    url = f"/api/hackathons/{hackathon['slug']}/"
     for name, weight in (("Innovation", 2), ("Execution", 1)):
         created = client.post(
             f"{url}criteria/", {"name": name, "max_score": 10, "weight": weight}, format="json"
         )
         assert created.status_code == 201, created.content
     if publish:
-        move(client, hackathon["id"], "published")
+        move(client, hackathon["slug"], "published")
     return client.get(url).json()
 
 
-def move(client, hackathon_id, status):
+def move(client, hackathon_slug, status):
     response = client.post(
-        f"/api/hackathons/{hackathon_id}/transition/", {"status": status}, format="json"
+        f"/api/hackathons/{hackathon_slug}/transition/", {"status": status}, format="json"
     )
     assert response.status_code == 200, response.content
     return response.json()
@@ -77,16 +77,16 @@ def test_dates_and_team_sizes_must_make_sense(admin, org):
 
 def test_drafts_are_hidden(admin, bob, anonymous, org):
     hackathon = create_hackathon(admin, org, publish=False)
-    url = f"/api/hackathons/{hackathon['id']}/"
+    url = f"/api/hackathons/{hackathon['slug']}/"
     assert anonymous.get(url).status_code == 404
     assert bob.post(f"{url}teams/", {"name": "Solo"}, format="json").status_code == 404
-    move(admin, hackathon["id"], "published")
+    move(admin, hackathon["slug"], "published")
     assert [c["name"] for c in anonymous.get(url).json()["criteria"]] == ["Innovation", "Execution"]
 
 
 def test_team_formation(admin, bob, carol, org):
     hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['id']}/"
+    url = f"/api/hackathons/{hackathon['slug']}/"
     dan = sign_in("dan")
 
     team = bob.post(f"{url}teams/", {"name": "Byte Me"}, format="json")
@@ -113,7 +113,7 @@ def test_team_formation(admin, bob, carol, org):
 
 def test_leader_removes_members_and_leadership_passes_on(admin, bob, carol, org):
     hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['id']}/"
+    url = f"/api/hackathons/{hackathon['slug']}/"
     code = bob.post(f"{url}teams/", {"name": "Byte Me"}, format="json").json()["invite_code"]
     members = carol.post(f"{url}teams/join/", {"invite_code": code}, format="json").json()["members"]
     bob_id, carol_id = members[0]["id"], members[1]["id"]
@@ -130,16 +130,16 @@ def test_leader_removes_members_and_leadership_passes_on(admin, bob, carol, org)
 
 def test_registration_closes_at_the_deadline(admin, bob, org):
     hackathon = create_hackathon(admin, org)
-    Hackathon.objects.filter(id=hackathon["id"]).update(
+    Hackathon.objects.filter(slug=hackathon["slug"]).update(
         registration_deadline=timezone.now() - timedelta(hours=1)
     )
-    response = bob.post(f"/api/hackathons/{hackathon['id']}/teams/", {"name": "Late"}, format="json")
+    response = bob.post(f"/api/hackathons/{hackathon['slug']}/teams/", {"name": "Late"}, format="json")
     assert response.status_code == 400
 
 
 def test_submission_rules(admin, bob, carol, org):
     hackathon = create_hackathon(admin, org, min_team_size=2)
-    url = f"/api/hackathons/{hackathon['id']}/"
+    url = f"/api/hackathons/{hackathon['slug']}/"
     assert carol.put(f"{url}my-team/submission/", submission_data(), format="json").status_code == 404
     code = bob.post(f"{url}teams/", {"name": "Byte Me"}, format="json").json()["invite_code"]
     small = bob.put(f"{url}my-team/submission/", submission_data(), format="json")
@@ -156,7 +156,7 @@ def test_submission_rules(admin, bob, carol, org):
     assert revised.json()["submission"]["title"] == "ClinicQueue 2"
     assert bob.get(url).json()["submission_count"] == 1
 
-    Hackathon.objects.filter(id=hackathon["id"]).update(
+    Hackathon.objects.filter(slug=hackathon["slug"]).update(
         submission_deadline=timezone.now() - timedelta(minutes=1)
     )
     assert bob.put(f"{url}my-team/submission/", submission_data(), format="json").status_code == 400
@@ -164,7 +164,7 @@ def test_submission_rules(admin, bob, carol, org):
 
 def test_judging_and_leaderboard(admin, bob, carol, anonymous, org):
     hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['id']}/"
+    url = f"/api/hackathons/{hackathon['slug']}/"
     judge = sign_in("judy")
     dan = sign_in("dan")
     innovation, execution = (c["id"] for c in hackathon["criteria"])
@@ -193,7 +193,7 @@ def test_judging_and_leaderboard(admin, bob, carol, anonymous, org):
 
     evaluate = f"{url}submissions/{submissions['ClinicQueue']}/evaluation/"
     assert judge.put(evaluate, scores(9, 6), format="json").status_code == 400  # not judging yet
-    move(admin, hackathon["id"], "judging")
+    move(admin, hackathon["slug"], "judging")
     assert bob.put(evaluate, scores(10, 10), format="json").status_code == 403
     assert judge.put(evaluate, scores(11, 6), format="json").status_code == 400  # over the maximum
     partial = {"scores": [{"criterion": innovation, "value": 9}]}
@@ -212,7 +212,7 @@ def test_judging_and_leaderboard(admin, bob, carol, anonymous, org):
     assert judge.get(f"{url}submissions/").json()[0]["my_evaluation"]["comment"] == "Solid work."
 
     assert anonymous.get(f"{url}leaderboard/").status_code in (401, 403)
-    move(admin, hackathon["id"], "completed")
+    move(admin, hackathon["slug"], "completed")
     assert anonymous.get(f"{url}leaderboard/").json()[0]["submission"]["title"] == "ClinicQueue"
     assert len(anonymous.get(f"{url}submissions/").json()) == 2
     assert judge.put(evaluate, scores(1, 1), format="json").status_code == 400  # results are final
@@ -220,10 +220,10 @@ def test_judging_and_leaderboard(admin, bob, carol, anonymous, org):
 
 def test_judging_needs_criteria(admin, org):
     response = admin.post("/api/hackathons/", hackathon_data(org), format="json")
-    hackathon_id = response.json()["id"]
-    move(admin, hackathon_id, "published")
+    hackathon_slug = response.json()["slug"]
+    move(admin, hackathon_slug, "published")
     blocked = admin.post(
-        f"/api/hackathons/{hackathon_id}/transition/", {"status": "judging"}, format="json"
+        f"/api/hackathons/{hackathon_slug}/transition/", {"status": "judging"}, format="json"
     )
     assert blocked.status_code == 400
 
@@ -232,14 +232,14 @@ def test_challenges_belong_to_their_hackathon(admin, bob, org):
     first = create_hackathon(admin, org)
     second = create_hackathon(admin, org, title="Other")
     challenge = admin.post(
-        f"/api/hackathons/{second['id']}/challenges/", {"title": "Telemedicine"}, format="json"
+        f"/api/hackathons/{second['slug']}/challenges/", {"title": "Telemedicine"}, format="json"
     ).json()
     assert bob.post(
-        f"/api/hackathons/{first['id']}/challenges/", {"title": "Nope"}, format="json"
+        f"/api/hackathons/{first['slug']}/challenges/", {"title": "Nope"}, format="json"
     ).status_code == 403
-    bob.post(f"/api/hackathons/{first['id']}/teams/", {"name": "Solo"}, format="json")
+    bob.post(f"/api/hackathons/{first['slug']}/teams/", {"name": "Solo"}, format="json")
     wrong = bob.put(
-        f"/api/hackathons/{first['id']}/my-team/submission/",
+        f"/api/hackathons/{first['slug']}/my-team/submission/",
         submission_data(challenge_id=challenge["id"]), format="json",
     )
     assert wrong.status_code == 400
@@ -248,7 +248,7 @@ def test_challenges_belong_to_their_hackathon(admin, bob, org):
 def test_other_organizations_cannot_manage(admin, org, other_org):
     rival = sign_in("rita", admin_of=[other_org])
     hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['id']}/"
+    url = f"/api/hackathons/{hackathon['slug']}/"
     assert rival.patch(url, {"title": "Mine now"}, format="json").status_code == 403
     assert rival.get(f"{url}judges/").status_code == 403
     assert rival.post(f"{url}transition/", {"status": "cancelled"}, format="json").status_code == 403

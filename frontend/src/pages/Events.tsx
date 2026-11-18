@@ -47,7 +47,7 @@ export default function Events() {
       <PageHeader
         title="Events"
         subtitle="Workshops, meetups, webinars and outreach days."
-        action={canManage && <LinkButton to="/events/new">Create event</LinkButton>}
+        action={canManage && <LinkButton to="/manage/events/new">Create event</LinkButton>}
       />
       <Tabs
         tabs={[
@@ -77,7 +77,7 @@ export default function Events() {
       ) : events.data?.results.length ? (
         <>
           <div className={grid}>
-            {events.data.results.map((event) => <EventCard key={event.id} event={event} />)}
+            {events.data.results.map((event) => <EventCard key={event.slug} event={event} />)}
           </div>
           {(page > 1 || events.data.next) && (
             <div className="mt-6 flex justify-center gap-3">

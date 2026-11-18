@@ -32,7 +32,7 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = [
-            "id", "organization", "organization_id", "title", "summary", "description",
+            "slug", "organization", "organization_id", "title", "summary", "description",
             "event_type", "delivery_mode", "venue", "online_url", "starts_at", "ends_at",
             "registration_deadline", "capacity", "eligibility", "status", "registered_count",
             "spots_left", "registration_open", "can_manage", "my_registration", "created_at",

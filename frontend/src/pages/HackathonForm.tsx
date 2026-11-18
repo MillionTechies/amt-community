@@ -32,14 +32,14 @@ const dates = ['starts_at', 'ends_at', 'registration_deadline', 'submission_dead
 
 /** Create a hackathon, or edit one when the URL carries its id. */
 export default function HackathonForm() {
-  const { id } = useParams()
+  const { slug } = useParams()
   const navigate = useNavigate()
   const me = useMe()
   const organizations = me?.organizations.filter((o) => o.can_manage_hackathons) ?? []
   const existing = useQuery({
-    queryKey: ['hackathon', id],
-    queryFn: () => api<Hackathon>(`/hackathons/${id}/`),
-    enabled: !!id,
+    queryKey: ['hackathon', slug],
+    queryFn: () => api<Hackathon>(`/hackathons/${slug}/`),
+    enabled: !!slug,
   })
   const [form, setForm] = useState(blank)
   const set = (field: keyof typeof blank) => (e: { target: { value: string } }) =>
@@ -69,8 +69,8 @@ export default function HackathonForm() {
 
   const organizationId = form.organization_id || organizations[0]?.id || ''
   const save = useAct(() =>
-    api<Hackathon>(id ? `/hackathons/${id}/` : '/hackathons/', {
-      method: id ? 'PATCH' : 'POST',
+    api<Hackathon>(slug ? `/hackathons/${slug}/` : '/hackathons/', {
+      method: slug ? 'PATCH' : 'POST',
       body: {
         ...form,
         organization_id: organizationId,
@@ -87,17 +87,15 @@ export default function HackathonForm() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    save.mutate(undefined, { onSuccess: (h) => navigate(`/hackathons/${h.id}/manage`) })
+    save.mutate(undefined, { onSuccess: (h) => navigate(`/manage/hackathons/${h.slug}`) })
   }
 
   return (
-    <form onSubmit={submit} className="mx-auto max-w-3xl">
-      <PageHeader
-        title={id ? 'Edit hackathon' : 'Create hackathon'}
-        subtitle={id ? undefined : 'It is saved as a draft. Add challenges and judging criteria, then publish.'}
-      />
+    <form onSubmit={submit} className="max-w-3xl">
+      {/* When editing, the console's workspace header already names the hackathon. */}
+      {!slug && <PageHeader title="Create hackathon" subtitle='It is saved as a draft. Add challenges and judging criteria, then publish.' />}
       <Card className="space-y-5">
-        {!id && organizations.length > 1 && (
+        {!slug && organizations.length > 1 && (
           <Field label="Organisation">
             <Select value={organizationId} onChange={set('organization_id')}>
               {organizations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
@@ -140,7 +138,7 @@ export default function HackathonForm() {
         </div>
         <ErrorNote error={save.error} />
         <div className="flex gap-3">
-          <Button type="submit" disabled={save.isPending}>{id ? 'Save changes' : 'Save draft'}</Button>
+          <Button type="submit" disabled={save.isPending}>{slug ? 'Save changes' : 'Save draft'}</Button>
           <Button variant="secondary" onClick={() => navigate(-1)}>Cancel</Button>
         </div>
       </Card>

@@ -8,7 +8,7 @@ router.register("hackathons", views.HackathonViewSet, basename="hackathon")
 
 collection = {"post": "create"}
 item = {"patch": "partial_update", "delete": "destroy"}
-prefix = "hackathons/<int:hackathon_pk>"
+prefix = "hackathons/<slug:hackathon_slug>"
 
 urlpatterns = router.urls + [
     path(f"{prefix}/challenges/", views.ChallengeViewSet.as_view(collection)),

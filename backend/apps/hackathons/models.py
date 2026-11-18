@@ -4,6 +4,7 @@ from django.db import models
 from django.utils import timezone
 
 from apps.accounts.models import Profile
+from apps.slugs import MAX_LENGTH, make_slug
 
 
 def new_invite_code() -> str:
@@ -22,6 +23,8 @@ class Hackathon(models.Model):
         "amt_auth.Organization", on_delete=models.PROTECT, related_name="hackathons"
     )
     title = models.CharField(max_length=200)
+    # The public address; see apps.slugs.
+    slug = models.SlugField(max_length=MAX_LENGTH, unique=True, editable=False)
     tagline = models.CharField(max_length=300, blank=True)
     description = models.TextField(blank=True)
     theme = models.CharField(max_length=200, blank=True)
@@ -45,6 +48,11 @@ class Hackathon(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = make_slug(self.title, Hackathon)
+        super().save(*args, **kwargs)
 
     @property
     def registration_open(self) -> bool:
