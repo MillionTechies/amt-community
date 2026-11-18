@@ -65,42 +65,89 @@ def _provider(provider_id):
     return PROVIDERS[provider_id]
 
 
+PLATFORM_NAME = "A Million Techies"
+
+
+def _usable_orgs(request) -> dict:
+    """{organisation id: name} for the organisations whose apps this member may connect to."""
+    from amt_auth.django.models import Organization
+
+    orgs = Organization.objects.filter(deleted_at=None)
+    if not access.is_platform_admin(request):
+        ids = (
+            access.managed_org_ids(request, access.Role.EVENT_ORGANISER)
+            | access.managed_org_ids(request, access.Role.HACKATHON_MANAGER)
+        )
+        orgs = orgs.filter(id__in=ids)
+    return dict(orgs.values_list("id", "name"))
+
+
+def _app_entry(provider, app, app_name, connections):
+    connection = connections.get((provider.id, app))
+    return {
+        "id": provider.id,
+        "name": provider.name,
+        "app": app,
+        "app_name": app_name,
+        "meeting_name": provider.meeting_name,
+        "has_calendar": provider.has_calendar,
+        "configured": provider.configured(app),
+        "connected": connection is not None,
+        "account_email": connection.account_email if connection else "",
+    }
+
+
 class IntegrationsView(APIView):
-    """GET: each service, whether it is set up on this server, and whether you connected it."""
+    """GET: each service and app you can connect, whether it is set up, and whether you did.
+
+    The platform's app is listed for everyone; an organisation's own app is listed for the
+    people who run its events. With ?organization=<id>, just the apps that organisation's
+    events use.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        mine = {c.provider: c for c in Connection.objects.filter(profile=access.profile_of(request))}
-        return Response([
-            {
-                "id": p.id,
-                "name": p.name,
-                "meeting_name": p.meeting_name,
-                "has_calendar": p.has_calendar,
-                "configured": p.configured,
-                "connected": p.id in mine,
-                "account_email": mine[p.id].account_email if p.id in mine else "",
-            }
-            for p in PROVIDERS.values()
-        ])
+        connections = {
+            (c.provider, c.organization_id): c
+            for c in Connection.objects.filter(profile=access.profile_of(request))
+        }
+        orgs = _usable_orgs(request)
+        wanted = request.query_params.get("organization")
+        entries = []
+        for provider in PROVIDERS.values():
+            if wanted:
+                app = provider.app_for(wanted)
+                entries.append(_app_entry(provider, app, orgs.get(app, PLATFORM_NAME) if app else PLATFORM_NAME, connections))
+                continue
+            entries.append(_app_entry(provider, None, PLATFORM_NAME, connections))
+            for org_id, name in orgs.items():
+                if provider.app_for(org_id) == org_id:
+                    entries.append(_app_entry(provider, org_id, name, connections))
+        return Response(entries)
 
 
 class ConnectView(APIView):
-    """POST: where to send the browser to connect the account. DELETE: disconnect it."""
+    """POST {app}: where to send the browser to connect the account. DELETE ?app=: disconnect."""
 
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, provider_id):
         provider = _provider(provider_id)
-        if not provider.configured:
-            raise ValidationError(f"{provider.name} is not set up on this server yet.")
-        state = service.make_state(access.profile_of(request), provider.id)
-        return Response({"authorize_url": provider.authorize_url(state)})
+        app = request.data.get("app") or None
+        if app and app not in _usable_orgs(request):
+            raise PermissionDenied("You do not run events for that organisation.")
+        if not provider.configured(app):
+            raise ValidationError(f"{provider.name} is not set up yet. An admin can add it on the Configuration page.")
+        state = service.make_state(access.profile_of(request), provider.id, app)
+        return Response({"authorize_url": provider.authorize_url(state, app)})
 
     def delete(self, request, provider_id):
         _provider(provider_id)
-        Connection.objects.filter(profile=access.profile_of(request), provider=provider_id).delete()
+        Connection.objects.filter(
+            profile=access.profile_of(request), provider=provider_id,
+            organization_id=request.query_params.get("app") or None,
+        ).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -111,11 +158,10 @@ def oauth_callback(request, provider_id):
     if request.GET.get("error"):
         return redirect(f"{back}?error={provider.id}")
     try:
-        profile = Profile.objects.get(pk=service.read_state(request.GET.get("state", ""), provider.id))
-        service.connect(profile, provider.id, request.GET.get("code", ""))
-    except (signing.BadSignature, Profile.DoesNotExist):
-        return redirect(f"{back}?error={provider.id}")
-    except ProviderError:
+        profile_id, app = service.read_state(request.GET.get("state", ""), provider.id)
+        profile = Profile.objects.get(pk=profile_id)
+        service.connect(profile, provider.id, request.GET.get("code", ""), app)
+    except (signing.BadSignature, Profile.DoesNotExist, ProviderError):
         return redirect(f"{back}?error={provider.id}")
     return redirect(f"{back}?connected={provider.id}")
 
@@ -165,7 +211,7 @@ class EventLinksView(APIView):
             raise ValidationError(f"{provider.name} has no calendar to add events to.")
         if event.status == Event.Status.CANCELLED:
             raise ValidationError("This event is cancelled.")
-        connection = Connection.objects.filter(profile=access.profile_of(request), provider=provider.id).first()
+        connection = service.connection_for(access.profile_of(request), provider.id, event.organization_id)
         if connection is None:
             raise ValidationError(f"Connect your {provider.name} account first.")
         before = emails.snapshot(event)

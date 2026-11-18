@@ -14,6 +14,10 @@ class Connection(models.Model):
 
     profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="connections")
     provider = models.CharField(max_length=20, choices=Provider.choices)
+    # Whose OAuth app it was made with: an organisation's own app, or None for the platform's.
+    organization = models.ForeignKey(
+        "amt_auth.Organization", on_delete=models.CASCADE, null=True, blank=True, related_name="+"
+    )
     account_email = models.CharField(max_length=254, blank=True)
     access_token_sealed = models.TextField()
     refresh_token_sealed = models.TextField(blank=True)
@@ -23,7 +27,9 @@ class Connection(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["profile", "provider"], name="one_connection_per_provider")
+            models.UniqueConstraint(
+                fields=["profile", "provider", "organization"], nulls_distinct=False, name="one_connection_per_app"
+            )
         ]
 
     def __str__(self) -> str:

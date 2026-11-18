@@ -4,8 +4,9 @@
 - Microsoft: an event in the organiser's Outlook calendar, with a Teams link if asked.
 - Zoom: a scheduled Zoom meeting (Zoom has no calendar of its own).
 
-Each provider needs an app registered in its developer console; see the README. Until its
-client id and secret are set, the provider shows as "not set up" and cannot be connected.
+Each provider needs an app registered in its developer console. Its keys are set on the
+Configuration page, by platform admins for everyone, or by an organisation's admins for that
+organisation alone. Until they are set, the provider shows as "not set up".
 """
 
 import base64
@@ -17,6 +18,8 @@ from urllib.parse import urlencode
 import httpx
 from django.conf import settings
 
+from apps.configuration import config
+from apps.configuration.registry import GROUPS
 from apps.content.richtext import to_text
 from apps.integrations import calendar
 
@@ -54,23 +57,35 @@ class Provider:
     name = ""
     meeting_name = ""  # what its meetings are called, "" if it cannot make them
     has_calendar = False
-    authorize_endpoint = ""
-    token_endpoint = ""
+    authorize_url_base = ""
+    token_url = ""
     scopes: list[str] = []
 
+    def authorize_endpoint(self, app=None) -> str:
+        return self.authorize_url_base
+
+    def token_endpoint(self, app=None) -> str:
+        return self.token_url
+
     # --- configuration -------------------------------------------------------------------
+    # An "app" is whose OAuth app to use: an organisation's id when it registered its own
+    # (on the Configuration page), or None for the platform's.
 
-    @property
-    def client_id(self) -> str:
-        return getattr(settings, f"{self.id.upper()}_OAUTH_CLIENT_ID", "")
+    def client_id(self, app=None) -> str:
+        return config.get(f"{self.id}.client_id", app)
 
-    @property
-    def client_secret(self) -> str:
-        return getattr(settings, f"{self.id.upper()}_OAUTH_CLIENT_SECRET", "")
+    def client_secret(self, app=None) -> str:
+        return config.get(f"{self.id}.client_secret", app)
 
-    @property
-    def configured(self) -> bool:
-        return bool(self.client_id and self.client_secret)
+    def configured(self, app=None) -> bool:
+        return bool(self.client_id(app) and self.client_secret(app))
+
+    def app_for(self, organization_id) -> str | None:
+        """The app an organisation's events use: its own if it set one up, else the platform's."""
+        group = next(g for g in GROUPS if g.id == self.id)
+        if organization_id and config.has_own(self.id, organization_id, group.required):
+            return organization_id
+        return None
 
     @property
     def redirect_uri(self) -> str:
@@ -78,36 +93,36 @@ class Provider:
 
     # --- OAuth ---------------------------------------------------------------------------
 
-    def authorize_url(self, state: str) -> str:
+    def authorize_url(self, state: str, app=None) -> str:
         params = {
-            "client_id": self.client_id,
+            "client_id": self.client_id(app),
             "redirect_uri": self.redirect_uri,
             "response_type": "code",
             "scope": " ".join(self.scopes),
             "state": state,
             **self.extra_authorize_params(),
         }
-        return f"{self.authorize_endpoint}?{urlencode(params)}"
+        return f"{self.authorize_endpoint(app)}?{urlencode(params)}"
 
     def extra_authorize_params(self) -> dict:
         return {}
 
-    def _token_request(self, data: dict) -> dict:
+    def _token_request(self, data: dict, app=None) -> dict:
         with http() as client:
             response = client.post(
-                self.token_endpoint,
-                data={**data, "client_id": self.client_id, "client_secret": self.client_secret},
+                self.token_endpoint(app),
+                data={**data, "client_id": self.client_id(app), "client_secret": self.client_secret(app)},
             )
         return _check(response, f"sign in to {self.name}")
 
-    def exchange(self, code: str) -> dict:
+    def exchange(self, code: str, app=None) -> dict:
         """Trade the code from the callback for tokens. Returns the token response."""
         return self._token_request(
-            {"grant_type": "authorization_code", "code": code, "redirect_uri": self.redirect_uri}
+            {"grant_type": "authorization_code", "code": code, "redirect_uri": self.redirect_uri}, app
         )
 
-    def refresh(self, refresh_token: str) -> dict:
-        return self._token_request({"grant_type": "refresh_token", "refresh_token": refresh_token})
+    def refresh(self, refresh_token: str, app=None) -> dict:
+        return self._token_request({"grant_type": "refresh_token", "refresh_token": refresh_token}, app)
 
     def account_email(self, tokens: dict) -> str:
         return ""
@@ -139,8 +154,8 @@ class Google(Provider):
     name = "Google"
     meeting_name = "Google Meet"
     has_calendar = True
-    authorize_endpoint = "https://accounts.google.com/o/oauth2/v2/auth"
-    token_endpoint = "https://oauth2.googleapis.com/token"
+    authorize_url_base = "https://accounts.google.com/o/oauth2/v2/auth"
+    token_url = "https://oauth2.googleapis.com/token"
     scopes = ["openid", "email", "https://www.googleapis.com/auth/calendar.events"]
     api = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 
@@ -201,17 +216,14 @@ class Microsoft(Provider):
     scopes = ["openid", "email", "offline_access", "User.Read", "Calendars.ReadWrite"]
     api = "https://graph.microsoft.com/v1.0/me/events"
 
-    @property
-    def tenant(self) -> str:
-        return settings.MICROSOFT_OAUTH_TENANT or "common"
+    def tenant(self, app=None) -> str:
+        return config.get("microsoft.tenant", app) or "common"
 
-    @property
-    def authorize_endpoint(self):
-        return f"https://login.microsoftonline.com/{self.tenant}/oauth2/v2.0/authorize"
+    def authorize_endpoint(self, app=None):
+        return f"https://login.microsoftonline.com/{self.tenant(app)}/oauth2/v2.0/authorize"
 
-    @property
-    def token_endpoint(self):
-        return f"https://login.microsoftonline.com/{self.tenant}/oauth2/v2.0/token"
+    def token_endpoint(self, app=None):
+        return f"https://login.microsoftonline.com/{self.tenant(app)}/oauth2/v2.0/token"
 
     def account_email(self, tokens):
         claims = _jwt_claims(tokens.get("id_token", ""))
@@ -256,19 +268,19 @@ class Zoom(Provider):
     id = "zoom"
     name = "Zoom"
     meeting_name = "Zoom"
-    authorize_endpoint = "https://zoom.us/oauth/authorize"
-    token_endpoint = "https://zoom.us/oauth/token"
+    authorize_url_base = "https://zoom.us/oauth/authorize"
+    token_url = "https://zoom.us/oauth/token"
     scopes: list[str] = []  # set on the Zoom app itself
     api = "https://api.zoom.us/v2"
 
-    def authorize_url(self, state):
-        params = {"client_id": self.client_id, "redirect_uri": self.redirect_uri, "response_type": "code", "state": state}
-        return f"{self.authorize_endpoint}?{urlencode(params)}"
+    def authorize_url(self, state, app=None):
+        params = {"client_id": self.client_id(app), "redirect_uri": self.redirect_uri, "response_type": "code", "state": state}
+        return f"{self.authorize_endpoint(app)}?{urlencode(params)}"
 
-    def _token_request(self, data):
+    def _token_request(self, data, app=None):
         # Zoom wants the client credentials as Basic auth, not in the form.
         with http() as client:
-            response = client.post(self.token_endpoint, data=data, auth=(self.client_id, self.client_secret))
+            response = client.post(self.token_endpoint(app), data=data, auth=(self.client_id(app), self.client_secret(app)))
         return _check(response, "sign in to Zoom")
 
     def account_email(self, tokens):

@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "apps.content",
     "apps.integrations",
     "apps.notifications",
+    "apps.configuration",
 ]
 
 MIDDLEWARE = [
@@ -103,7 +104,9 @@ COMMUNITY_URL = os.environ.get("COMMUNITY_URL", "http://localhost:5173").rstrip(
 # --- email ------------------------------------------------------------------
 # Any SMTP service works (Google Workspace, Microsoft 365, SendGrid, Mailgun, Amazon SES).
 # Locally, docker-compose runs Mailpit: mail goes to http://localhost:8025, never out.
-EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+# The SMTP server, login and sender can also be set on the console's Configuration page,
+# which wins over these environment variables.
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "apps.configuration.mail.ConfiguredEmailBackend")
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
 EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "1025"))
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
@@ -137,28 +140,21 @@ INTEGRATIONS_ENCRYPTION_KEY = os.environ.get("INTEGRATIONS_ENCRYPTION_KEY", "")
 BACKGROUND_TASKS = os.environ.get("BACKGROUND_TASKS", "thread")
 
 # --- uploaded images ---------------------------------------------------------
-# On local disk by default. Set MEDIA_S3_BUCKET to keep them in S3-compatible storage
-# (AWS S3, DigitalOcean Spaces, Cloudflare R2) instead.
+# On local disk until a bucket is set, on the Configuration page or with MEDIA_S3_BUCKET:
+# then in S3-compatible storage (AWS S3, DigitalOcean Spaces, Cloudflare R2).
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_S3_BUCKET = os.environ.get("MEDIA_S3_BUCKET", "")
+MEDIA_S3_ENDPOINT_URL = os.environ.get("MEDIA_S3_ENDPOINT_URL", "")
+MEDIA_S3_REGION = os.environ.get("MEDIA_S3_REGION", "")
+MEDIA_S3_ACCESS_KEY_ID = os.environ.get("MEDIA_S3_ACCESS_KEY_ID", "")
+MEDIA_S3_SECRET_ACCESS_KEY = os.environ.get("MEDIA_S3_SECRET_ACCESS_KEY", "")
+MEDIA_S3_CUSTOM_DOMAIN = os.environ.get("MEDIA_S3_CUSTOM_DOMAIN", "")
 STORAGES = {
-    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "default": {"BACKEND": "apps.configuration.storage.ConfiguredStorage"},
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
 }
-if os.environ.get("MEDIA_S3_BUCKET"):
-    STORAGES["default"] = {
-        "BACKEND": "storages.backends.s3.S3Storage",
-        "OPTIONS": {
-            "bucket_name": os.environ["MEDIA_S3_BUCKET"],
-            "endpoint_url": os.environ.get("MEDIA_S3_ENDPOINT_URL") or None,
-            "region_name": os.environ.get("MEDIA_S3_REGION") or None,
-            "access_key": os.environ.get("MEDIA_S3_ACCESS_KEY_ID"),
-            "secret_key": os.environ.get("MEDIA_S3_SECRET_ACCESS_KEY"),
-            "custom_domain": os.environ.get("MEDIA_S3_CUSTOM_DOMAIN") or None,
-            "querystring_auth": False,  # images in public descriptions need plain URLs
-            "file_overwrite": False,
-        },
-    }
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- API -------------------------------------------------------------------

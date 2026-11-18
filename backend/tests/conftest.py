@@ -17,6 +17,10 @@ def _db(db, settings):
     # Send emails straight away, into django.core.mail.outbox.
     settings.EMAIL_DELIVERY = "inline"
     settings.BACKGROUND_TASKS = "inline"
+    # Configuration values are cached; each test starts from its own database.
+    from apps.configuration import config
+
+    config.forget()
 
 
 def make_org(alias: str) -> Organization:

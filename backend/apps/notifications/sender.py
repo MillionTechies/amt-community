@@ -18,6 +18,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.db import close_old_connections, transaction
 from django.utils import timezone
 
+from apps.configuration.mail import sender as configured_sender
 from apps.events.models import Registration
 from apps.notifications import ticket
 from apps.notifications.models import OutboundEmail
@@ -61,7 +62,8 @@ def _claim(ids, limit) -> list[OutboundEmail]:
 
 
 def _message(email: OutboundEmail) -> EmailMultiAlternatives:
-    message = EmailMultiAlternatives(email.subject, email.text, settings.DEFAULT_FROM_EMAIL, [email.to])
+    from_header, reply_to = configured_sender(email.event.organization_id if email.event_id else None)
+    message = EmailMultiAlternatives(email.subject, email.text, from_header, [email.to], reply_to=reply_to)
     message.mixed_subtype = "related"
     message.attach_alternative(email.html, "text/html")
     if email.ticket_code:

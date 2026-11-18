@@ -14,16 +14,16 @@ STATE_SALT = "integrations.oauth.state"
 STATE_MAX_AGE = 15 * 60
 
 
-def make_state(profile, provider_id: str) -> str:
-    return signing.dumps({"p": profile.pk, "v": provider_id}, salt=STATE_SALT)
+def make_state(profile, provider_id: str, app=None) -> str:
+    return signing.dumps({"p": profile.pk, "v": provider_id, "a": app}, salt=STATE_SALT)
 
 
-def read_state(state: str, provider_id: str) -> int:
-    """The profile id the sign-in was started for. Raises signing.BadSignature if forged or old."""
+def read_state(state: str, provider_id: str) -> tuple[int, str | None]:
+    """(profile id, app) the sign-in was started for. Raises signing.BadSignature if forged or old."""
     data = signing.loads(state, salt=STATE_SALT, max_age=STATE_MAX_AGE)
     if data.get("v") != provider_id:
         raise signing.BadSignature("State is for another provider.")
-    return data["p"]
+    return data["p"], data.get("a")
 
 
 def _expiry(tokens: dict):
@@ -31,11 +31,11 @@ def _expiry(tokens: dict):
     return timezone.now() + timedelta(seconds=int(seconds) - 60) if seconds else None
 
 
-def connect(profile, provider_id: str, code: str) -> Connection:
+def connect(profile, provider_id: str, code: str, app=None) -> Connection:
     provider = PROVIDERS[provider_id]
-    tokens = provider.exchange(code)
+    tokens = provider.exchange(code, app)
     connection, _ = Connection.objects.get_or_create(
-        profile=profile, provider=provider_id, defaults={"access_token_sealed": ""}
+        profile=profile, provider=provider_id, organization_id=app, defaults={"access_token_sealed": ""}
     )
     connection.access_token = tokens["access_token"]
     if tokens.get("refresh_token"):
@@ -51,7 +51,7 @@ def token_for(connection: Connection) -> str:
     if connection.expires_at and connection.expires_at <= timezone.now():
         if not connection.refresh_token:
             raise ProviderError(f"Your {connection.get_provider_display()} connection has expired. Connect it again.")
-        tokens = PROVIDERS[connection.provider].refresh(connection.refresh_token)
+        tokens = PROVIDERS[connection.provider].refresh(connection.refresh_token, connection.organization_id)
         connection.access_token = tokens["access_token"]
         if tokens.get("refresh_token"):
             connection.refresh_token = tokens["refresh_token"]
@@ -113,6 +113,13 @@ def push_changes(event: Event) -> None:
     """After an event changes or is cancelled, update (or remove) its copies elsewhere."""
     if EventLink.objects.filter(event=event).exists():
         run_later(_push, event.pk)
+
+
+def connection_for(profile, provider_id: str, organization_id) -> Connection | None:
+    """The member's connection to use for an organisation's events: through the
+    organisation's own app if it has one, else the platform's."""
+    app = PROVIDERS[provider_id].app_for(organization_id)
+    return Connection.objects.filter(profile=profile, provider=provider_id, organization_id=app).first()
 
 
 def disconnect(connection: Connection) -> None:

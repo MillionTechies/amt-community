@@ -10,6 +10,7 @@ from email.utils import parseaddr
 from django.conf import settings
 from icalendar import Calendar, Event as VEvent, vCalAddress, vText
 
+from apps.configuration import config
 from apps.content.richtext import to_text
 from apps.integrations import meetings
 
@@ -67,7 +68,8 @@ def build(event, *, with_link: bool, method: str = "PUBLISH", attendee=None) -> 
     item.add("url", event_url(event))
     item.add("status", "CANCELLED" if cancelled else "CONFIRMED")
     if method == "REQUEST":
-        organizer = vCalAddress(f"mailto:{parseaddr(settings.DEFAULT_FROM_EMAIL)[1]}")
+        address = parseaddr(config.get("email.from_address"))[1] or "community@amilliontechies.com"
+        organizer = vCalAddress(f"mailto:{address}")
         organizer.params["cn"] = vText(event.organization.name)
         item["organizer"] = organizer
         if attendee is not None:

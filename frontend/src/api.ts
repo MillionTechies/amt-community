@@ -328,6 +328,9 @@ export interface RoleAssignment {
 export interface Integration {
   id: 'google' | 'microsoft' | 'zoom'
   name: string
+  /** Whose OAuth app: an organisation's id when it set up its own, or null for the platform's. */
+  app: string | null
+  app_name: string
   /** What its meetings are called ("Google Meet"), or "" if it makes none. */
   meeting_name: string
   has_calendar: boolean
@@ -348,4 +351,38 @@ export interface EventLink {
   /** Added through the signed-in organiser's own account. */
   mine: boolean
   synced_at: string
+}
+
+/** A place settings can be changed: the platform, or one organisation. */
+export interface ConfigScope {
+  id: string
+  name: string
+  kind: 'platform' | 'organization'
+}
+
+export interface ConfigField {
+  key: string
+  label: string
+  kind: 'text' | 'secret' | 'number' | 'boolean' | 'email' | 'url'
+  help: string
+  placeholder: string
+  /** Where the value in use comes from. */
+  source: 'organization' | 'platform' | 'environment' | 'default' | ''
+  /** Set at this scope (for secrets, the value itself is never sent). */
+  is_set: boolean
+  value: string
+  /** The value used when nothing is set here (for secrets, "set" or ""). */
+  inherited: string
+}
+
+export interface ConfigGroup {
+  id: string
+  title: string
+  description: string
+  fields: ConfigField[]
+  /** Everything it needs is set, here or inherited. */
+  ready: boolean
+  /** The organisation set up its own (rather than using the platform's). */
+  own: boolean
+  redirect_uri?: string
 }

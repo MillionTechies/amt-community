@@ -48,6 +48,15 @@ Sample users (the password is the username):
 
 Keycloak's own admin console is at http://localhost:8080 (`admin` / `admin`).
 
+### Configuration
+
+**Console → Configuration** keeps the settings admins change in one place: the Google,
+Microsoft and Zoom apps, email (SMTP server, login, sender, reply-to, with a "send test
+email" button) and image storage (disk, or an S3-compatible bucket). Platform admins edit
+the platform's values; an organisation's admins can override its apps, sender name and
+reply-to. Secrets are stored encrypted and never shown again. Anything left empty falls
+back to the platform's value, then to `backend/.env`.
+
 ### Email
 
 Community emails people when they register, come off the waiting list, or get an
@@ -122,7 +131,11 @@ meeting link by hand always works, with or without any of this.
 
 Each service needs an OAuth app, registered once by an admin. The redirect URI is
 `<API_URL>/api/integrations/<google|microsoft|zoom>/callback/`, so locally
-`http://localhost:8000/api/integrations/google/callback/`. Put the keys in `backend/.env`.
+`http://localhost:8000/api/integrations/google/callback/` (the Configuration page shows it
+with a copy button). Enter the keys on **Console → Configuration**: platform admins set
+them for everyone, and an organisation's admins can enter its own app (say, the
+university's Google Workspace) for its events alone. Values in `backend/.env` are used
+when nothing is set there.
 
 - **Google**: in the [Google Cloud console](https://console.cloud.google.com/), create a
   project, enable the **Google Calendar API**, configure the OAuth consent screen with the

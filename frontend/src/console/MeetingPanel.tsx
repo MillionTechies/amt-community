@@ -11,7 +11,8 @@ import { useIntegrations } from './Integrations'
 import { Panel } from './shared'
 
 export function MeetingPanel({ event: e }: { event: CommunityEvent }) {
-  const integrations = useIntegrations()
+  // The apps this organisation's events use: its own, or the platform's.
+  const integrations = useIntegrations(e.organization.id)
   const links = useQuery({ queryKey: ['event', e.slug, 'links'], queryFn: () => api<EventLink[]>(`/events/${e.slug}/links/`) })
   const add = useAct((body: { provider: string; meeting: boolean }) =>
     api<EventLink>(`/events/${e.slug}/links/`, { method: 'POST', body }),
