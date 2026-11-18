@@ -268,7 +268,11 @@ function Console() {
   const [open, setOpen] = useState(false)
   const { pathname } = useLocation()
   // A new page starts at the top. (The mobile menu closes itself when a link is chosen.)
-  useEffect(() => window.scrollTo(0, 0), [pathname])
+  // Braces matter: newer browsers return a promise from scrollTo, and an effect may
+  // only return a clean-up function.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [pathname])
 
   if (!access.loaded) return <Spinner />
   if (!access.any)
