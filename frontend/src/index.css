@@ -2,26 +2,39 @@
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --color-brand-50: #ecfdf7;
-  --color-brand-100: #d0f7e8;
-  --color-brand-200: #a3edd3;
-  --color-brand-500: #12a37f;
-  --color-brand-600: #0b8a6b;
-  --color-brand-700: #0a6e57;
-  --color-brand-800: #0b5747;
-  --color-brand-900: #0a3d33;
-  --color-ink: #10201c;
+  /* A Million Techies green (amilliontechies.com primary, hsl 142 76% 36%). */
+  --color-brand-50: #f0fdf4;
+  --color-brand-100: #dcfce7;
+  --color-brand-200: #bbf7d0;
+  --color-brand-300: #86efac;
+  --color-brand-500: #22c55e;
+  --color-brand-600: #16a34a;
+  --color-brand-700: #15803d;
+  --color-brand-800: #166534;
+  --color-brand-900: #14532d;
+  --color-brand-950: #052e16;
+  --color-ink: #0c1410;
+  --font-display: "Bricolage Grotesque", "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
   @apply bg-stone-50 text-ink antialiased;
 }
 
-@media print {
-  .no-print {
-    display: none !important;
+/* --- landing page ---------------------------------------------------------- */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
   }
-  body {
-    background: white;
+}
+.rise {
+  animation: rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
   }
 }

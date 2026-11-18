@@ -55,6 +55,16 @@ export async function api<T = unknown>(
   return body as T
 }
 
+/** Public, community-wide counts (GET /api/stats/). */
+export interface CommunityStats {
+  members: number
+  events: number
+  check_ins: number
+  hackathons: number
+  projects: number
+  organizations: number
+}
+
 export interface Paginated<T> {
   count: number
   next: string | null

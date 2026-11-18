@@ -2,11 +2,12 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from 'react-oidc-context'
-import { Link, NavLink, Route, Routes } from 'react-router-dom'
+import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 
 import { setToken } from './api'
+import { LogoTile } from './components/brand'
 import { Button, Empty, Spinner } from './components/ui'
-import { useMe, useSignIn } from './hooks'
+import { useMe, useSignIn, useSignUp } from './hooks'
 import CertificatePage from './pages/Certificate'
 import Dashboard from './pages/Dashboard'
 import EventDetail from './pages/EventDetail'
@@ -39,6 +40,7 @@ function Header() {
   const auth = useAuth()
   const me = useMe()
   const signIn = useSignIn()
+  const signUp = useSignUp()
   const [open, setOpen] = useState(false)
   const link = ({ isActive }: { isActive: boolean }) =>
     `rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? 'bg-brand-50 text-brand-800' : 'text-stone-700 hover:bg-stone-100'}`
@@ -52,10 +54,10 @@ function Header() {
     </>
   )
   return (
-    <header className="no-print sticky top-0 z-10 border-b border-stone-200 bg-white/95 backdrop-blur">
+    <header className="no-print sticky top-0 z-10 border-b border-stone-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
         <Link to="/" className="flex items-center gap-2 font-bold">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-xs text-white">1M</span>
+          <LogoTile className="h-8 w-8" />
           <span className="hidden sm:inline">A Million Techies</span>
           <span className="text-brand-700">Community</span>
         </Link>
@@ -69,7 +71,10 @@ function Header() {
               <Button variant="secondary" onClick={() => void auth.signoutRedirect()}>Sign out</Button>
             </>
           ) : (
-            <Button onClick={signIn} disabled={auth.isLoading}>Sign in</Button>
+            <>
+              <Button variant="ghost" className="whitespace-nowrap px-3" onClick={signIn} disabled={auth.isLoading}>Sign in</Button>
+              <Button onClick={signUp} disabled={auth.isLoading}>Join</Button>
+            </>
           )}
           <button
             type="button"
@@ -96,6 +101,8 @@ function Header() {
 export default function App() {
   const auth = useAuth()
   const queryClient = useQueryClient()
+  // The landing page lays out its own full-width sections.
+  const isLanding = useLocation().pathname === '/'
   // Every request made while rendering below must carry the current token.
   setToken(auth.user?.access_token)
   useEffect(() => {
@@ -106,7 +113,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+      <main className={isLanding ? 'w-full flex-1' : 'mx-auto w-full max-w-6xl flex-1 px-4 py-8'}>
         {auth.isLoading ? (
           <Spinner />
         ) : (
@@ -131,8 +138,21 @@ export default function App() {
           </Routes>
         )}
       </main>
-      <footer className="no-print border-t border-stone-200 py-6 text-center text-sm text-stone-500">
-        A Million Techies Community. Connect, collaborate, participate and build.
+      <footer className="no-print border-t border-stone-200 bg-white">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-stone-500 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-center gap-2">
+            <LogoTile className="h-6 w-6" />
+            <span>
+              Community is part of <a className="font-semibold text-ink hover:text-brand-700" href="https://amilliontechies.com">A Million Techies</a>. Learn. Build. Grow.
+            </span>
+          </p>
+          <nav className="flex flex-wrap gap-x-5 gap-y-2 font-medium">
+            <a className="hover:text-ink" href="https://amilliontechies.com">amilliontechies.com</a>
+            <a className="hover:text-ink" href="https://learn.amilliontechies.com">Courses</a>
+            <Link className="hover:text-ink" to="/events">Events</Link>
+            <Link className="hover:text-ink" to="/hackathons">Hackathons</Link>
+          </nav>
+        </div>
       </footer>
     </div>
   )

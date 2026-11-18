@@ -26,6 +26,7 @@ services:
     volumes:
       - keycloak-data:/opt/keycloak/data
       - ./scripts:/scripts:ro
+      - ./keycloak/themes/amt:/opt/keycloak/themes/amt:ro # login theme; start-dev reloads edits
 
 volumes:
   db-data:

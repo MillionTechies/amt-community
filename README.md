@@ -45,6 +45,55 @@ Sample users (the password is the username):
 | `carol` | A member with no organisation |
 
 Keycloak's own admin console is at http://localhost:8080 (`admin` / `admin`).
+
+### Sign-up and the login theme
+
+Anyone can create an account from the **Join** button and sets a password on the sign-up
+form.
+
+"Forgot password?" is on, but it emails a reset link, so **reset emails only arrive once a
+mail server is connected**. Until then Keycloak says an email is on its way and none comes.
+Connect one with your provider's SMTP details (the password stays in Keycloak):
+
+```bash
+docker compose exec -T -e SMTP_HOST=smtp.example.com -e SMTP_PORT=587 \
+  -e SMTP_USER=... -e SMTP_PASSWORD=... -e SMTP_FROM=no-reply@amilliontechies.com \
+  keycloak bash /scripts/keycloak-email.sh
+```
+
+Add `-e VERIFY_EMAIL=true` to also make new members confirm their email address.
+
+The sign-in and sign-up pages use the `amt` login theme in `keycloak/themes/amt/`, which
+extends Keycloak's own `keycloak.v2` theme with the Community layout, colours and wording.
+`start-dev` does not cache themes, so edits show on the next page load.
+
+A realm created before sign-up was added needs its settings once:
+
+```bash
+docker compose up -d   # mounts the login theme
+docker compose exec -T keycloak bash /scripts/keycloak-realm-settings.sh
+```
+
+### Continue with Google
+
+Optional. In Google Cloud Console, open APIs & Services > Credentials, create an
+**OAuth client ID** of type **Web application**, and add this authorised redirect URI:
+
+```
+http://localhost:8080/realms/amilliontechies/broker/google/endpoint
+```
+
+Then give Keycloak the client's ID and secret (rerun with new values to change them):
+
+```bash
+docker compose exec -T -e GOOGLE_CLIENT_ID=... -e GOOGLE_CLIENT_SECRET=... \
+  keycloak bash /scripts/keycloak-google.sh
+```
+
+"Continue with Google" then shows on the sign-in page and at the top of the sign-up page.
+Google has already verified the address, so members who join this way skip the
+verification email. If someone signs in with Google using the email of an existing account,
+Keycloak asks them to confirm it is theirs before linking the two.
 API docs are at http://localhost:8000/api/docs/.
 
 ## Tests
