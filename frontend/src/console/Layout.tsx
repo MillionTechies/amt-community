@@ -121,13 +121,18 @@ function Sidebar({ onNavigate }: { onNavigate: () => void }) {
             <div className="space-y-0.5">
               {access.team && <NavLink to="/manage/team" className={navItem}><NavIcon name="users" />Team and roles</NavLink>}
               <NavLink to="/manage/configuration" className={navItem}><NavIcon name="gauge" />Configuration</NavLink>
-              {access.platform && <NavLink to="/manage/platform" className={navItem}><NavIcon name="shield" />Platform</NavLink>}
             </div>
           </div>
         )}
       </nav>
 
       <div className="border-t border-white/10 p-3">
+        {access.platform && (
+          <Link to="/platform" onClick={onNavigate} className="mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-amber-300 hover:bg-white/5 hover:text-amber-200">
+            <NavIcon name="shield" />
+            Platform admin
+          </Link>
+        )}
         <Link to="/dashboard" onClick={onNavigate} className="mb-2 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-stone-400 hover:bg-white/5 hover:text-white">
           <NavIcon name="external" />
           Switch to member view
@@ -157,7 +162,6 @@ const CRUMB_LABELS: Record<string, string> = {
   events: 'Events',
   hackathons: 'Hackathons',
   team: 'Team and roles',
-  platform: 'Platform',
   integrations: 'Connected accounts',
   configuration: 'Configuration',
   new: 'New',

@@ -1,12 +1,12 @@
-/** Organisation admins choose who runs events and hackathons; platform admins refresh from Keycloak. */
+/** Organisation admins choose who runs events and hackathons. */
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { api } from '../api'
-import type { MyOrganization, RoleAssignment } from '../api'
+import type { RoleAssignment } from '../api'
 import { DataTable } from '../components/DataTable'
 import { Icon } from '../components/icons'
-import { Badge, Button, Empty, ErrorNote, Field, Input, Notice, Select, Spinner, label } from '../components/ui'
+import { Badge, Button, Empty, ErrorNote, Field, Input, Select, Spinner, label } from '../components/ui'
 import { useAct } from '../hooks'
 import { ConsoleHeader, FilterChips, Panel, useAccess } from './shared'
 
@@ -132,45 +132,6 @@ export function Team() {
             <ErrorNote error={grant.error} />
             <Button type="submit" disabled={grant.isPending} className="w-full"><Icon name="plus" className="h-4 w-4" />Give role</Button>
           </form>
-        </Panel>
-      </div>
-    </>
-  )
-}
-
-export function Platform() {
-  const { me } = useAccess()
-  const sync = useAct(() => api<{ organizations: number }>('/organizations/sync/', { method: 'POST' }))
-  if (!me) return <Spinner />
-  if (!me.is_platform_admin) return <Empty>Only platform admins can see this page.</Empty>
-  const organizations = me.organizations
-  return (
-    <>
-      <ConsoleHeader title="Platform" subtitle="Organisations and their members are kept in Keycloak." />
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Panel title={`Organisations (${organizations.length})`} flush>
-            <DataTable
-              rows={organizations}
-              columns={[
-                { title: 'Name', value: (o: MyOrganization) => o.name, cell: (o: MyOrganization) => <span className="font-semibold">{o.name}</span>, priority: 1 },
-                { title: 'Alias', value: (o: MyOrganization) => o.alias, cell: (o: MyOrganization) => <span className="font-mono text-xs text-stone-600">{o.alias}</span>, priority: 2 },
-                { title: 'Your roles', value: (o: MyOrganization) => (o.roles.length ? o.roles.map(label).join(', ') : 'Admin'), priority: 3 },
-              ]}
-              order={[0, 'asc']}
-              searchPlaceholder="Search organisations"
-            />
-          </Panel>
-        </div>
-        <Panel title="Refresh from Keycloak">
-          <p className="mb-4 text-sm text-stone-600">Refresh Community's copy after adding or changing an organisation in Keycloak.</p>
-          <div className="mb-3 space-y-3 empty:hidden">
-            <ErrorNote error={sync.error} />
-            {sync.data && <Notice>Refreshed {sync.data.organizations} organisations.</Notice>}
-          </div>
-          <Button variant="secondary" disabled={sync.isPending} onClick={() => sync.mutate()}>
-            <Icon name="refresh" className="h-4 w-4" />{sync.isPending ? 'Refreshing…' : 'Refresh organisations'}
-          </Button>
         </Panel>
       </div>
     </>

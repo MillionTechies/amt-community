@@ -209,8 +209,13 @@ function GroupCard({ group, scope }: { group: ConfigGroup; scope: ConfigScope })
   )
 }
 
-export default function Configuration() {
-  const scopes = useQuery({ queryKey: ['configuration'], queryFn: () => api<ConfigScope[]>('/configuration/') })
+/**
+ * `platform`: the platform's own settings (in the platform admin area).
+ * `organizations`: one organisation's settings (in the organiser console).
+ */
+export default function Configuration({ mode = 'organizations' }: { mode?: 'platform' | 'organizations' }) {
+  const all = useQuery({ queryKey: ['configuration'], queryFn: () => api<ConfigScope[]>('/configuration/') })
+  const scopes = { ...all, data: all.data?.filter((s) => (mode === 'platform' ? s.kind === 'platform' : s.kind === 'organization')) }
   const [picked, setPicked] = useState('')
   const scope = scopes.data?.find((s) => s.id === picked) ?? scopes.data?.[0]
   const groups = useQuery({
@@ -220,12 +225,17 @@ export default function Configuration() {
   })
 
   if (scopes.isLoading) return <Spinner />
-  if (!scope) return <Empty>Only platform admins and organisation admins can change configuration.</Empty>
+  if (!scope)
+    return (
+      <Empty>
+        {mode === 'platform' ? 'Only platform admins can change platform settings.' : 'Only an organisation’s admins can change its settings.'}
+      </Empty>
+    )
 
   return (
     <>
       <ConsoleHeader
-        title="Configuration"
+        title={mode === 'platform' ? 'Platform configuration' : 'Configuration'}
         subtitle={
           scope.kind === 'platform'
             ? 'Settings for the whole platform. Organisations use these unless they set their own.'

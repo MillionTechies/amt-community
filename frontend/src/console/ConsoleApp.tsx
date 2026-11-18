@@ -1,5 +1,5 @@
 /** The organiser console's routes, under /manage. Loaded on demand, with DataTables. */
-import { Link, Route, Routes } from 'react-router-dom'
+import { Link, Navigate, Route, Routes } from 'react-router-dom'
 
 import { Empty } from '../components/ui'
 import EventForm from '../pages/EventForm'
@@ -13,7 +13,7 @@ import Integrations from './Integrations'
 import ConsoleLayout from './Layout'
 import { EventsList, HackathonsList } from './Lists'
 import Overview from './Overview'
-import { Platform, Team } from './Team'
+import { Team } from './Team'
 
 export default function ConsoleApp() {
   return (
@@ -43,7 +43,8 @@ export default function ConsoleApp() {
       <Route path="team" element={<Team />} />
       <Route path="integrations" element={<Integrations />} />
       <Route path="configuration" element={<Configuration />} />
-      <Route path="platform" element={<Platform />} />
+      {/* The platform page moved to its own area. */}
+      <Route path="platform" element={<Navigate replace to="/platform" />} />
       <Route path="*" element={<Empty>This page does not exist. <Link className="font-semibold text-brand-700" to="/manage">Back to the console</Link></Empty>} />
     </Route>
     </Routes>

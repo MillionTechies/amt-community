@@ -14,6 +14,7 @@ import { useMe, useSignIn, useSignUp } from './hooks'
 import { useAccess } from './console/shared'
 
 const ConsoleApp = lazy(() => import('./console/ConsoleApp'))
+const PlatformApp = lazy(() => import('./platform/PlatformApp'))
 import CertificatePage from './pages/Certificate'
 import Dashboard from './pages/Dashboard'
 import EventDetail from './pages/EventDetail'
@@ -70,6 +71,14 @@ function Header() {
         </Link>
         <nav className="ml-4 hidden items-center gap-1 md:flex">{links}</nav>
         <div className="ml-auto flex items-center gap-2">
+          {access.platform && (
+            <Link
+              to="/platform"
+              className="hidden whitespace-nowrap rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 font-mono text-xs font-semibold uppercase tracking-wider text-amber-800 hover:bg-amber-100 lg:inline-flex"
+            >
+              Platform
+            </Link>
+          )}
           {access.any && (
             <Link
               to="/manage"
@@ -116,7 +125,8 @@ function Header() {
 }
 
 /**
- * Right after signing in, send organisers to their console, and members to their activity,
+ * Right after signing in, send platform admins to the platform overview, organisers to their
+ * console, and members to their activity,
  * unless they signed in from a particular page (an event, say), which they return to.
  */
 function SignInLanding() {
@@ -133,9 +143,10 @@ function SignInLanding() {
       return
     }
     if (!fresh || (pathname !== '/' && pathname !== '/dashboard')) return
-    if (access.any) navigate('/manage', { replace: true })
+    if (access.platform) navigate('/platform', { replace: true })
+    else if (access.any) navigate('/manage', { replace: true })
     else if (pathname === '/') navigate('/dashboard', { replace: true })
-  }, [access.loaded, access.any, navigate, pathname])
+  }, [access.loaded, access.any, access.platform, navigate, pathname])
   return null
 }
 
@@ -189,6 +200,8 @@ export default function App() {
     <Routes>
       {/* The organiser console has its own sidebar layout, loaded only when opened. */}
       <Route path="/manage/*" element={<Suspense fallback={<Spinner />}><ConsoleApp /></Suspense>} />
+      {/* The platform admin area: the whole community, for platform admins. */}
+      <Route path="/platform/*" element={<Suspense fallback={<Spinner />}><PlatformApp /></Suspense>} />
 
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Home />} />
