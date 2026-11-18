@@ -7,6 +7,7 @@ import { Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigat
 import { setToken } from './api'
 import { JUST_SIGNED_IN } from './auth'
 import { LogoTile } from './components/brand'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Icon } from './components/icons'
 import { Button, Empty, Spinner } from './components/ui'
 import { useMe, useSignIn, useSignUp } from './hooks'
@@ -172,6 +173,7 @@ function PublicLayout() {
 export default function App() {
   const auth = useAuth()
   const queryClient = useQueryClient()
+  const { pathname } = useLocation()
   // Every request made while rendering below must carry the current token.
   setToken(auth.user?.access_token)
   useEffect(() => {
@@ -182,7 +184,7 @@ export default function App() {
   if (auth.isLoading) return <Spinner />
 
   return (
-    <>
+    <ErrorBoundary resetKey={pathname}>
     <SignInLanding />
     <Routes>
       {/* The organiser console has its own sidebar layout, loaded only when opened. */}
@@ -209,6 +211,6 @@ export default function App() {
       <Route path="/hackathons/:slug/edit" element={<Moved to={(slug) => `/manage/hackathons/${slug}/edit`} />} />
       <Route path="/organisation" element={<Navigate replace to="/manage/team" />} />
     </Routes>
-    </>
+    </ErrorBoundary>
   )
 }
