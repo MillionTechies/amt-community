@@ -21,11 +21,11 @@ type Ctx = { event: CommunityEvent }
 const useEvent = () => useOutletContext<Ctx>().event
 
 export default function EventWorkspace() {
-  const { id } = useParams()
+  const { slug } = useParams()
   const navigate = useNavigate()
-  const event = useQuery({ queryKey: ['event', id], queryFn: () => api<CommunityEvent>(`/events/${id}/`) })
-  const move = useAct((status: string) => api(`/events/${id}/transition/`, { method: 'POST', body: { status } }))
-  const remove = useAct(() => api(`/events/${id}/`, { method: 'DELETE' }))
+  const event = useQuery({ queryKey: ['event', slug], queryFn: () => api<CommunityEvent>(`/events/${slug}/`) })
+  const move = useAct((status: string) => api(`/events/${slug}/transition/`, { method: 'POST', body: { status } }))
+  const remove = useAct(() => api(`/events/${slug}/`, { method: 'DELETE' }))
 
   if (event.isLoading) return <Spinner />
   if (!event.data) return <ErrorNote error={event.error ?? 'Event not found.'} />
@@ -46,7 +46,7 @@ export default function EventWorkspace() {
         }
         actions={
           <>
-            <a href={`/events/${e.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-stone-100">
+            <a href={`/events/${e.slug}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-stone-100">
               <Icon name="external" className="h-4 w-4" />Public page
             </a>
             {e.status === 'draft' && (
@@ -75,19 +75,19 @@ export default function EventWorkspace() {
 
 // --- overview ------------------------------------------------------------------
 
-function useRegistrations(id: number) {
-  return useQuery({ queryKey: ['event', id, 'registrations'], queryFn: () => api<Registration[]>(`/events/${id}/registrations/`) })
+function useRegistrations(slug: string) {
+  return useQuery({ queryKey: ['event', slug, 'registrations'], queryFn: () => api<Registration[]>(`/events/${slug}/registrations/`) })
 }
 
 export function EventOverview() {
   const e = useEvent()
-  const stats = useQuery({ queryKey: ['event', e.id, 'stats'], queryFn: () => api<EventStats>(`/events/${e.id}/stats/`) })
-  const registrations = useRegistrations(e.id)
-  const resources = useQuery({ queryKey: ['event', String(e.id), 'resources'], queryFn: () => api<Resource[]>(`/events/${e.id}/resources/`) })
-  const announcements = useQuery({ queryKey: ['event', String(e.id), 'announcements'], queryFn: () => api<Announcement[]>(`/events/${e.id}/announcements/`) })
+  const stats = useQuery({ queryKey: ['event', e.slug, 'stats'], queryFn: () => api<EventStats>(`/events/${e.slug}/stats/`) })
+  const registrations = useRegistrations(e.slug)
+  const resources = useQuery({ queryKey: ['event', String(e.slug), 'resources'], queryFn: () => api<Resource[]>(`/events/${e.slug}/resources/`) })
+  const announcements = useQuery({ queryKey: ['event', String(e.slug), 'announcements'], queryFn: () => api<Announcement[]>(`/events/${e.slug}/announcements/`) })
   if (!stats.data) return <Spinner />
   const s = stats.data
-  const base = `/manage/events/${e.id}`
+  const base = `/manage/events/${e.slug}`
   const started = new Date(e.starts_at).getTime() <= Date.now()
   const recent = [...(registrations.data ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 6)
 
@@ -206,11 +206,11 @@ type Who = 'all' | 'registered' | 'checked_in' | 'waitlisted' | 'cancelled'
 
 export function EventRegistrations() {
   const e = useEvent()
-  const registrations = useRegistrations(e.id)
+  const registrations = useRegistrations(e.slug)
   const [search, setSearch] = useState('')
   const [who, setWho] = useState<Who>('all')
-  const checkIn = useAct((registration: number) => api(`/events/${e.id}/check-in/`, { method: 'POST', body: { registration } }))
-  const undo = useAct((registration: number) => api(`/events/${e.id}/check-in/?registration=${registration}`, { method: 'DELETE' }))
+  const checkIn = useAct((registration: number) => api(`/events/${e.slug}/check-in/`, { method: 'POST', body: { registration } }))
+  const undo = useAct((registration: number) => api(`/events/${e.slug}/check-in/?registration=${registration}`, { method: 'DELETE' }))
   if (!registrations.data) return <Spinner />
   const all = registrations.data
   const matches: Record<Who, (r: Registration) => boolean> = {
@@ -230,7 +230,7 @@ export function EventRegistrations() {
     ]
     const link = document.createElement('a')
     link.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }))
-    link.download = `event-${e.id}-registrations.csv`
+    link.download = `event-${e.slug}-registrations.csv`
     link.click()
     URL.revokeObjectURL(link.href)
   }
@@ -318,12 +318,12 @@ export function EventRegistrations() {
 
 export function EventCheckIn() {
   const e = useEvent()
-  const stats = useQuery({ queryKey: ['event', e.id, 'stats'], queryFn: () => api<EventStats>(`/events/${e.id}/stats/`) })
+  const stats = useQuery({ queryKey: ['event', e.slug, 'stats'], queryFn: () => api<EventStats>(`/events/${e.slug}/stats/`) })
   const [scanning, setScanning] = useState(false)
   const [log, setLog] = useState<{ ok: boolean; message: string; at: Date }[]>([])
   const [last, setLast] = useState('')
   const checkIn = useAct((ticket_code: string) =>
-    api<Registration & { already_checked_in: boolean }>(`/events/${e.id}/check-in/`, { method: 'POST', body: { ticket_code } }),
+    api<Registration & { already_checked_in: boolean }>(`/events/${e.slug}/check-in/`, { method: 'POST', body: { ticket_code } }),
   )
   const record = (ok: boolean, message: string) => setLog((l) => [{ ok, message, at: new Date() }, ...l].slice(0, 20))
   const handle = (code: string) => {
@@ -343,7 +343,7 @@ export function EventCheckIn() {
       <div className="lg:col-span-3">
         <Panel title="Scan tickets">
           <p className="mb-4 text-sm text-stone-600">
-            Point the camera at the QR code on an attendee's ticket. To check someone in by name, use <Link className="font-semibold text-brand-700" to={`/manage/events/${e.id}/registrations`}>Registrations</Link>.
+            Point the camera at the QR code on an attendee's ticket. To check someone in by name, use <Link className="font-semibold text-brand-700" to={`/manage/events/${e.slug}/registrations`}>Registrations</Link>.
           </p>
           {latest && (
             <div className="mb-4" aria-live="polite">
@@ -405,7 +405,7 @@ export function EventCheckIn() {
 // --- announcements and resources ------------------------------------------------
 
 export function EventContent() {
-  const { id } = useEvent()
+  const { slug: id } = useEvent()
   const announcements = useQuery({ queryKey: ['event', String(id), 'announcements'], queryFn: () => api<Announcement[]>(`/events/${id}/announcements/`) })
   const resources = useQuery({ queryKey: ['event', String(id), 'resources'], queryFn: () => api<Resource[]>(`/events/${id}/resources/`) })
   const [note, setNote] = useState({ title: '', body: '' })
@@ -465,14 +465,14 @@ export function EventContent() {
 
 export function EventFeedback() {
   const e = useEvent()
-  const feedback = useQuery({ queryKey: ['event', e.id, 'feedback'], queryFn: () => api<Feedback[]>(`/events/${e.id}/feedback/`) })
+  const feedback = useQuery({ queryKey: ['event', e.slug, 'feedback'], queryFn: () => api<Feedback[]>(`/events/${e.slug}/feedback/`) })
   if (!feedback.data) return <Spinner />
   const rows = feedback.data
   if (!rows.length)
     return (
       <Empty>
         No feedback yet. Attendees can rate the event from its page once they are checked in.{' '}
-        <LinkButton to={`/events/${e.id}`} variant="ghost">View the page</LinkButton>
+        <LinkButton to={`/events/${e.slug}`} variant="ghost">View the page</LinkButton>
       </Empty>
     )
   const average = rows.reduce((s, f) => s + f.rating, 0) / rows.length

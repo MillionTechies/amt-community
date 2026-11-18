@@ -4,6 +4,7 @@ from django.db import models
 from django.utils import timezone
 
 from apps.accounts.models import Profile
+from apps.slugs import MAX_LENGTH, make_slug
 
 
 class Event(models.Model):
@@ -31,6 +32,8 @@ class Event(models.Model):
         "amt_auth.Organization", on_delete=models.PROTECT, related_name="events"
     )
     title = models.CharField(max_length=200)
+    # The public address; see apps.slugs.
+    slug = models.SlugField(max_length=MAX_LENGTH, unique=True, editable=False)
     summary = models.CharField(max_length=300, blank=True)
     description = models.TextField(blank=True)
     event_type = models.CharField(max_length=20, choices=Type.choices, default=Type.WORKSHOP)
@@ -53,6 +56,11 @@ class Event(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = make_slug(self.title, Event)
+        super().save(*args, **kwargs)
 
     @property
     def registration_closes_at(self):

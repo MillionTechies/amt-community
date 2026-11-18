@@ -43,7 +43,7 @@ export default function Hackathons() {
         <Spinner />
       ) : hackathons.data?.results.length ? (
         <div className={grid}>
-          {hackathons.data.results.map((h) => <HackathonCard key={h.id} hackathon={h} />)}
+          {hackathons.data.results.map((h) => <HackathonCard key={h.slug} hackathon={h} />)}
         </div>
       ) : (
         !hackathons.error && <Empty>{search ? 'No hackathons match your search.' : 'No hackathons yet.'}</Empty>

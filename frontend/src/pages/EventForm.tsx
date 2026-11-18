@@ -30,14 +30,14 @@ const blank = {
 
 /** Create an event, or edit one when the URL carries its id. */
 export default function EventForm() {
-  const { id } = useParams()
+  const { slug } = useParams()
   const navigate = useNavigate()
   const me = useMe()
   const organizations = me?.organizations.filter((o) => o.can_manage_events) ?? []
   const existing = useQuery({
-    queryKey: ['event', id],
-    queryFn: () => api<CommunityEvent>(`/events/${id}/`),
-    enabled: !!id,
+    queryKey: ['event', slug],
+    queryFn: () => api<CommunityEvent>(`/events/${slug}/`),
+    enabled: !!slug,
   })
   const [form, setForm] = useState(blank)
   const set = (field: keyof typeof blank) => (e: { target: { value: string } }) =>
@@ -65,8 +65,8 @@ export default function EventForm() {
 
   const organizationId = form.organization_id || organizations[0]?.id || ''
   const save = useAct(() =>
-    api<CommunityEvent>(id ? `/events/${id}/` : '/events/', {
-      method: id ? 'PATCH' : 'POST',
+    api<CommunityEvent>(slug ? `/events/${slug}/` : '/events/', {
+      method: slug ? 'PATCH' : 'POST',
       body: {
         ...form,
         organization_id: organizationId,
@@ -84,7 +84,7 @@ export default function EventForm() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    save.mutate(undefined, { onSuccess: (event) => navigate(`/manage/events/${event.id}`) })
+    save.mutate(undefined, { onSuccess: (event) => navigate(`/manage/events/${event.slug}`) })
   }
   const online = form.delivery_mode !== 'in_person'
   const inPerson = form.delivery_mode !== 'online'
@@ -92,9 +92,9 @@ export default function EventForm() {
   return (
     <form onSubmit={submit} className="max-w-3xl">
       {/* When editing, the console's workspace header already names the event. */}
-      {!id && <PageHeader title="Create event" subtitle='It is saved as a draft. Publish it when you are ready.' />}
+      {!slug && <PageHeader title="Create event" subtitle='It is saved as a draft. Publish it when you are ready.' />}
       <Card className="space-y-5">
-        {!id && organizations.length > 1 && (
+        {!slug && organizations.length > 1 && (
           <Field label="Organisation">
             <Select value={organizationId} onChange={set('organization_id')}>
               {organizations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
@@ -151,7 +151,7 @@ export default function EventForm() {
         </Field>
         <ErrorNote error={save.error} />
         <div className="flex gap-3">
-          <Button type="submit" disabled={save.isPending}>{id ? 'Save changes' : 'Save draft'}</Button>
+          <Button type="submit" disabled={save.isPending}>{slug ? 'Save changes' : 'Save draft'}</Button>
           <Button variant="secondary" onClick={() => navigate(-1)}>Cancel</Button>
         </div>
       </Card>

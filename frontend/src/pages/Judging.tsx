@@ -12,11 +12,11 @@ import {
 import { useAct } from '../hooks'
 
 export default function Judging() {
-  const { id } = useParams()
-  const hackathon = useQuery({ queryKey: ['hackathon', id], queryFn: () => api<Hackathon>(`/hackathons/${id}/`) })
+  const { slug } = useParams()
+  const hackathon = useQuery({ queryKey: ['hackathon', slug], queryFn: () => api<Hackathon>(`/hackathons/${slug}/`) })
   const submissions = useQuery({
-    queryKey: ['hackathon', id, 'submissions'],
-    queryFn: () => api<JudgedSubmission[]>(`/hackathons/${id}/submissions/`),
+    queryKey: ['hackathon', slug, 'submissions'],
+    queryFn: () => api<JudgedSubmission[]>(`/hackathons/${slug}/submissions/`),
     enabled: !!hackathon.data?.is_judge,
   })
   if (hackathon.isLoading) return <Spinner />
@@ -31,7 +31,7 @@ export default function Judging() {
       <PageHeader
         title={`Judging: ${h.title}`}
         subtitle={submissions.data && `You have scored ${done} of ${submissions.data.length} projects.`}
-        action={<LinkButton to={`/hackathons/${h.id}`} variant="secondary">Hackathon page</LinkButton>}
+        action={<LinkButton to={`/hackathons/${h.slug}`} variant="secondary">Hackathon page</LinkButton>}
       />
       {!open && (
         <div className="mb-4">
@@ -60,7 +60,7 @@ function ScoreCard({ hackathon: h, submission: s, open }: { hackathon: Hackathon
   const [scores, setScores] = useState<Record<number, string>>(given)
   const [comment, setComment] = useState(s.my_evaluation?.comment ?? '')
   const save = useAct(() =>
-    api(`/hackathons/${h.id}/submissions/${s.id}/evaluation/`, {
+    api(`/hackathons/${h.slug}/submissions/${s.id}/evaluation/`, {
       method: 'PUT',
       body: {
         comment,

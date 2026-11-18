@@ -153,7 +153,7 @@ export function EventsList() {
             </thead>
             <tbody>
               {rows.map((e) => (
-                <tr key={e.id} className={`${table.row} cursor-pointer`} onClick={() => navigate(`/manage/events/${e.id}`)}>
+                <tr key={e.slug} className={`${table.row} cursor-pointer`} onClick={() => navigate(`/manage/events/${e.slug}`)}>
                   <td className={table.td}>
                     <p className="font-semibold">{e.title}</p>
                     <p className="text-xs text-stone-500">{e.organization.name} · {label(e.delivery_mode)}</p>
@@ -252,7 +252,7 @@ export function HackathonsList() {
             </thead>
             <tbody>
               {rows.map((h) => (
-                <tr key={h.id} className={`${table.row} cursor-pointer`} onClick={() => navigate(`/manage/hackathons/${h.id}`)}>
+                <tr key={h.slug} className={`${table.row} cursor-pointer`} onClick={() => navigate(`/manage/hackathons/${h.slug}`)}>
                   <td className={table.td}>
                     <p className="font-semibold">{h.title}</p>
                     <p className="text-xs text-stone-500">{h.organization.name}{h.theme && ` · ${h.theme}`}</p>

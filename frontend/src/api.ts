@@ -117,7 +117,8 @@ export interface MyRegistration {
 }
 
 export interface CommunityEvent {
-  id: number
+  /** The public address, e.g. "react-workshop-nairobi-k3x9qa". */
+  slug: string
   organization: Organization
   title: string
   summary: string
@@ -207,7 +208,8 @@ export interface Criterion {
 }
 
 export interface Hackathon {
-  id: number
+  /** The public address, e.g. "react-workshop-nairobi-k3x9qa". */
+  slug: string
   organization: Organization
   title: string
   tagline: string

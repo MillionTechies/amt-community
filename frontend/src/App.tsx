@@ -32,9 +32,9 @@ import Judging from './pages/Judging'
 import Profile from './pages/Profile'
 
 /** Old addresses for organiser pages now live in the console. */
-function Moved({ to }: { to: (id: string) => string }) {
-  const { id = '' } = useParams()
-  return <Navigate replace to={to(id)} />
+function Moved({ to }: { to: (slug: string) => string }) {
+  const { slug = '' } = useParams()
+  return <Navigate replace to={to(slug)} />
 }
 
 /** Pages that only make sense for a signed-in member. */
@@ -198,7 +198,7 @@ export default function App() {
         <Route index element={<Overview />} />
         <Route path="events" element={<EventsList />} />
         <Route path="events/new" element={<EventForm />} />
-        <Route path="events/:id" element={<EventWorkspace />}>
+        <Route path="events/:slug" element={<EventWorkspace />}>
           <Route index element={<EventOverview />} />
           <Route path="registrations" element={<EventRegistrations />} />
           <Route path="check-in" element={<EventCheckIn />} />
@@ -208,7 +208,7 @@ export default function App() {
         </Route>
         <Route path="hackathons" element={<HackathonsList />} />
         <Route path="hackathons/new" element={<HackathonForm />} />
-        <Route path="hackathons/:id" element={<HackathonWorkspace />}>
+        <Route path="hackathons/:slug" element={<HackathonWorkspace />}>
           <Route index element={<HackathonOverview />} />
           <Route path="setup" element={<HackathonSetup />} />
           <Route path="teams" element={<HackathonTeams />} />
@@ -224,10 +224,10 @@ export default function App() {
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Home />} />
         <Route path="/events" element={<Events />} />
-        <Route path="/events/:id" element={<EventDetail />} />
+        <Route path="/events/:slug" element={<EventDetail />} />
         <Route path="/hackathons" element={<Hackathons />} />
-        <Route path="/hackathons/:id" element={<HackathonDetail />} />
-        <Route path="/hackathons/:id/judge" element={<Private><Judging /></Private>} />
+        <Route path="/hackathons/:slug" element={<HackathonDetail />} />
+        <Route path="/hackathons/:slug/judge" element={<Private><Judging /></Private>} />
         <Route path="/certificates/:code" element={<CertificatePage />} />
         <Route path="/dashboard" element={<Private><Dashboard /></Private>} />
         <Route path="/profile" element={<Private><Profile /></Private>} />
@@ -235,11 +235,11 @@ export default function App() {
       </Route>
 
       <Route path="/events/new" element={<Navigate replace to="/manage/events/new" />} />
-      <Route path="/events/:id/manage" element={<Moved to={(id) => `/manage/events/${id}`} />} />
-      <Route path="/events/:id/edit" element={<Moved to={(id) => `/manage/events/${id}/edit`} />} />
+      <Route path="/events/:slug/manage" element={<Moved to={(slug) => `/manage/events/${slug}`} />} />
+      <Route path="/events/:slug/edit" element={<Moved to={(slug) => `/manage/events/${slug}/edit`} />} />
       <Route path="/hackathons/new" element={<Navigate replace to="/manage/hackathons/new" />} />
-      <Route path="/hackathons/:id/manage" element={<Moved to={(id) => `/manage/hackathons/${id}`} />} />
-      <Route path="/hackathons/:id/edit" element={<Moved to={(id) => `/manage/hackathons/${id}/edit`} />} />
+      <Route path="/hackathons/:slug/manage" element={<Moved to={(slug) => `/manage/hackathons/${slug}`} />} />
+      <Route path="/hackathons/:slug/edit" element={<Moved to={(slug) => `/manage/hackathons/${slug}/edit`} />} />
       <Route path="/organisation" element={<Navigate replace to="/manage/team" />} />
     </Routes>
     </>

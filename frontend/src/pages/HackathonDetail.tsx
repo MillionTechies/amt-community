@@ -14,8 +14,8 @@ import {
 import { useAct, useSignIn } from '../hooks'
 
 export default function HackathonDetail() {
-  const { id } = useParams()
-  const hackathon = useQuery({ queryKey: ['hackathon', id], queryFn: () => api<Hackathon>(`/hackathons/${id}/`) })
+  const { slug } = useParams()
+  const hackathon = useQuery({ queryKey: ['hackathon', slug], queryFn: () => api<Hackathon>(`/hackathons/${slug}/`) })
   if (hackathon.isLoading) return <Spinner />
   if (!hackathon.data) return <ErrorNote error={hackathon.error ?? 'Hackathon not found.'} />
   const h = hackathon.data
@@ -34,7 +34,7 @@ export default function HackathonDetail() {
         </div>
         {h.status === 'cancelled' && <Notice tone="amber">This hackathon has been cancelled.</Notice>}
         {h.status === 'judging' && <Notice tone="amber">Submissions are closed and the judges are scoring projects.</Notice>}
-        {h.results_published && <Results id={h.id} />}
+        {h.results_published && <Results id={h.slug} />}
         {h.description && <Section title="About"><Prose>{h.description}</Prose></Section>}
         {!!h.challenges.length && (
           <Section title="Challenges">
@@ -93,7 +93,7 @@ export default function HackathonDetail() {
             <p className="text-sm text-stone-600">
               {h.status === 'judging' ? 'Scoring is open.' : h.status === 'published' ? 'Scoring opens when submissions close.' : 'Judging is over.'}
             </p>
-            <LinkButton to={`/hackathons/${h.id}/judge`}>Go to judging</LinkButton>
+            <LinkButton to={`/hackathons/${h.slug}/judge`}>Go to judging</LinkButton>
           </Card>
         ) : (
           <TeamPanel hackathon={h} />
@@ -102,8 +102,8 @@ export default function HackathonDetail() {
           <Card className="space-y-3">
             <p className="text-sm font-semibold">You manage this hackathon</p>
             <div className="flex flex-wrap gap-2">
-              <LinkButton to={`/manage/hackathons/${h.id}`}>Manage</LinkButton>
-              <LinkButton to={`/manage/hackathons/${h.id}/edit`} variant="secondary">Edit details</LinkButton>
+              <LinkButton to={`/manage/hackathons/${h.slug}`}>Manage</LinkButton>
+              <LinkButton to={`/manage/hackathons/${h.slug}/edit`} variant="secondary">Edit details</LinkButton>
             </div>
           </Card>
         )}
@@ -123,7 +123,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function Results({ id }: { id: number }) {
+function Results({ id }: { id: string }) {
   const board = useQuery({
     queryKey: ['hackathon', id, 'leaderboard'],
     queryFn: () => api<LeaderboardRow[]>(`/hackathons/${id}/leaderboard/`),
@@ -163,21 +163,21 @@ function TeamPanel({ hackathon: h }: { hackathon: Hackathon }) {
   const [name, setName] = useState('')
   const [code, setCode] = useState(searchParams.get('join') ?? '')
   const team = useQuery({
-    queryKey: ['hackathon', h.id, 'my-team'],
-    queryFn: () => api<MyTeam>(`/hackathons/${h.id}/my-team/`),
+    queryKey: ['hackathon', h.slug, 'my-team'],
+    queryFn: () => api<MyTeam>(`/hackathons/${h.slug}/my-team/`),
     enabled: !!h.my_team_id,
   })
-  const create = useAct(() => api(`/hackathons/${h.id}/teams/`, { method: 'POST', body: { name } }))
-  const join = useAct(() => api(`/hackathons/${h.id}/teams/join/`, { method: 'POST', body: { invite_code: code.trim() } }))
-  const leave = useAct(() => api(`/hackathons/${h.id}/my-team/leave/`, { method: 'POST' }))
-  const remove = useAct((member: number) => api(`/hackathons/${h.id}/my-team/members/${member}/`, { method: 'DELETE' }))
+  const create = useAct(() => api(`/hackathons/${h.slug}/teams/`, { method: 'POST', body: { name } }))
+  const join = useAct(() => api(`/hackathons/${h.slug}/teams/join/`, { method: 'POST', body: { invite_code: code.trim() } }))
+  const leave = useAct(() => api(`/hackathons/${h.slug}/my-team/leave/`, { method: 'POST' }))
+  const remove = useAct((member: number) => api(`/hackathons/${h.slug}/my-team/members/${member}/`, { method: 'DELETE' }))
   const [copied, setCopied] = useState(false)
 
   if (h.my_team_id) {
     if (!team.data) return <Card><Spinner /></Card>
     const t = team.data
     const me = t.members.find((m) => m.person.sub === auth.user?.profile.sub)
-    const link = `${window.location.origin}/hackathons/${h.id}?join=${t.invite_code}`
+    const link = `${window.location.origin}/hackathons/${h.slug}?join=${t.invite_code}`
     const canChange = h.status === 'published'
     return (
       <>
@@ -288,7 +288,7 @@ function SubmissionForm({ hackathon: h, team }: { hackathon: Hackathon; team: My
   const set = (field: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [field]: e.target.value }))
   const save = useAct(() =>
-    api(`/hackathons/${h.id}/my-team/submission/`, {
+    api(`/hackathons/${h.slug}/my-team/submission/`, {
       method: 'PUT',
       body: { ...form, challenge_id: form.challenge_id ? Number(form.challenge_id) : null },
     }),

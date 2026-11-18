@@ -88,6 +88,7 @@ def hackathon_context(request, hackathons) -> dict:
 
 
 class HackathonViewSet(viewsets.ModelViewSet):
+    lookup_field = "slug"
     serializer_class = HackathonSerializer
     filterset_fields = ["organization", "status"]
     search_fields = ["title", "tagline", "theme", "description"]
@@ -174,7 +175,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
         hackathon.delete()
 
     @action(detail=True, methods=["post"])
-    def transition(self, request, pk=None):
+    def transition(self, request, slug=None):
         """Publish, start judging, publish the results (complete) or cancel."""
         hackathon = self._manageable()
         data = TransitionSerializer(data=request.data)
@@ -201,7 +202,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
             raise ValidationError("You are already in a team for this hackathon.")
 
     @action(detail=True, methods=["get", "post"])
-    def teams(self, request, pk=None):
+    def teams(self, request, slug=None):
         """GET lists the teams. POST registers the member by creating a team they lead."""
         hackathon = self.get_object()
         if request.method == "GET":
@@ -224,7 +225,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
         return self._my_team_response(team, status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], url_path="teams/join")
-    def join_team(self, request, pk=None):
+    def join_team(self, request, slug=None):
         """Join a team with the invite code its leader shared."""
         hackathon = self.get_object()
         profile = access.profile_of(request)
@@ -248,11 +249,11 @@ class HackathonViewSet(viewsets.ModelViewSet):
         detail=True, methods=["get"], url_path="my-team",
         permission_classes=[permissions.IsAuthenticated],
     )
-    def my_team(self, request, pk=None):
+    def my_team(self, request, slug=None):
         return self._my_team_response(self._my_membership(self.get_object()).team)
 
     @action(detail=True, methods=["post"], url_path="my-team/leave")
-    def leave_team(self, request, pk=None):
+    def leave_team(self, request, slug=None):
         """Leave the team. Leadership passes on; an empty team is removed."""
         hackathon = self.get_object()
         membership = self._my_membership(hackathon)
@@ -270,7 +271,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["delete"], url_path=r"my-team/members/(?P<member_id>\d+)")
-    def remove_member(self, request, pk=None, member_id=None):
+    def remove_member(self, request, slug=None, member_id=None):
         hackathon = self.get_object()
         membership = self._my_membership(hackathon)
         if not membership.is_leader:
@@ -286,7 +287,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
     # --- submissions and judging ------------------------------------------
 
     @action(detail=True, methods=["put"], url_path="my-team/submission")
-    def submit(self, request, pk=None):
+    def submit(self, request, slug=None):
         """Create or update the team's project submission, until the deadline."""
         hackathon = self.get_object()
         team = self._my_membership(hackathon).team
@@ -304,7 +305,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
         return self._my_team_response(team)
 
     @action(detail=True, methods=["get"])
-    def submissions(self, request, pk=None):
+    def submissions(self, request, slug=None):
         """Managers and judges see submissions; everyone does once results are published."""
         hackathon = self.get_object()
         judge = self._judge(hackathon)
@@ -331,7 +332,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["put"], url_path=r"submissions/(?P<submission_id>\d+)/evaluation")
-    def evaluate(self, request, pk=None, submission_id=None):
+    def evaluate(self, request, slug=None, submission_id=None):
         """A judge scores a submission against every criterion. Can be revised while judging."""
         hackathon = self.get_object()
         judge = self._judge(hackathon)
@@ -364,7 +365,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
         return Response(EvaluationSerializer(evaluation).data)
 
     @action(detail=True, methods=["get"])
-    def leaderboard(self, request, pk=None):
+    def leaderboard(self, request, slug=None):
         """Rankings: for managers at any time, for everyone once results are published."""
         hackathon = self.get_object()
         if not (hackathon.results_published or self._can_manage(hackathon)):
@@ -384,7 +385,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["get", "post"])
-    def judges(self, request, pk=None):
+    def judges(self, request, slug=None):
         hackathon = self._manageable()
         if request.method == "POST":
             data = AddJudgeSerializer(data=request.data)
@@ -397,7 +398,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
         return Response(JudgeSerializer(judges, many=True).data)
 
     @action(detail=True, methods=["delete"], url_path=r"judges/(?P<judge_id>\d+)")
-    def remove_judge(self, request, pk=None, judge_id=None):
+    def remove_judge(self, request, slug=None, judge_id=None):
         hackathon = self._manageable()
         get_object_or_404(hackathon.judges, id=judge_id).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -417,7 +418,7 @@ class HackathonChildViewSet(
 
     def _hackathon(self):
         hackathon = get_object_or_404(
-            visible_hackathons(self.request), pk=self.kwargs["hackathon_pk"]
+            visible_hackathons(self.request), slug=self.kwargs["hackathon_slug"]
         )
         access.require_manage(self.request, hackathon.organization_id, ROLE)
         if self.locked(hackathon):

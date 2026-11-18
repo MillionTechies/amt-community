@@ -47,6 +47,7 @@ def visible_events(request):
 
 
 class EventViewSet(viewsets.ModelViewSet):
+    lookup_field = "slug"
     serializer_class = EventSerializer
     filterset_fields = ["organization", "status", "event_type", "delivery_mode"]
     search_fields = ["title", "summary", "description", "venue"]
@@ -117,7 +118,7 @@ class EventViewSet(viewsets.ModelViewSet):
         event.delete()
 
     @action(detail=True, methods=["post"])
-    def transition(self, request, pk=None):
+    def transition(self, request, slug=None):
         """Publish, complete or cancel the event."""
         event = self._manageable()
         data = TransitionSerializer(data=request.data)
@@ -132,7 +133,7 @@ class EventViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(event).data)
 
     @action(detail=True, methods=["post", "delete"], permission_classes=[permissions.IsAuthenticated])
-    def register(self, request, pk=None):
+    def register(self, request, slug=None):
         """POST registers the member (or waitlists them when full); DELETE cancels."""
         profile = access.profile_of(request)
         with transaction.atomic():
@@ -177,13 +178,13 @@ class EventViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(event).data)
 
     @action(detail=True, methods=["get"])
-    def registrations(self, request, pk=None):
+    def registrations(self, request, slug=None):
         event = self._manageable()
         registrations = event.registrations.select_related("profile")
         return Response(RegistrationSerializer(registrations, many=True).data)
 
     @action(detail=True, methods=["post"], url_path="check-in")
-    def check_in(self, request, pk=None):
+    def check_in(self, request, slug=None):
         """An organiser scans a ticket's QR code, or ticks a person on the list."""
         event = self._manageable()
         data = CheckInSerializer(data=request.data)
@@ -212,7 +213,7 @@ class EventViewSet(viewsets.ModelViewSet):
         )
 
     @check_in.mapping.delete
-    def undo_check_in(self, request, pk=None):
+    def undo_check_in(self, request, slug=None):
         event = self._manageable()
         registration = get_object_or_404(
             event.registrations, id=request.query_params.get("registration")
@@ -223,7 +224,7 @@ class EventViewSet(viewsets.ModelViewSet):
         return Response(RegistrationSerializer(registration).data)
 
     @action(detail=True, methods=["get", "post"], permission_classes=[permissions.IsAuthenticated])
-    def feedback(self, request, pk=None):
+    def feedback(self, request, slug=None):
         """GET: organisers read all feedback. POST: an attendee rates the event."""
         event = self.get_object()
         if request.method == "GET":
@@ -241,7 +242,7 @@ class EventViewSet(viewsets.ModelViewSet):
         return Response(FeedbackSerializer(feedback).data)
 
     @action(detail=True, methods=["get"])
-    def stats(self, request, pk=None):
+    def stats(self, request, slug=None):
         event = self._manageable()
         counts = event.registrations.aggregate(
             registered=Count("id", filter=Q(status=Registration.Status.REGISTERED)),
@@ -264,7 +265,7 @@ class EventViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated])
-    def certificate(self, request, pk=None):
+    def certificate(self, request, slug=None):
         """The member's participation certificate, once they attended and the event is over."""
         event = self.get_object()
         registration = event.registrations.filter(profile=access.profile_of(request)).first()
@@ -311,7 +312,7 @@ class EventChildViewSet(
     model = None
 
     def _event(self):
-        return get_object_or_404(visible_events(self.request), pk=self.kwargs["event_pk"])
+        return get_object_or_404(visible_events(self.request), slug=self.kwargs["event_slug"])
 
     def get_queryset(self):
         return self.model.objects.filter(event=self._event())

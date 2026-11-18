@@ -59,53 +59,53 @@ export default function Overview() {
     const startsIn = new Date(e.starts_at).getTime() - now
     if (startsIn < 2 * 86_400_000)
       tasks.push({
-        key: `checkin-${e.id}`, tone: 'green', icon: 'scan', title: `${e.title} starts ${relative(e.starts_at)}`,
+        key: `checkin-${e.slug}`, tone: 'green', icon: 'scan', title: `${e.title} starts ${relative(e.starts_at)}`,
         detail: `${e.registered_count} registered. Open check-in on the day to scan tickets.`,
-        to: `/manage/events/${e.id}/check-in`, action: 'Check-in',
+        to: `/manage/events/${e.slug}/check-in`, action: 'Check-in',
       })
     else if (e.capacity && e.spots_left !== null && e.spots_left <= Math.max(1, e.capacity * 0.1))
       tasks.push({
-        key: `full-${e.id}`, tone: 'blue', icon: 'users', title: `${e.title} is ${e.spots_left ? 'almost full' : 'full'}`,
+        key: `full-${e.slug}`, tone: 'blue', icon: 'users', title: `${e.title} is ${e.spots_left ? 'almost full' : 'full'}`,
         detail: `${e.registered_count} of ${e.capacity} places taken. New sign-ups go to the waiting list.`,
-        to: `/manage/events/${e.id}/registrations`, action: 'Registrations',
+        to: `/manage/events/${e.slug}/registrations`, action: 'Registrations',
       })
   }
   for (const e of past.data?.results ?? [])
     tasks.push({
-      key: `complete-${e.id}`, tone: 'amber', icon: 'check', title: `Close ${e.title}`,
+      key: `complete-${e.slug}`, tone: 'amber', icon: 'check', title: `Close ${e.title}`,
       detail: `It ended ${relative(e.ends_at)}. Mark it completed so attendees can download certificates.`,
-      to: `/manage/events/${e.id}`, action: 'Review',
+      to: `/manage/events/${e.slug}`, action: 'Review',
     })
   for (const h of allHackathons) {
     if (h.status === 'published' && new Date(h.submission_deadline).getTime() < now)
       tasks.push({
-        key: `judge-${h.id}`, tone: 'amber', icon: 'gavel', title: `Start judging ${h.title}`,
+        key: `judge-${h.slug}`, tone: 'amber', icon: 'gavel', title: `Start judging ${h.title}`,
         detail: `Submissions closed ${relative(h.submission_deadline)} with ${h.submission_count} projects in.`,
-        to: `/manage/hackathons/${h.id}`, action: 'Review',
+        to: `/manage/hackathons/${h.slug}`, action: 'Review',
       })
     if (h.status === 'judging')
       tasks.push({
-        key: `results-${h.id}`, tone: 'blue', icon: 'podium', title: `${h.title} is being judged`,
+        key: `results-${h.slug}`, tone: 'blue', icon: 'podium', title: `${h.title} is being judged`,
         detail: 'Check every judge has scored, then publish the results.',
-        to: `/manage/hackathons/${h.id}/judges`, action: 'Judges',
+        to: `/manage/hackathons/${h.slug}/judges`, action: 'Judges',
       })
   }
   for (const e of eventDrafts.data?.results ?? [])
     tasks.push({
-      key: `draft-e-${e.id}`, tone: 'amber', icon: 'pencil', title: `${e.title} is a draft`,
+      key: `draft-e-${e.slug}`, tone: 'amber', icon: 'pencil', title: `${e.title} is a draft`,
       detail: 'Only organisers can see it. Publish it to open registration.',
-      to: `/manage/events/${e.id}`, action: 'Open',
+      to: `/manage/events/${e.slug}`, action: 'Open',
     })
   for (const h of hackathonDrafts)
     tasks.push({
-      key: `draft-h-${h.id}`, tone: 'amber', icon: 'pencil', title: `${h.title} is a draft`,
+      key: `draft-h-${h.slug}`, tone: 'amber', icon: 'pencil', title: `${h.title} is a draft`,
       detail: 'Add challenges and judging criteria, then publish it.',
-      to: `/manage/hackathons/${h.id}`, action: 'Open',
+      to: `/manage/hackathons/${h.slug}`, action: 'Open',
     })
 
   const schedule: { key: string; date: string; title: string; kind: string; status: string; to: string; fill: ReactNode }[] = [
     ...events.filter((e) => e.status !== 'cancelled').map((e) => ({
-      key: `e${e.id}`, date: e.starts_at, title: e.title, kind: label(e.event_type), status: e.status, to: `/manage/events/${e.id}`,
+      key: `e${e.slug}`, date: e.starts_at, title: e.title, kind: label(e.event_type), status: e.status, to: `/manage/events/${e.slug}`,
       fill: e.capacity ? (
         <div className="w-36">
           <div className="mb-1 text-xs tabular-nums text-stone-600">{e.registered_count} of {e.capacity}</div>
@@ -116,7 +116,7 @@ export default function Overview() {
       ),
     })),
     ...allHackathons.filter((h) => new Date(h.ends_at).getTime() >= now && h.status !== 'cancelled').map((h) => ({
-      key: `h${h.id}`, date: h.starts_at, title: h.title, kind: 'Hackathon', status: h.status, to: `/manage/hackathons/${h.id}`,
+      key: `h${h.slug}`, date: h.starts_at, title: h.title, kind: 'Hackathon', status: h.status, to: `/manage/hackathons/${h.slug}`,
       fill: <span className="text-xs tabular-nums text-stone-600">{h.team_count} teams, {h.participant_count} people</span>,
     })),
   ].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8)

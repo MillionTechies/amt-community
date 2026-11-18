@@ -47,7 +47,7 @@ class HackathonSerializer(serializers.ModelSerializer):
     class Meta:
         model = Hackathon
         fields = [
-            "id", "organization", "organization_id", "title", "tagline", "description", "theme",
+            "slug", "organization", "organization_id", "title", "tagline", "description", "theme",
             "rules", "eligibility", "prizes", "venue", "starts_at", "ends_at",
             "registration_deadline", "submission_deadline", "min_team_size", "max_team_size",
             "status", "challenges", "criteria", "team_count", "participant_count",

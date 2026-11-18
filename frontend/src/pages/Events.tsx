@@ -77,7 +77,7 @@ export default function Events() {
       ) : events.data?.results.length ? (
         <>
           <div className={grid}>
-            {events.data.results.map((event) => <EventCard key={event.id} event={event} />)}
+            {events.data.results.map((event) => <EventCard key={event.slug} event={event} />)}
           </div>
           {(page > 1 || events.data.next) && (
             <div className="mt-6 flex justify-center gap-3">

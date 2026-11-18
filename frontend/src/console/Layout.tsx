@@ -33,23 +33,24 @@ const HACKATHON_SECTIONS: { to: string; label: string; icon: IconName }[] = [
 
 /** The event or hackathon the URL is inside, if any (not "new"). */
 function useCurrentItem() {
-  const eventMatch = useMatch('/manage/events/:id/*')
-  const hackathonMatch = useMatch('/manage/hackathons/:id/*')
-  const eventId = eventMatch?.params.id
-  const hackathonId = hackathonMatch?.params.id
+  const eventMatch = useMatch('/manage/events/:slug/*')
+  const hackathonMatch = useMatch('/manage/hackathons/:slug/*')
+  // "new" is the create form, not an item.
+  const eventId = eventMatch?.params.slug !== 'new' ? eventMatch?.params.slug : undefined
+  const hackathonId = hackathonMatch?.params.slug !== 'new' ? hackathonMatch?.params.slug : undefined
   const event = useQuery({
     queryKey: ['event', eventId],
     queryFn: () => api<CommunityEvent>(`/events/${eventId}/`),
-    enabled: !!eventId && /^\d+$/.test(eventId),
+    enabled: !!eventId,
   })
   const hackathon = useQuery({
     queryKey: ['hackathon', hackathonId],
     queryFn: () => api<Hackathon>(`/hackathons/${hackathonId}/`),
-    enabled: !!hackathonId && /^\d+$/.test(hackathonId),
+    enabled: !!hackathonId,
   })
-  if (event.data && eventId && /^\d+$/.test(eventId))
+  if (event.data && eventId)
     return { kind: 'event' as const, base: `/manage/events/${eventId}`, title: event.data.title, status: event.data.status, sections: EVENT_SECTIONS }
-  if (hackathon.data && hackathonId && /^\d+$/.test(hackathonId))
+  if (hackathon.data && hackathonId)
     return { kind: 'hackathon' as const, base: `/manage/hackathons/${hackathonId}`, title: hackathon.data.title, status: hackathon.data.status, sections: HACKATHON_SECTIONS }
   return null
 }
@@ -160,7 +161,9 @@ function Breadcrumbs() {
   const crumbs = [{ to: '/manage', label: 'Console' }]
   parts.forEach((part, i) => {
     const to = `/manage/${parts.slice(0, i + 1).join('/')}`
-    const label = /^\d+$/.test(part) ? (item?.title ?? '…') : (CRUMB_LABELS[part] ?? part)
+    // The segment after events/ or hackathons/ (other than "new") is the item's slug.
+    const isItem = i === 1 && (parts[0] === 'events' || parts[0] === 'hackathons') && part !== 'new'
+    const label = isItem ? (item?.title ?? '…') : (CRUMB_LABELS[part] ?? part)
     crumbs.push({ to, label })
   })
   return (

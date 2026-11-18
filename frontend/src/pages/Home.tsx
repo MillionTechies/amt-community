@@ -94,8 +94,8 @@ function LiveCard({ events, hackathon }: { events: CommunityEvent[]; hackathon?:
       {events.length || hackathon ? (
         <ul className="mt-4 space-y-3">
           {events.slice(0, 2).map((event) => (
-            <li key={event.id}>
-              <Link to={`/events/${event.id}`} className="group flex items-center gap-3">
+            <li key={event.slug}>
+              <Link to={`/events/${event.slug}`} className="group flex items-center gap-3">
                 <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-center leading-none text-brand-800">
                   <span>
                     <span className="block text-base font-bold">{day.format(new Date(event.starts_at))}</span>
@@ -111,7 +111,7 @@ function LiveCard({ events, hackathon }: { events: CommunityEvent[]; hackathon?:
           ))}
           {hackathon && (
             <li>
-              <Link to={`/hackathons/${hackathon.id}`} className="group flex items-center gap-3">
+              <Link to={`/hackathons/${hackathon.slug}`} className="group flex items-center gap-3">
                 <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-ink text-brand-300">
                   <LogoMark className="h-5 w-5" />
                 </span>
@@ -206,7 +206,7 @@ function EventRow({ event }: { event: CommunityEvent }) {
   const start = new Date(event.starts_at)
   return (
     <li>
-      <Link to={`/events/${event.id}`} className="group flex items-center gap-4 py-4">
+      <Link to={`/events/${event.slug}`} className="group flex items-center gap-4 py-4">
         <span className="w-12 shrink-0 text-center">
           <span className="block font-display text-2xl font-bold leading-none">{day.format(start)}</span>
           <span className="mt-1 block text-xs font-semibold uppercase text-brand-700">{month.format(start)}</span>
@@ -231,7 +231,7 @@ function HackathonCard({ hackathon }: { hackathon: Hackathon }) {
   ] as const
   return (
     <Link
-      to={`/hackathons/${hackathon.id}`}
+      to={`/hackathons/${hackathon.slug}`}
       className="group relative flex h-full flex-col overflow-hidden rounded-3xl bg-ink p-7 text-white sm:p-8"
     >
       <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-brand-600/40 blur-3xl" />
@@ -430,7 +430,7 @@ export default function Home() {
                 </div>
               ) : upcoming.length ? (
                 <ul className="divide-y divide-stone-200 border-y border-stone-200">
-                  {upcoming.slice(0, 5).map((event) => <EventRow key={event.id} event={event} />)}
+                  {upcoming.slice(0, 5).map((event) => <EventRow key={event.slug} event={event} />)}
                 </ul>
               ) : (
                 <p className="rounded-3xl border border-dashed border-stone-300 p-10 text-center text-stone-600">

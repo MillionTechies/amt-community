@@ -17,16 +17,16 @@ import { ConsoleHeader, Kpi, Meter, Panel, relative, table } from './shared'
 type Ctx = { hackathon: Hackathon }
 const useHackathon = () => useOutletContext<Ctx>().hackathon
 
-function useJudges(id: number) {
-  return useQuery({ queryKey: ['hackathon', id, 'judges'], queryFn: () => api<Judge[]>(`/hackathons/${id}/judges/`) })
+function useJudges(slug: string) {
+  return useQuery({ queryKey: ['hackathon', slug, 'judges'], queryFn: () => api<Judge[]>(`/hackathons/${slug}/judges/`) })
 }
 
 export default function HackathonWorkspace() {
-  const { id } = useParams()
+  const { slug } = useParams()
   const navigate = useNavigate()
-  const hackathon = useQuery({ queryKey: ['hackathon', id], queryFn: () => api<Hackathon>(`/hackathons/${id}/`) })
-  const move = useAct((status: string) => api(`/hackathons/${id}/transition/`, { method: 'POST', body: { status } }))
-  const remove = useAct(() => api(`/hackathons/${id}/`, { method: 'DELETE' }))
+  const hackathon = useQuery({ queryKey: ['hackathon', slug], queryFn: () => api<Hackathon>(`/hackathons/${slug}/`) })
+  const move = useAct((status: string) => api(`/hackathons/${slug}/transition/`, { method: 'POST', body: { status } }))
+  const remove = useAct(() => api(`/hackathons/${slug}/`, { method: 'DELETE' }))
 
   if (hackathon.isLoading) return <Spinner />
   if (!hackathon.data) return <ErrorNote error={hackathon.error ?? 'Hackathon not found.'} />
@@ -50,7 +50,7 @@ export default function HackathonWorkspace() {
         }
         actions={
           <>
-            <a href={`/hackathons/${h.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-stone-100">
+            <a href={`/hackathons/${h.slug}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-stone-100">
               <Icon name="external" className="h-4 w-4" />Public page
             </a>
             {h.status === 'draft' && (
@@ -123,8 +123,8 @@ function Stages({ h }: { h: Hackathon }) {
 
 export function HackathonOverview() {
   const h = useHackathon()
-  const judges = useJudges(h.id)
-  const base = `/manage/hackathons/${h.id}`
+  const judges = useJudges(h.slug)
+  const base = `/manage/hackathons/${h.slug}`
   const judgeList = judges.data ?? []
   const scored = judgeList.reduce((s, j) => s + j.evaluations, 0)
   const needed = judgeList.length * h.submission_count
@@ -232,14 +232,14 @@ export function HackathonSetup() {
   const h = useHackathon()
   const [challenge, setChallenge] = useState({ title: '', description: '' })
   const [criterion, setCriterion] = useState({ name: '', description: '', max_score: '10', weight: '1' })
-  const addChallenge = useAct(() => api(`/hackathons/${h.id}/challenges/`, { method: 'POST', body: challenge }))
+  const addChallenge = useAct(() => api(`/hackathons/${h.slug}/challenges/`, { method: 'POST', body: challenge }))
   const addCriterion = useAct(() =>
-    api(`/hackathons/${h.id}/criteria/`, {
+    api(`/hackathons/${h.slug}/criteria/`, {
       method: 'POST',
       body: { ...criterion, max_score: Number(criterion.max_score), weight: Number(criterion.weight) },
     }),
   )
-  const remove = useAct((path: string) => api(`/hackathons/${h.id}/${path}/`, { method: 'DELETE' }))
+  const remove = useAct((path: string) => api(`/hackathons/${h.slug}/${path}/`, { method: 'DELETE' }))
   const criteriaLocked = h.status !== 'draft' && h.status !== 'published'
   const submit = (action: typeof addChallenge, reset: () => void) => (e: FormEvent) => {
     e.preventDefault()
@@ -310,7 +310,7 @@ export function HackathonSetup() {
 
 export function HackathonTeams() {
   const h = useHackathon()
-  const teams = useQuery({ queryKey: ['hackathon', h.id, 'teams'], queryFn: () => api<Team[]>(`/hackathons/${h.id}/teams/`) })
+  const teams = useQuery({ queryKey: ['hackathon', h.slug, 'teams'], queryFn: () => api<Team[]>(`/hackathons/${h.slug}/teams/`) })
   const [search, setSearch] = useState('')
   if (!teams.data) return <Spinner />
   if (!teams.data.length) return <Empty>No teams have registered yet.</Empty>
@@ -360,10 +360,10 @@ export function HackathonTeams() {
 
 export function HackathonJudges() {
   const h = useHackathon()
-  const judges = useJudges(h.id)
+  const judges = useJudges(h.slug)
   const [email, setEmail] = useState('')
-  const add = useAct(() => api(`/hackathons/${h.id}/judges/`, { method: 'POST', body: { email } }))
-  const remove = useAct((judge: number) => api(`/hackathons/${h.id}/judges/${judge}/`, { method: 'DELETE' }))
+  const add = useAct(() => api(`/hackathons/${h.slug}/judges/`, { method: 'POST', body: { email } }))
+  const remove = useAct((judge: number) => api(`/hackathons/${h.slug}/judges/${judge}/`, { method: 'DELETE' }))
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="lg:col-span-2">
@@ -427,7 +427,7 @@ export function HackathonJudges() {
 
 export function HackathonLeaderboard() {
   const h = useHackathon()
-  const board = useQuery({ queryKey: ['hackathon', h.id, 'leaderboard'], queryFn: () => api<LeaderboardRow[]>(`/hackathons/${h.id}/leaderboard/`) })
+  const board = useQuery({ queryKey: ['hackathon', h.slug, 'leaderboard'], queryFn: () => api<LeaderboardRow[]>(`/hackathons/${h.slug}/leaderboard/`) })
   if (!board.data) return <Spinner />
   if (!board.data.length) return <Empty>No projects have been submitted yet.</Empty>
   return (

@@ -9,7 +9,7 @@ const cardStyle =
 export function EventCard({ event }: { event: CommunityEvent }) {
   const mine = event.my_registration
   return (
-    <Link to={`/events/${event.id}`} className={cardStyle}>
+    <Link to={`/events/${event.slug}`} className={cardStyle}>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <Badge tone="blue">{label(event.event_type)}</Badge>
         <Badge>{label(event.delivery_mode)}</Badge>
@@ -35,7 +35,7 @@ export function EventCard({ event }: { event: CommunityEvent }) {
 
 export function HackathonCard({ hackathon }: { hackathon: Hackathon }) {
   return (
-    <Link to={`/hackathons/${hackathon.id}`} className={cardStyle}>
+    <Link to={`/hackathons/${hackathon.slug}`} className={cardStyle}>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <StatusBadge status={hackathon.status} />
         {hackathon.theme && <Badge tone="blue">{hackathon.theme}</Badge>}

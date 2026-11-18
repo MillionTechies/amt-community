@@ -26,7 +26,7 @@ def create_event(client, org, publish=True, **overrides):
     event = response.json()
     if publish:
         response = client.post(
-            f"/api/events/{event['id']}/transition/", {"status": "published"}, format="json"
+            f"/api/events/{event['slug']}/transition/", {"status": "published"}, format="json"
         )
         assert response.status_code == 200, response.content
         event = response.json()
@@ -59,7 +59,7 @@ def test_event_must_end_after_it_starts(admin, org):
 
 def test_drafts_are_hidden_until_published(admin, bob, anonymous, org):
     event = create_event(admin, org, publish=False)
-    url = f"/api/events/{event['id']}/"
+    url = f"/api/events/{event['slug']}/"
     assert anonymous.get(url).status_code == 404
     assert bob.get(url).status_code == 404
     assert admin.get(url).json()["can_manage"] is True
@@ -73,7 +73,7 @@ def test_drafts_are_hidden_until_published(admin, bob, anonymous, org):
 
 def test_status_moves_only_forward(admin, org):
     event = create_event(admin, org)
-    url = f"/api/events/{event['id']}/transition/"
+    url = f"/api/events/{event['slug']}/transition/"
     assert admin.post(url, {"status": "draft"}, format="json").status_code == 400
     assert admin.post(url, {"status": "completed"}, format="json").status_code == 200
     assert admin.post(url, {"status": "cancelled"}, format="json").status_code == 400
@@ -81,7 +81,7 @@ def test_status_moves_only_forward(admin, org):
 
 def test_others_cannot_edit_or_publish(admin, bob, org):
     event = create_event(admin, org, publish=False)
-    url = f"/api/events/{event['id']}/"
+    url = f"/api/events/{event['slug']}/"
     admin.post(f"{url}transition/", {"status": "published"}, format="json")
     assert bob.patch(url, {"title": "Hijacked"}, format="json").status_code == 403
     assert bob.post(f"{url}transition/", {"status": "cancelled"}, format="json").status_code == 403
@@ -91,7 +91,7 @@ def test_others_cannot_edit_or_publish(admin, bob, org):
 
 def test_register_and_cancel(admin, bob, anonymous, org):
     event = create_event(admin, org)
-    url = f"/api/events/{event['id']}/register/"
+    url = f"/api/events/{event['slug']}/register/"
     assert anonymous.post(url).status_code in (401, 403)
 
     body = bob.post(url).json()
@@ -107,7 +107,7 @@ def test_register_and_cancel(admin, bob, anonymous, org):
 
 def test_join_link_is_only_for_people_who_are_coming(admin, bob, anonymous, org):
     event = create_event(admin, org)
-    url = f"/api/events/{event['id']}/"
+    url = f"/api/events/{event['slug']}/"
     assert anonymous.get(url).json()["online_url"] == ""
     assert bob.get(url).json()["online_url"] == ""
     bob.post(f"{url}register/")
@@ -117,36 +117,36 @@ def test_join_link_is_only_for_people_who_are_coming(admin, bob, anonymous, org)
 
 def test_full_event_waitlists_then_promotes(admin, bob, carol, org):
     event = create_event(admin, org, capacity=1)
-    url = f"/api/events/{event['id']}/register/"
+    url = f"/api/events/{event['slug']}/register/"
     assert bob.post(url).json()["my_registration"]["status"] == "registered"
     waiting = carol.post(url).json()
     assert waiting["my_registration"]["status"] == "waitlisted"
     assert waiting["spots_left"] == 0
 
     bob.delete(url)  # bob frees the place, carol gets it
-    assert carol.get(f"/api/events/{event['id']}/").json()["my_registration"]["status"] == (
+    assert carol.get(f"/api/events/{event['slug']}/").json()["my_registration"]["status"] == (
         "registered"
     )
 
 
 def test_registration_closes_at_the_deadline(admin, bob, org):
     event = create_event(admin, org, registration_deadline=in_days(1))
-    Event.objects.filter(id=event["id"]).update(
+    Event.objects.filter(slug=event["slug"]).update(
         registration_deadline=timezone.now() - timedelta(hours=1)
     )
-    assert bob.post(f"/api/events/{event['id']}/register/").status_code == 400
+    assert bob.post(f"/api/events/{event['slug']}/register/").status_code == 400
 
 
 def test_qr_check_in(admin, bob, carol, org):
     event = create_event(admin, org)
     other = create_event(admin, org, title="Other event")
-    url = f"/api/events/{event['id']}/"
+    url = f"/api/events/{event['slug']}/"
     ticket = bob.post(f"{url}register/").json()["my_registration"]["ticket_code"]
 
     # Attendees cannot check themselves in, and a ticket only works at its own event.
     assert bob.post(f"{url}check-in/", {"ticket_code": ticket}, format="json").status_code == 403
     wrong = admin.post(
-        f"/api/events/{other['id']}/check-in/", {"ticket_code": ticket}, format="json"
+        f"/api/events/{other['slug']}/check-in/", {"ticket_code": ticket}, format="json"
     )
     assert wrong.status_code == 404
 
@@ -159,7 +159,7 @@ def test_qr_check_in(admin, bob, carol, org):
 
     # Organisers can also tick someone on the list.
     carol.post(f"{url}register/")
-    registration = Registration.objects.get(event_id=event["id"], profile=carol.profile)
+    registration = Registration.objects.get(event__slug=event["slug"], profile=carol.profile)
     by_list = admin.post(f"{url}check-in/", {"registration": registration.id}, format="json")
     assert by_list.status_code == 200
 
@@ -170,7 +170,7 @@ def test_qr_check_in(admin, bob, carol, org):
 
 def test_cancelled_registration_cannot_check_in(admin, bob, org):
     event = create_event(admin, org)
-    url = f"/api/events/{event['id']}/"
+    url = f"/api/events/{event['slug']}/"
     ticket = bob.post(f"{url}register/").json()["my_registration"]["ticket_code"]
     bob.delete(f"{url}register/")
     assert admin.post(f"{url}check-in/", {"ticket_code": ticket}, format="json").status_code == 400
@@ -178,7 +178,7 @@ def test_cancelled_registration_cannot_check_in(admin, bob, org):
 
 def test_feedback_and_certificate_are_for_attendees(admin, bob, carol, anonymous, org):
     event = create_event(admin, org)
-    url = f"/api/events/{event['id']}/"
+    url = f"/api/events/{event['slug']}/"
     ticket = bob.post(f"{url}register/").json()["my_registration"]["ticket_code"]
     carol.post(f"{url}register/")  # registers but never shows up
     admin.post(f"{url}check-in/", {"ticket_code": ticket}, format="json")
@@ -206,7 +206,7 @@ def test_feedback_and_certificate_are_for_attendees(admin, bob, carol, anonymous
 
 def test_announcements_and_resources(admin, bob, anonymous, org):
     event = create_event(admin, org)
-    url = f"/api/events/{event['id']}/"
+    url = f"/api/events/{event['slug']}/"
     note = {"title": "Bring a laptop", "body": "And a charger."}
     assert bob.post(f"{url}announcements/", note, format="json").status_code == 403
     created = admin.post(f"{url}announcements/", note, format="json")
@@ -223,7 +223,7 @@ def test_announcements_and_resources(admin, bob, anonymous, org):
 def test_organizations_do_not_see_each_others_drafts(admin, org, other_org):
     rival = sign_in("rita", admin_of=[other_org])
     event = create_event(admin, org, publish=False)
-    assert rival.get(f"/api/events/{event['id']}/").status_code == 404
+    assert rival.get(f"/api/events/{event['slug']}/").status_code == 404
     assert rival.get("/api/events/?scope=managed").json()["count"] == 0
     assert admin.get("/api/events/?scope=managed").json()["count"] == 1
 
@@ -231,5 +231,18 @@ def test_organizations_do_not_see_each_others_drafts(admin, org, other_org):
 def test_only_drafts_can_be_deleted(admin, org):
     draft = create_event(admin, org, publish=False)
     live = create_event(admin, org)
-    assert admin.delete(f"/api/events/{draft['id']}/").status_code == 204
-    assert admin.delete(f"/api/events/{live['id']}/").status_code == 400
+    assert admin.delete(f"/api/events/{draft['slug']}/").status_code == 204
+    assert admin.delete(f"/api/events/{live['slug']}/").status_code == 400
+
+
+def test_events_are_addressed_by_a_slug_that_survives_renaming(admin, org):
+    first = create_event(admin, org, title="React Workshop: Nairobi!")
+    second = create_event(admin, org, title="React Workshop: Nairobi!")
+    assert "id" not in first
+    assert first["slug"].startswith("react-workshop-nairobi-")
+    assert len(first["slug"]) == len("react-workshop-nairobi-") + 6
+    assert first["slug"] != second["slug"]
+
+    url = f"/api/events/{first['slug']}/"
+    assert admin.patch(url, {"title": "Renamed"}, format="json").json()["slug"] == first["slug"]
+    assert admin.get(f"/api/events/{Event.objects.get(slug=first['slug']).pk}/").status_code == 404
