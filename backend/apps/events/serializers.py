@@ -14,7 +14,7 @@ class MyRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Registration
         fields = [
-            "id", "status", "ticket_code", "checked_in_at", "certificate_available",
+            "id", "status", "ticket_code", "order_number", "checked_in_at", "certificate_available",
             "has_feedback", "created_at",
         ]
 

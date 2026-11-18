@@ -18,10 +18,14 @@ from django.core.mail import EmailMultiAlternatives
 from django.db import close_old_connections, transaction
 from django.utils import timezone
 
+from apps.events.models import Registration
+from apps.notifications import ticket
 from apps.notifications.models import OutboundEmail
 
 log = logging.getLogger(__name__)
 MAX_ATTEMPTS = 5
+# Emails that carry the PDF ticket.
+TICKET_KINDS = {"registered", "promoted"}
 
 
 def deliver(ids: list[int]) -> None:
@@ -67,6 +71,13 @@ def _message(email: OutboundEmail) -> EmailMultiAlternatives:
         image.add_header("Content-ID", "<ticket>")
         image.add_header("Content-Disposition", "inline", filename="ticket.png")
         message.attach(image)
+    if email.ticket_code and email.kind in TICKET_KINDS:
+        registration = (
+            Registration.objects.select_related("event__organization", "profile")
+            .filter(ticket_code=email.ticket_code).first()
+        )
+        if registration is not None:
+            message.attach(ticket.filename(registration), ticket.build(registration), "application/pdf")
     if email.calendar:
         method = email.calendar_method or "PUBLISH"
         message.attach("invite.ics", email.calendar, f"text/calendar; method={method}; charset=utf-8")

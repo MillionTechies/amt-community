@@ -135,6 +135,17 @@ export default function EventDetail() {
                       <QRCodeSVG value={mine.ticket_code} size={176} />
                     </div>
                     <p className="mt-2 text-sm text-stone-600">Your ticket. Show this code at the door.</p>
+                    <p className="font-mono text-xs text-stone-500">Order #{mine.order_number}</p>
+                    {e.delivery_mode !== 'online' && (
+                      <a
+                        href={`${import.meta.env.VITE_API_URL}/api/tickets/${mine.ticket_code}/ticket.pdf`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-block font-mono text-xs font-semibold uppercase tracking-wider text-brand-700 hover:underline"
+                      >
+                        Download ticket (PDF)
+                      </a>
+                    )}
                   </div>
                 )}
                 {mine.certificate_available && (

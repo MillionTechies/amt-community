@@ -15,7 +15,7 @@ from apps.events.views import ROLE as EVENT_ROLE
 from apps.integrations import calendar, service
 from apps.integrations.models import Connection, EventLink
 from apps.integrations.providers import PROVIDERS, ProviderError
-from apps.notifications import emails
+from apps.notifications import emails, ticket
 
 
 def _ics(event, *, with_link: bool) -> HttpResponse:
@@ -42,6 +42,17 @@ def ticket_calendar(request, ticket_code):
     if registration.event.status not in PUBLIC_STATUSES:
         raise Http404
     return _ics(registration.event, with_link=registration.status == Registration.Status.REGISTERED)
+
+
+def ticket_pdf(request, ticket_code):
+    """GET /api/tickets/<code>/ticket.pdf: the printable ticket. The code is the secret."""
+    registration = get_object_or_404(
+        Registration.objects.select_related("event__organization", "profile"),
+        ticket_code=ticket_code, status=Registration.Status.REGISTERED,
+    )
+    response = HttpResponse(ticket.build(registration), content_type="application/pdf")
+    response["Content-Disposition"] = f'inline; filename="{ticket.filename(registration)}"'
+    return response
 
 
 # --- connected accounts (Google, Microsoft, Zoom) -------------------------------------

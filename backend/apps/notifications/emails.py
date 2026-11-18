@@ -8,8 +8,9 @@
 - reminders a day and an hour before (queued by the worker)
 """
 
-from datetime import timedelta
-from urllib.parse import urlparse
+import json
+from datetime import UTC, timedelta
+from urllib.parse import quote, urlencode, urlparse
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
@@ -58,10 +59,10 @@ def _render(subject: str, **context) -> tuple[str, str]:
     context = {
         "subject": subject,
         "paragraphs": [],
-        "details": [],
         "changes": [],
         "community_url": settings.COMMUNITY_URL,
         "community_host": urlparse(settings.COMMUNITY_URL).netloc,
+        "year": timezone.now().year,
         **context,
     }
     return render_to_string("notifications/email.txt", context), render_to_string(
@@ -87,11 +88,106 @@ def _queue(kind, profile, subject, *, event=None, key=None, invite=None, ticket=
     return email.id
 
 
-def _event_details(event, *, with_link: bool):
-    details = [("When", when(event)), ("Where", where(event))]
-    if event.organization_id:
-        details.append(("Hosted by", event.organization.name))
-    return details
+def _utc(dt) -> str:
+    return dt.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+
+def add_to_calendar(event, registration=None) -> list[tuple[str, str]]:
+    """Links that open the event in Google, Outlook, Apple (iCal) and Yahoo calendars."""
+    attending = registration is not None and registration.status == Registration.Status.REGISTERED
+    details = calendar.describe(event, with_link=attending)
+    place = calendar.location(event, with_link=attending)
+    start, end = _utc(event.starts_at), _utc(event.ends_at)
+    ics = (
+        f"{settings.API_URL}/api/tickets/{registration.ticket_code}/calendar.ics"
+        if attending else f"{settings.API_URL}/api/events/{event.slug}/calendar.ics"
+    )
+    outlook = urlencode({
+        "path": "/calendar/action/compose", "rru": "addevent", "subject": event.title,
+        "startdt": event.starts_at.isoformat(), "enddt": event.ends_at.isoformat(),
+        "body": details, "location": place,
+    })
+    return [
+        ("Google", "https://calendar.google.com/calendar/render?" + urlencode(
+            {"action": "TEMPLATE", "text": event.title, "dates": f"{start}/{end}", "details": details, "location": place})),
+        ("Outlook", f"https://outlook.live.com/calendar/0/action/compose?{outlook}"),
+        ("iCal", ics),
+        ("Yahoo", "https://calendar.yahoo.com/?" + urlencode(
+            {"v": "60", "title": event.title, "st": start, "et": end, "desc": details, "in_loc": place})),
+    ]
+
+
+def share_links(event) -> list[tuple[str, str]]:
+    url = calendar.event_url(event)
+    text = f"Join me at {event.title}"
+    return [
+        ("LinkedIn", f"https://www.linkedin.com/sharing/share-offsite/?url={quote(url, safe='')}"),
+        ("X", "https://x.com/intent/post?" + urlencode({"text": text, "url": url})),
+        ("WhatsApp", "https://wa.me/?" + urlencode({"text": f"{text}: {url}"})),
+        ("Email", "mailto:?" + urlencode({"subject": event.title, "body": f"{text}: {url}"}, quote_via=quote)),
+    ]
+
+
+def _event_block(event, registration=None, *, about=True) -> dict:
+    """The 'Date & time / Address / your ticket / about this event' cards."""
+    attending = registration is not None and registration.status == Registration.Status.REGISTERED
+    in_person = event.delivery_mode != Event.Mode.ONLINE
+    start = event.starts_at.astimezone(LOCAL)
+    block = {
+        "show_event": True,
+        "org_name": event.organization.name,
+        "page_url": calendar.event_url(event),
+        "when": when(event),
+        "where": where(event),
+        "online_only": not in_person,
+        "map_url": f"https://www.google.com/maps/search/?api=1&query={quote(event.venue)}" if in_person and event.venue else "",
+        "add_to": add_to_calendar(event, registration),
+    }
+    if registration is not None:
+        block["order_number"] = registration.order_number
+    if attending and in_person:
+        block["ticket_url"] = f"{settings.API_URL}/api/tickets/{registration.ticket_code}/ticket.pdf"
+    if about:
+        block.update({
+            "about": {
+                "date": f"{start:%A, %B %-d, %Y}",
+                "title": event.title,
+                "kind": event.get_event_type_display(),
+                "excerpt": (event.summary or to_text(event.description))[:220].rstrip() + ("…" if len(event.summary or to_text(event.description)) > 220 else ""),
+            },
+            "share": share_links(event),
+        })
+        if registration is not None and registration.status != Registration.Status.CANCELLED:
+            block["cancel_url"] = calendar.event_url(event)
+    return block
+
+
+def _reservation(registration) -> str:
+    """schema.org markup, so mail apps can show the booking as a card."""
+    event = registration.event
+    location = (
+        {"@type": "VirtualLocation", "url": event.online_url or calendar.event_url(event)}
+        if event.delivery_mode == Event.Mode.ONLINE
+        else {"@type": "Place", "name": event.venue or "Venue to be confirmed", "address": event.venue or ""}
+    )
+    return json.dumps({
+        "@context": "http://schema.org",
+        "@type": "EventReservation",
+        "reservationNumber": registration.order_number,
+        "reservationStatus": "http://schema.org/ReservationConfirmed",
+        "underName": {"@type": "Person", "name": registration.profile.full_name or registration.profile.email},
+        "reservationFor": {
+            "@type": "Event",
+            "name": event.title,
+            "startDate": event.starts_at.isoformat(),
+            "endDate": event.ends_at.isoformat(),
+            "url": calendar.event_url(event),
+            "location": location,
+            "organizer": {"@type": "Organization", "name": event.organization.name},
+        },
+        "ticketToken": f"qrCode:{registration.ticket_code}",
+        "ticketNumber": registration.order_number,
+    }).replace("</", "<\\/")
 
 
 def _registration_email(registration, kind, subject, eyebrow, heading, paragraphs):
@@ -104,10 +200,11 @@ def _registration_email(registration, kind, subject, eyebrow, heading, paragraph
         ticket=str(registration.ticket_code) if attending and event.delivery_mode != Event.Mode.ONLINE else "",
         preheader=f"{when(event)}. {where(event)}.",
         eyebrow=eyebrow, heading=heading, paragraphs=paragraphs,
-        details=_event_details(event, with_link=attending),
+        booked_title=event.title if attending else "",
+        reservation_json=_reservation(registration) if attending else "",
         join_url=event.online_url if attending else "", join_label=join_label(event),
-        button_url=calendar.event_url(event), button_label="View event",
         calendar_note="The invite attached adds it to your calendar." if attending else "",
+        **_event_block(event, registration),
     )
 
 
@@ -121,8 +218,7 @@ def registration_changed(registration) -> None:
     if registration.status == Registration.Status.REGISTERED:
         email = _registration_email(
             registration, "registered", f"You're registered: {event.title}", "You're registered",
-            f"You're in, {name}",
-            [f"Your place at {event.title} is confirmed."],
+            f"Congrats, {name}!", [],
         )
     elif registration.status == Registration.Status.WAITLISTED:
         email = _registration_email(
@@ -140,8 +236,8 @@ def promoted(registration) -> None:
     event = registration.event
     email = _registration_email(
         registration, "promoted", f"A place opened up: you're registered for {event.title}",
-        "Off the waiting list", f"Good news, {_first_name(registration.profile)}",
-        [f"A place opened up at {event.title} and it is yours. You are now registered."],
+        "Off the waiting list", f"Good news, {_first_name(registration.profile)}!",
+        ["A place opened up and it is yours."],
     )
     deliver([email] if email else [])
 
@@ -165,6 +261,7 @@ def announcement(announcement) -> int:
             preheader=to_text(announcement.body)[:140],
             eyebrow=f"Announcement · {event.title}", heading=announcement.title,
             body_html=announcement.body, body_text=to_text(announcement.body),
+            org_name=event.organization.name, page_url=calendar.event_url(event),
             button_url=calendar.event_url(event), button_label="View event",
         )
         for r in _attendees(event)
@@ -219,9 +316,8 @@ def event_changed(event, before: dict) -> int:
             preheader="The details of an event you registered for have changed.",
             eyebrow="Event updated", heading=f"{event.title} has changed",
             paragraphs=["The organisers updated this event. Here is what is different:"],
-            changes=changes, details=_event_details(event, with_link=True),
+            changes=changes, **_event_block(event, r, about=False),
             join_url=event.online_url, join_label=join_label(event),
-            button_url=calendar.event_url(event), button_label="View event",
             calendar_note="The invite attached updates the event in your calendar.",
         )
         for r in _attendees(event)
@@ -244,6 +340,7 @@ def event_cancelled(event) -> int:
                 f"Sorry, {_first_name(r.profile)}. The organisers have cancelled {event.title}, which was planned for {when(event)}.",
                 "Your registration is closed. Keep an eye on Community for the next one.",
             ],
+            org_name=event.organization.name, page_url=calendar.event_url(event),
             button_url=f"{settings.COMMUNITY_URL}/events", button_label="See other events",
             calendar_note="The invite attached removes it from your calendar."
             if r.status == Registration.Status.REGISTERED else "",
@@ -288,9 +385,8 @@ def queue_reminders(now=None) -> int:
                         preheader=f"{when(event)}. {where(event)}.",
                         eyebrow=wording, heading=f"{event.title} {'is tomorrow' if kind == 'reminder_day' else 'starts in an hour'}",
                         paragraphs=[f"See you there, {_first_name(r.profile)}."],
-                        details=_event_details(event, with_link=True),
+                        **_event_block(event, r, about=False),
                         join_url=event.online_url, join_label=join_label(event),
-                        button_url=calendar.event_url(event), button_label="View event",
                     )
                 )
     ids = [i for i in ids if i]

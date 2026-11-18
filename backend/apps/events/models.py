@@ -102,6 +102,16 @@ class Registration(models.Model):
         return f"{self.profile} at {self.event}"
 
     @property
+    def order_number(self) -> str:
+        """A short reference for emails and the PDF ticket, like AMT-7K3Q9X2M."""
+        alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"  # no 0/O or 1/I to misread
+        number, chars = self.ticket_code.int, []
+        for _ in range(8):
+            number, digit = divmod(number, len(alphabet))
+            chars.append(alphabet[digit])
+        return "AMT-" + "".join(chars)
+
+    @property
     def certificate_available(self) -> bool:
         return self.checked_in_at is not None and (
             self.event.status == Event.Status.COMPLETED or self.event.ends_at <= timezone.now()

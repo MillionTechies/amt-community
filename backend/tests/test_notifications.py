@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.core import mail
 from django.utils import timezone
 
-from apps.events.models import Event
+from apps.events.models import Event, Registration
 from apps.notifications import emails, sender
 from apps.notifications.models import OutboundEmail
 from tests.conftest import in_days, sign_in
@@ -26,10 +26,17 @@ def test_registering_sends_a_confirmation_with_ticket_and_invite(admin, bob, org
     assert message.to == ["bob@example.com"]
     assert message.subject == "You're registered: Intro to APIs"
     html = message.alternatives[0][0]
-    assert "You're in, Bob" in message.body and "cid:ticket" in html and "meet.example.com/apis" in html
+    registration = Registration.objects.get()
+    assert "Congrats, Bob!" in message.body and f"Order #{registration.order_number}" in message.body
+    assert "cid:ticket" in html and "meet.example.com/apis" in html
+    assert "Show this at check-in" in html and "ADMIT ONE" in html and '"@type": "EventReservation"' in html
+    assert f"/api/tickets/{registration.ticket_code}/ticket.pdf" in html
+    assert "calendar.google.com" in html and "maps/search" in html and "linkedin.com" in html
     name, content, kind = invite(message)
     assert kind.startswith("text/calendar; method=REQUEST") and "ATTENDEE" in content
     assert any(getattr(a, "get_content_type", lambda: "")() == "image/png" for a in message.attachments)
+    pdf = next(a for a in message.attachments if isinstance(a, tuple) and a[0].endswith(".pdf"))
+    assert pdf[0] == f"{registration.order_number}.pdf" and pdf[1].startswith(b"%PDF")
     assert OutboundEmail.objects.get().status == OutboundEmail.Status.SENT
 
 
@@ -123,3 +130,25 @@ class BrokenBackend:
 
     def send_messages(self, messages):
         raise ConnectionRefusedError("connection refused")
+
+
+def test_tickets_download_as_pdf(admin, bob, org):
+    event = create_event(admin, org)
+    register(bob, event)
+    registration = Registration.objects.get()
+    response = bob.get(f"/api/tickets/{registration.ticket_code}/ticket.pdf")
+    assert response.status_code == 200 and response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+    assert registration.order_number.startswith("AMT-") and len(registration.order_number) == 12
+
+    bob.delete(f"/api/events/{event['slug']}/register/")
+    assert bob.get(f"/api/tickets/{registration.ticket_code}/ticket.pdf").status_code == 404
+
+
+def test_online_events_have_no_door_ticket(admin, bob, org):
+    event = create_event(admin, org, delivery_mode="online", venue="")
+    register(bob, event)
+    message = mail.outbox[0]
+    assert "cid:ticket" not in message.alternatives[0][0]
+    assert not any(isinstance(a, tuple) and a[0].endswith(".pdf") for a in message.attachments)
+    assert "Join online" in message.alternatives[0][0] or "Join on" in message.alternatives[0][0]

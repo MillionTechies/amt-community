@@ -13,3 +13,4 @@ icalendar>=6
 segno>=1.6
 httpx>=0.27
 cryptography>=42
+reportlab>=4.2

@@ -128,6 +128,8 @@ export interface MyRegistration {
   id: number
   status: 'registered' | 'waitlisted' | 'cancelled'
   ticket_code: string
+  /** Short reference printed on the ticket, like AMT-7K3Q9X2M. */
+  order_number: string
   checked_in_at: string | null
   certificate_available: boolean
   has_feedback: boolean

@@ -5,6 +5,7 @@ from apps.integrations import views
 urlpatterns = [
     path("events/<slug:slug>/calendar.ics", views.event_calendar),
     path("tickets/<uuid:ticket_code>/calendar.ics", views.ticket_calendar),
+    path("tickets/<uuid:ticket_code>/ticket.pdf", views.ticket_pdf),
     path("events/<slug:slug>/links/", views.EventLinksView.as_view()),
     path("events/<slug:slug>/links/<int:link_id>/", views.EventLinkView.as_view()),
     path("integrations/", views.IntegrationsView.as_view()),
