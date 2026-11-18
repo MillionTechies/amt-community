@@ -3,11 +3,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { api } from '../api'
-import type { RoleAssignment } from '../api'
+import type { MyOrganization, RoleAssignment } from '../api'
+import { DataTable } from '../components/DataTable'
 import { Icon } from '../components/icons'
 import { Badge, Button, Empty, ErrorNote, Field, Input, Notice, Select, Spinner, label } from '../components/ui'
 import { useAct } from '../hooks'
-import { ConsoleHeader, FilterChips, Panel, table, useAccess } from './shared'
+import { ConsoleHeader, FilterChips, Panel, useAccess } from './shared'
 
 const ROLES = [
   { id: 'event_organiser', label: 'Event organiser', detail: 'Creates and runs events: registrations, check-in, announcements.' },
@@ -71,34 +72,37 @@ export function Team() {
             <div className="px-5 empty:hidden"><ErrorNote error={revoke.error ?? roles.error} /></div>
             {roles.isLoading ? (
               <Spinner />
-            ) : rows.length ? (
-              <div className={table.wrap}>
-                <table className={table.table}>
-                  <thead className={table.head}>
-                    <tr>
-                      <th className={table.th}>Name</th>
-                      <th className={table.th}>Role</th>
-                      <th className={table.th}><span className="sr-only">Remove</span></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr key={r.id} className={table.row}>
-                        <td className={table.td}>
-                          <p className="font-semibold">{r.person.name}</p>
-                          <p className="text-xs text-stone-500">{r.email}</p>
-                        </td>
-                        <td className={table.td}><Badge tone="blue">{label(r.role)}</Badge></td>
-                        <td className={`${table.td} text-right`}>
-                          <Button variant="ghost" onClick={() => window.confirm(`Remove ${r.person.name} as ${label(r.role).toLowerCase()}?`) && revoke.mutate(r.id)}>Remove</Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             ) : (
-              <p className="px-5 py-10 text-center text-stone-600">Nobody has been given a role yet.</p>
+              <DataTable
+                rows={rows}
+                columns={[
+                  {
+                    title: 'Name',
+                    value: (r: RoleAssignment) => `${r.person.name} ${r.email}`,
+                    cell: (r: RoleAssignment) => (
+                      <>
+                        <p className="font-semibold">{r.person.name}</p>
+                        <p className="text-xs text-stone-500">{r.email}</p>
+                      </>
+                    ),
+                    priority: 1,
+                  },
+                  { title: 'Role', value: (r: RoleAssignment) => label(r.role), cell: (r: RoleAssignment) => <Badge tone="blue">{label(r.role)}</Badge>, priority: 2 },
+                  {
+                    title: '',
+                    value: () => '',
+                    sortable: false,
+                    align: 'right',
+                    priority: 3,
+                    cell: (r: RoleAssignment) => (
+                      <Button variant="ghost" onClick={() => window.confirm(`Remove ${r.person.name} as ${label(r.role).toLowerCase()}?`) && revoke.mutate(r.id)}>Remove</Button>
+                    ),
+                  },
+                ]}
+                order={[0, 'asc']}
+                searchPlaceholder="Search people"
+                empty="Nobody has been given a role yet."
+              />
             )}
           </div>
         </div>
@@ -146,26 +150,16 @@ export function Platform() {
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <Panel title={`Organisations (${organizations.length})`} flush>
-            <div className={table.wrap}>
-              <table className={table.table}>
-                <thead className={table.head}>
-                  <tr>
-                    <th className={table.th}>Name</th>
-                    <th className={table.th}>Alias</th>
-                    <th className={table.th}>Your roles</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {organizations.map((o) => (
-                    <tr key={o.id} className={table.row}>
-                      <td className={`${table.td} font-semibold`}>{o.name}</td>
-                      <td className={`${table.td} font-mono text-xs text-stone-600`}>{o.alias}</td>
-                      <td className={table.td}>{o.roles.length ? o.roles.map(label).join(', ') : <span className="text-stone-500">Admin</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              rows={organizations}
+              columns={[
+                { title: 'Name', value: (o: MyOrganization) => o.name, cell: (o: MyOrganization) => <span className="font-semibold">{o.name}</span>, priority: 1 },
+                { title: 'Alias', value: (o: MyOrganization) => o.alias, cell: (o: MyOrganization) => <span className="font-mono text-xs text-stone-600">{o.alias}</span>, priority: 2 },
+                { title: 'Your roles', value: (o: MyOrganization) => (o.roles.length ? o.roles.map(label).join(', ') : 'Admin'), priority: 3 },
+              ]}
+              order={[0, 'asc']}
+              searchPlaceholder="Search organisations"
+            />
           </Panel>
         </div>
         <Panel title="Refresh from Keycloak">

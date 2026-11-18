@@ -12,6 +12,9 @@
   "dependencies": {
     "@tanstack/react-query": "^5.107.1",
     "@yudiel/react-qr-scanner": "^2.6.0",
+    "datatables.net-dt": "^3.1.5",
+    "datatables.net-react": "^2.0.1",
+    "datatables.net-responsive-dt": "^4.1.1",
     "oidc-client-ts": "^3.5.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.3.1",

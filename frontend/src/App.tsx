@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from 'react-oidc-context'
 import { Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -10,22 +10,14 @@ import { LogoTile } from './components/brand'
 import { Icon } from './components/icons'
 import { Button, Empty, Spinner } from './components/ui'
 import { useMe, useSignIn, useSignUp } from './hooks'
-import EventWorkspace, { EventCheckIn, EventContent, EventFeedback, EventOverview, EventRegistrations } from './console/EventWorkspace'
-import HackathonWorkspace, {
-  HackathonJudges, HackathonLeaderboard, HackathonOverview, HackathonSetup, HackathonTeams,
-} from './console/HackathonWorkspace'
-import ConsoleLayout from './console/Layout'
-import { EventsList, HackathonsList } from './console/Lists'
-import Overview from './console/Overview'
-import { Platform, Team } from './console/Team'
 import { useAccess } from './console/shared'
+
+const ConsoleApp = lazy(() => import('./console/ConsoleApp'))
 import CertificatePage from './pages/Certificate'
 import Dashboard from './pages/Dashboard'
 import EventDetail from './pages/EventDetail'
-import EventForm from './pages/EventForm'
 import Events from './pages/Events'
 import HackathonDetail from './pages/HackathonDetail'
-import HackathonForm from './pages/HackathonForm'
 import Hackathons from './pages/Hackathons'
 import Home from './pages/Home'
 import Judging from './pages/Judging'
@@ -73,7 +65,7 @@ function Header() {
         <Link to="/" className="flex items-center gap-2 font-bold">
           <LogoTile className="h-8 w-8" />
           <span className="hidden sm:inline">A Million Techies</span>
-          <span className="text-brand-700">Community</span>
+          <span className="caret text-brand-700">Community</span>
         </Link>
         <nav className="ml-4 hidden items-center gap-1 md:flex">{links}</nav>
         <div className="ml-auto flex items-center gap-2">
@@ -193,33 +185,8 @@ export default function App() {
     <>
     <SignInLanding />
     <Routes>
-      {/* The organiser console has its own sidebar layout. */}
-      <Route path="/manage" element={<ConsoleLayout />}>
-        <Route index element={<Overview />} />
-        <Route path="events" element={<EventsList />} />
-        <Route path="events/new" element={<EventForm />} />
-        <Route path="events/:slug" element={<EventWorkspace />}>
-          <Route index element={<EventOverview />} />
-          <Route path="registrations" element={<EventRegistrations />} />
-          <Route path="check-in" element={<EventCheckIn />} />
-          <Route path="content" element={<EventContent />} />
-          <Route path="feedback" element={<EventFeedback />} />
-          <Route path="edit" element={<EventForm />} />
-        </Route>
-        <Route path="hackathons" element={<HackathonsList />} />
-        <Route path="hackathons/new" element={<HackathonForm />} />
-        <Route path="hackathons/:slug" element={<HackathonWorkspace />}>
-          <Route index element={<HackathonOverview />} />
-          <Route path="setup" element={<HackathonSetup />} />
-          <Route path="teams" element={<HackathonTeams />} />
-          <Route path="judges" element={<HackathonJudges />} />
-          <Route path="leaderboard" element={<HackathonLeaderboard />} />
-          <Route path="edit" element={<HackathonForm />} />
-        </Route>
-        <Route path="team" element={<Team />} />
-        <Route path="platform" element={<Platform />} />
-        <Route path="*" element={<Empty>This page does not exist. <Link className="font-semibold text-brand-700" to="/manage">Back to the console</Link></Empty>} />
-      </Route>
+      {/* The organiser console has its own sidebar layout, loaded only when opened. */}
+      <Route path="/manage/*" element={<Suspense fallback={<Spinner />}><ConsoleApp /></Suspense>} />
 
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Home />} />

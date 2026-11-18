@@ -77,7 +77,7 @@ function Sidebar({ onNavigate }: { onNavigate: () => void }) {
         <LogoTile className="h-9 w-9" />
         <span className="leading-tight">
           <span className="block text-sm font-bold text-white">A Million Techies</span>
-          <span className="block text-xs text-brand-300">Organiser console</span>
+          <span className="caret block font-mono text-[11px] uppercase tracking-wider text-brand-300">Console</span>
         </span>
       </Link>
 
@@ -90,7 +90,7 @@ function Sidebar({ onNavigate }: { onNavigate: () => void }) {
 
         {item && (
           <div>
-            <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+            <p className="mb-2 px-3 font-mono text-[11px] font-semibold uppercase tracking-wider text-stone-500 before:content-['//_']">
               {item.kind === 'event' ? 'This event' : 'This hackathon'}
             </p>
             <div className="mb-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5">
@@ -110,7 +110,7 @@ function Sidebar({ onNavigate }: { onNavigate: () => void }) {
 
         {(access.team || access.platform) && (
           <div>
-            <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-stone-500">Organisation</p>
+            <p className="mb-2 px-3 font-mono text-[11px] font-semibold uppercase tracking-wider text-stone-500 before:content-['//_']">Organisation</p>
             <div className="space-y-0.5">
               {access.team && <NavLink to="/manage/team" className={navItem}><NavIcon name="users" />Team and roles</NavLink>}
               {access.platform && <NavLink to="/manage/platform" className={navItem}><NavIcon name="shield" />Platform</NavLink>}

@@ -19,8 +19,10 @@
   --amt-stone-500: #78716c;
   --amt-stone-600: #57534e;
   --amt-red: #b42318;
-  --amt-display: "Bricolage Grotesque", "Inter", ui-sans-serif, system-ui, sans-serif;
-  --amt-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* House style: Space Grotesk to read, JetBrains Mono for buttons and labels. */
+  --amt-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --amt-sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --amt-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* PatternFly tokens, so every built-in page picks up the brand. */
   --pf-v5-global--primary-color--100: var(--amt-brand-600);
@@ -429,11 +431,32 @@ html.login-pf,
   accent-color: var(--amt-brand-600);
 }
 
-/* Buttons: ink pill for the main action, like the app's primary CTA. */
+/* Buttons: squared, mono and uppercase, as in the app. The main action carries a ">" prompt. */
 .amt .pf-v5-c-button {
-  --pf-v5-c-button--BorderRadius: 999px;
+  --pf-v5-c-button--BorderRadius: 0.375rem;
   --pf-v5-c-button--FontWeight: 600;
+  font-family: var(--amt-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.amt .pf-v5-c-button.pf-m-primary::before {
+  content: "> ";
+  opacity: 0.7;
+}
+
+.amt .pf-v5-c-button.pf-m-link,
+.amt .pf-v5-c-button.pf-m-control {
   font-family: var(--amt-sans);
+  font-size: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.amt .pf-v5-c-button.pf-m-link::before,
+.amt .pf-v5-c-button.pf-m-control::before {
+  content: none;
 }
 
 .amt .pf-v5-c-button.pf-m-primary {

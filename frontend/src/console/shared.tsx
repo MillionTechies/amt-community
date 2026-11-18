@@ -42,7 +42,7 @@ export function ConsoleHeader({
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-[1.75rem]">{title}</h1>
         {subtitle && <div className="mt-1 text-sm text-stone-600">{subtitle}</div>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -67,12 +67,12 @@ export function Kpi({
   const body = (
     <>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-stone-600">{label}</span>
+        <span className="font-mono text-[0.6875rem] font-semibold uppercase tracking-wider text-stone-500">{label}</span>
         <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-brand-700">
           <Icon name={icon} className="h-4 w-4" />
         </span>
       </div>
-      <div className="mt-3 text-3xl font-bold tabular-nums tracking-tight">{value}</div>
+      <div className="mt-3 font-mono text-3xl font-bold tabular-nums tracking-tight">{value}</div>
       {note && <div className="mt-1 text-xs text-stone-500">{note}</div>}
     </>
   )
@@ -123,21 +123,12 @@ export function Panel({
   return (
     <section className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 px-5 py-3">
-        <h2 className="font-semibold">{title}</h2>
+        <h2 className="eyebrow text-stone-700">{title}</h2>
         {action}
       </div>
       <div className={flush ? '' : 'p-5'}>{children}</div>
     </section>
   )
-}
-
-export const table = {
-  wrap: 'overflow-x-auto',
-  table: 'w-full min-w-[40rem] text-left text-sm',
-  head: 'border-b border-stone-200 bg-stone-50 text-xs font-semibold uppercase tracking-wide text-stone-500',
-  th: 'px-5 py-2.5 font-semibold',
-  row: 'border-b border-stone-100 last:border-0 hover:bg-stone-50',
-  td: 'px-5 py-3 align-middle',
 }
 
 /** Status filter chips with counts, for list pages. */
@@ -159,7 +150,7 @@ export function FilterChips<T extends string>({
           role="tab"
           aria-selected={o.id === current}
           onClick={() => onChange(o.id)}
-          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${
+          className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-xs font-semibold uppercase tracking-wider transition ${
             o.id === current
               ? 'border-ink bg-ink text-white'
               : 'border-stone-300 bg-white text-stone-700 hover:border-stone-400'

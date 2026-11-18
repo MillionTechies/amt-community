@@ -7,12 +7,14 @@ import { Link, Outlet, useNavigate, useOutletContext, useParams } from 'react-ro
 import { api } from '../api'
 import type { Hackathon, Judge, LeaderboardRow, Team } from '../api'
 import { Leaderboard } from '../components/hackathon'
+import { DataTable, downloadCsv } from '../components/DataTable'
+import type { Col } from '../components/DataTable'
 import { Icon } from '../components/icons'
 import {
   Badge, Button, Empty, ErrorNote, Field, Input, Notice, Spinner, StatusBadge, formatDate, formatDateTime,
 } from '../components/ui'
 import { useAct } from '../hooks'
-import { ConsoleHeader, Kpi, Meter, Panel, relative, table } from './shared'
+import { ConsoleHeader, Kpi, Meter, Panel, relative } from './shared'
 
 type Ctx = { hackathon: Hackathon }
 const useHackathon = () => useOutletContext<Ctx>().hackathon
@@ -311,47 +313,51 @@ export function HackathonSetup() {
 export function HackathonTeams() {
   const h = useHackathon()
   const teams = useQuery({ queryKey: ['hackathon', h.slug, 'teams'], queryFn: () => api<Team[]>(`/hackathons/${h.slug}/teams/`) })
-  const [search, setSearch] = useState('')
   if (!teams.data) return <Spinner />
-  if (!teams.data.length) return <Empty>No teams have registered yet.</Empty>
-  const term = search.toLowerCase()
-  const rows = teams.data.filter((t) => t.name.toLowerCase().includes(term) || t.members.some((m) => m.person.name.toLowerCase().includes(term)))
   const submitted = teams.data.filter((t) => t.has_submission).length
+  const columns: Col<Team>[] = [
+    { title: 'Team', value: (t) => t.name, cell: (t) => <span className="font-semibold">{t.name}</span>, priority: 1 },
+    {
+      title: 'Members',
+      value: (t) => t.members.map((m) => m.person.name).join(', '),
+      cell: (t) => <span className="text-stone-600">{t.members.map((m) => (m.is_leader ? `${m.person.name} (lead)` : m.person.name)).join(', ')}</span>,
+      priority: 3,
+    },
+    { title: 'Size', value: (t) => t.members.length, cell: (t) => <span className="font-mono tabular-nums">{t.members.length}</span>, align: 'right', priority: 4 },
+    {
+      title: 'Project',
+      value: (t) => (t.has_submission ? 'submitted' : 'not yet'),
+      cell: (t) => <Badge tone={t.has_submission ? 'green' : 'grey'}>{t.has_submission ? 'Submitted' : 'Not yet'}</Badge>,
+      priority: 2,
+    },
+  ]
   return (
-    <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-stone-200 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-stone-600"><span className="font-semibold text-ink">{teams.data.length} teams</span>, {submitted} submitted a project</p>
-        <label className="relative block sm:w-64">
-          <span className="sr-only">Search teams</span>
-          <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-          <Input type="search" placeholder="Team or member" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
-        </label>
-      </div>
-      <div className={table.wrap}>
-        <table className={table.table}>
-          <thead className={table.head}>
-            <tr>
-              <th className={table.th}>Team</th>
-              <th className={table.th}>Members</th>
-              <th className={`${table.th} text-right`}>Size</th>
-              <th className={table.th}>Project</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((t) => (
-              <tr key={t.id} className={table.row}>
-                <td className={`${table.td} font-semibold`}>{t.name}</td>
-                <td className={`${table.td} text-stone-600`}>
-                  {t.members.map((m) => (m.is_leader ? `${m.person.name} (lead)` : m.person.name)).join(', ')}
-                </td>
-                <td className={`${table.td} text-right tabular-nums`}>{t.members.length}</td>
-                <td className={table.td}><Badge tone={t.has_submission ? 'green' : 'grey'}>{t.has_submission ? 'Submitted' : 'Not yet'}</Badge></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!rows.length && <p className="px-5 py-8 text-center text-stone-600">Nobody matches.</p>}
-      </div>
+    <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+      <DataTable
+        rows={teams.data}
+        columns={columns}
+        order={[0, 'asc']}
+        searchPlaceholder="Team or member"
+        empty="No teams have registered yet."
+        toolbar={
+          <>
+            <p className="text-sm text-stone-600"><span className="font-semibold text-ink">{teams.data.length} teams</span>, {submitted} submitted a project</p>
+            <Button
+              variant="secondary"
+              disabled={!teams.data.length}
+              onClick={() =>
+                downloadCsv(
+                  `${h.slug}-teams.csv`,
+                  ['Team', 'Members', 'Size', 'Submitted'],
+                  teams.data.map((t) => [t.name, t.members.map((m) => m.person.name).join('; '), t.members.length, t.has_submission ? 'yes' : 'no']),
+                )
+              }
+            >
+              Export CSV
+            </Button>
+          </>
+        }
+      />
     </div>
   )
 }
@@ -367,42 +373,53 @@ export function HackathonJudges() {
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="lg:col-span-2">
-        <Panel title={`Judges${judges.data ? ` (${judges.data.length})` : ''}`} flush>
-          {judges.data?.length ? (
-            <div className={table.wrap}>
-              <table className={table.table}>
-                <thead className={table.head}>
-                  <tr>
-                    <th className={table.th}>Judge</th>
-                    <th className={table.th}>Projects scored</th>
-                    <th className={table.th}><span className="sr-only">Remove</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {judges.data.map((j) => (
-                    <tr key={j.id} className={table.row}>
-                      <td className={table.td}>
-                        <p className="font-semibold">{j.person.name}</p>
-                        <p className="text-xs text-stone-500">{j.email}</p>
-                      </td>
-                      <td className={table.td}>
-                        <div className="w-44">
-                          <div className="mb-1 text-xs tabular-nums text-stone-600">{j.evaluations} of {h.submission_count}</div>
-                          <Meter value={j.evaluations} max={Math.max(1, h.submission_count)} label={`${j.person.name}: projects scored`} />
-                        </div>
-                      </td>
-                      <td className={`${table.td} text-right`}>
-                        <Button variant="ghost" onClick={() => window.confirm(`Remove ${j.person.name}? Their scores are deleted too.`) && remove.mutate(j.id)}>Remove</Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+          {judges.data ? (
+            <DataTable
+              rows={judges.data}
+              columns={[
+                {
+                  title: 'Judge',
+                  value: (j: Judge) => `${j.person.name} ${j.email}`,
+                  cell: (j: Judge) => (
+                    <>
+                      <p className="font-semibold">{j.person.name}</p>
+                      <p className="text-xs text-stone-500">{j.email}</p>
+                    </>
+                  ),
+                  priority: 1,
+                },
+                {
+                  title: 'Projects scored',
+                  value: (j: Judge) => j.evaluations,
+                  cell: (j: Judge) => (
+                    <div className="w-44">
+                      <div className="mb-1 font-mono text-xs tabular-nums text-stone-600">{j.evaluations}/{h.submission_count}</div>
+                      <Meter value={j.evaluations} max={Math.max(1, h.submission_count)} label={`${j.person.name}: projects scored`} />
+                    </div>
+                  ),
+                  priority: 2,
+                },
+                {
+                  title: '',
+                  value: () => '',
+                  sortable: false,
+                  align: 'right',
+                  priority: 3,
+                  cell: (j: Judge) => (
+                    <Button variant="ghost" onClick={() => window.confirm(`Remove ${j.person.name}? Their scores are deleted too.`) && remove.mutate(j.id)}>Remove</Button>
+                  ),
+                },
+              ]}
+              order={[0, 'asc']}
+              searchPlaceholder="Search judges"
+              empty="No judges yet. Every judge scores every project."
+              toolbar={<p className="eyebrow text-stone-700">Judges ({judges.data.length})</p>}
+            />
           ) : (
-            judges.data && <p className="px-5 py-10 text-center text-stone-600">No judges yet. Every judge scores every project.</p>
+            <Spinner />
           )}
-        </Panel>
+        </div>
       </div>
       <Panel title="Invite a judge">
         <form

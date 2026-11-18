@@ -1,104 +1,39 @@
-/** The console's events and hackathons tables, with status filters, search and paging. */
-import { useQueries } from '@tanstack/react-query'
-import { useState } from 'react'
-import type { ReactNode } from 'react'
+/** The console's events and hackathons tables: status filters with counts, then a DataTable. */
+import { useQuery } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { api } from '../api'
 import type { CommunityEvent, Hackathon, Paginated } from '../api'
+import { DataTable, downloadCsv } from '../components/DataTable'
+import type { Col } from '../components/DataTable'
 import { Icon } from '../components/icons'
-import { Button, ErrorNote, Input, LinkButton, Spinner, StatusBadge, formatDate, label } from '../components/ui'
+import { Button, ErrorNote, LinkButton, Spinner, StatusBadge, formatDate, label } from '../components/ui'
 import { EVENT_TYPE_LABELS } from '../pages/Events'
-import { ConsoleHeader, FilterChips, Meter, table, useAccess } from './shared'
+import { ConsoleHeader, FilterChips, Meter, useAccess } from './shared'
 
-const PAGE_SIZE = 24
-
-/** One query per filter so every chip shows its count; the selected one also pages and searches. */
-function useFiltered<T, F extends string>(base: string, filters: Record<F, string>, current: F, search: string, page: number) {
-  const ids = Object.keys(filters) as F[]
-  const results = useQueries({
-    queries: ids.map((id) => {
-      const params = new URLSearchParams(filters[id])
-      if (id === current) {
-        if (search) params.set('search', search)
-        params.set('page', String(page))
-      }
-      const path = `${base}?${params}`
-      return { queryKey: ['console', path], queryFn: () => api<Paginated<T>>(path) }
-    }),
-  })
-  const counts = Object.fromEntries(ids.map((id, i) => [id, results[i].data?.count])) as Record<F, number | undefined>
-  return { selected: results[ids.indexOf(current)], counts }
+/** Every page of a list endpoint. The managed sets are small enough to sort and search here. */
+async function fetchAll<T>(path: string): Promise<T[]> {
+  const rows: T[] = []
+  for (let page = 1; ; page++) {
+    const data = await api<Paginated<T>>(`${path}${path.includes('?') ? '&' : '?'}page=${page}`)
+    rows.push(...data.results)
+    if (!data.next) return rows
+  }
 }
 
-function ListShell({
-  title,
-  subtitle,
-  create,
-  chips,
-  search,
-  onSearch,
-  children,
-  page,
-  count,
-  onPage,
-}: {
-  title: string
-  subtitle: string
-  create?: ReactNode
-  chips: ReactNode
-  search: string
-  onSearch: (value: string) => void
-  children: ReactNode
-  page: number
-  count: number
-  onPage: (page: number) => void
-}) {
-  const pages = Math.max(1, Math.ceil(count / PAGE_SIZE))
-  return (
-    <>
-      <ConsoleHeader title={title} subtitle={subtitle} actions={create} />
-      <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-stone-200 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
-          {chips}
-          <label className="relative block lg:w-72">
-            <span className="sr-only">Search</span>
-            <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-            <Input type="search" placeholder="Search by title" value={search} onChange={(e) => onSearch(e.target.value)} className="pl-9" />
-          </label>
-        </div>
-        {children}
-        {pages > 1 && (
-          <div className="flex items-center justify-between border-t border-stone-200 px-5 py-3 text-sm text-stone-600">
-            <span>Page {page} of {pages}</span>
-            <div className="flex gap-2">
-              <Button variant="secondary" disabled={page <= 1} onClick={() => onPage(page - 1)}>Previous</Button>
-              <Button variant="secondary" disabled={page >= pages} onClick={() => onPage(page + 1)}>Next</Button>
-            </div>
-          </div>
-        )}
-      </div>
-    </>
-  )
-}
-
-function EmptyRows({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex flex-col items-center px-5 py-14 text-center text-stone-600">
-      <span className="mb-3 grid h-11 w-11 place-items-center rounded-full bg-stone-100 text-stone-500"><Icon name="inbox" /></span>
-      {children}
-    </div>
-  )
+function useManaged<T>(kind: 'events' | 'hackathons') {
+  return useQuery({ queryKey: ['console', kind, 'all'], queryFn: () => fetchAll<T>(`/${kind}/?scope=managed`) })
 }
 
 // --- events --------------------------------------------------------------------
 
 const EVENT_FILTERS = {
-  upcoming: 'scope=managed&when=upcoming',
-  draft: 'scope=managed&status=draft',
-  past: 'scope=managed&when=past',
-  cancelled: 'scope=managed&status=cancelled',
-  all: 'scope=managed&ordering=-starts_at',
+  upcoming: (e: CommunityEvent) => e.status !== 'cancelled' && new Date(e.ends_at).getTime() >= Date.now(),
+  draft: (e: CommunityEvent) => e.status === 'draft',
+  past: (e: CommunityEvent) => e.status !== 'cancelled' && new Date(e.ends_at).getTime() < Date.now(),
+  cancelled: (e: CommunityEvent) => e.status === 'cancelled',
+  all: () => true,
 }
 type EventFilter = keyof typeof EVENT_FILTERS
 
@@ -106,97 +41,99 @@ export function EventsList() {
   const access = useAccess()
   const navigate = useNavigate()
   const [filter, setFilter] = useState<EventFilter>('upcoming')
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
-  const { selected, counts } = useFiltered<CommunityEvent, EventFilter>('/events/', EVENT_FILTERS, filter, search, page)
-  const rows = selected.data?.results ?? []
+  const events = useManaged<CommunityEvent>('events')
+  const all = useMemo(() => events.data ?? [], [events.data])
+  const rows = useMemo(() => all.filter(EVENT_FILTERS[filter]), [all, filter])
+  const count = (f: EventFilter) => all.filter(EVENT_FILTERS[f]).length
+
+  const columns: Col<CommunityEvent>[] = [
+    {
+      title: 'Event',
+      value: (e) => `${e.title} ${e.organization.name} ${e.venue}`,
+      cell: (e) => (
+        <>
+          <p className="font-semibold">{e.title}</p>
+          <p className="text-xs text-stone-500">{e.organization.name} · {label(e.delivery_mode)}</p>
+        </>
+      ),
+      priority: 1,
+    },
+    { title: 'Date', value: (e) => e.starts_at, cell: (e) => <span className="whitespace-nowrap font-mono text-xs">{formatDate(e.starts_at)}</span>, priority: 2 },
+    { title: 'Type', value: (e) => EVENT_TYPE_LABELS[e.event_type] ?? label(e.event_type), priority: 5 },
+    { title: 'Status', value: (e) => e.status, cell: (e) => <StatusBadge status={e.status} />, priority: 3 },
+    {
+      title: 'Registrations',
+      value: (e) => e.registered_count,
+      cell: (e) =>
+        e.capacity ? (
+          <div className="w-32">
+            <div className="mb-1 font-mono text-xs tabular-nums text-stone-600">{e.registered_count}/{e.capacity}</div>
+            <Meter value={e.registered_count} max={e.capacity} label={`${e.title}: places taken`} warn />
+          </div>
+        ) : (
+          <span className="font-mono tabular-nums">{e.registered_count}</span>
+        ),
+      priority: 4,
+    },
+  ]
+
+  const exportCsv = () =>
+    downloadCsv(
+      'events.csv',
+      ['Title', 'Organisation', 'Starts', 'Ends', 'Type', 'Format', 'Status', 'Registered', 'Places', 'Address'],
+      rows.map((e) => [e.title, e.organization.name, e.starts_at, e.ends_at, e.event_type, e.delivery_mode, e.status, e.registered_count, e.capacity, `${location.origin}/events/${e.slug}`]),
+    )
 
   return (
-    <ListShell
-      title="Events"
-      subtitle="Every event in the organisations you run."
-      create={access.events && <LinkButton to="/manage/events/new"><Icon name="plus" className="h-4 w-4" />New event</LinkButton>}
-      chips={
-        <FilterChips
-          current={filter}
-          onChange={(f) => { setFilter(f); setPage(1) }}
-          options={[
-            { id: 'upcoming', label: 'Upcoming', count: counts.upcoming },
-            { id: 'draft', label: 'Drafts', count: counts.draft },
-            { id: 'past', label: 'Past', count: counts.past },
-            { id: 'cancelled', label: 'Cancelled', count: counts.cancelled },
-            { id: 'all', label: 'All', count: counts.all },
-          ]}
-        />
-      }
-      search={search}
-      onSearch={(v) => { setSearch(v); setPage(1) }}
-      page={page}
-      count={selected.data?.count ?? 0}
-      onPage={setPage}
-    >
-      <ErrorNote error={selected.error} />
-      {selected.isLoading ? (
-        <Spinner />
-      ) : rows.length ? (
-        <div className={table.wrap}>
-          <table className={table.table}>
-            <thead className={table.head}>
-              <tr>
-                <th className={table.th}>Event</th>
-                <th className={table.th}>Date</th>
-                <th className={table.th}>Type</th>
-                <th className={table.th}>Status</th>
-                <th className={table.th}>Registrations</th>
-                <th className={table.th}><span className="sr-only">Open</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((e) => (
-                <tr key={e.slug} className={`${table.row} cursor-pointer`} onClick={() => navigate(`/manage/events/${e.slug}`)}>
-                  <td className={table.td}>
-                    <p className="font-semibold">{e.title}</p>
-                    <p className="text-xs text-stone-500">{e.organization.name} · {label(e.delivery_mode)}</p>
-                  </td>
-                  <td className={`${table.td} whitespace-nowrap`}>{formatDate(e.starts_at)}</td>
-                  <td className={table.td}>{EVENT_TYPE_LABELS[e.event_type] ?? label(e.event_type)}</td>
-                  <td className={table.td}><StatusBadge status={e.status} /></td>
-                  <td className={table.td}>
-                    {e.capacity ? (
-                      <div className="w-32">
-                        <div className="mb-1 text-xs tabular-nums text-stone-600">{e.registered_count} of {e.capacity}</div>
-                        <Meter value={e.registered_count} max={e.capacity} label={`${e.title}: places taken`} warn />
-                      </div>
-                    ) : (
-                      <span className="tabular-nums">{e.registered_count}</span>
-                    )}
-                  </td>
-                  <td className={`${table.td} text-right`}><Icon name="chevronRight" className="inline h-4 w-4 text-stone-400" /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <EmptyRows>
-          <p className="font-semibold text-ink">{search ? 'Nothing matches your search' : 'No events here'}</p>
-          {!search && filter === 'upcoming' && access.events && (
-            <div className="mt-4"><LinkButton to="/manage/events/new">Create an event</LinkButton></div>
-          )}
-        </EmptyRows>
-      )}
-    </ListShell>
+    <>
+      <ConsoleHeader
+        title="Events"
+        subtitle="Every event in the organisations you run."
+        actions={access.events && <LinkButton to="/manage/events/new"><Icon name="plus" className="h-4 w-4" />New event</LinkButton>}
+      />
+      <ErrorNote error={events.error} />
+      <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+        {events.isLoading ? (
+          <Spinner />
+        ) : (
+          <DataTable
+            rows={rows}
+            columns={columns}
+            order={[1, filter === 'upcoming' || filter === 'draft' ? 'asc' : 'desc']}
+            onOpen={(e) => navigate(`/manage/events/${e.slug}`)}
+            searchPlaceholder="Search events"
+            empty={filter === 'upcoming' ? 'No upcoming events. Create one to get started.' : 'No events here.'}
+            toolbar={
+              <>
+                <FilterChips
+                  current={filter}
+                  onChange={setFilter}
+                  options={[
+                    { id: 'upcoming', label: 'Upcoming', count: count('upcoming') },
+                    { id: 'draft', label: 'Drafts', count: count('draft') },
+                    { id: 'past', label: 'Past', count: count('past') },
+                    { id: 'cancelled', label: 'Cancelled', count: count('cancelled') },
+                    { id: 'all', label: 'All', count: all.length },
+                  ]}
+                />
+                <Button variant="secondary" onClick={exportCsv} disabled={!rows.length}>Export CSV</Button>
+              </>
+            }
+          />
+        )}
+      </div>
+    </>
   )
 }
 
 // --- hackathons ----------------------------------------------------------------
 
 const HACKATHON_FILTERS = {
-  all: 'scope=managed&ordering=-starts_at',
-  draft: 'scope=managed&status=draft',
-  published: 'scope=managed&status=published',
-  judging: 'scope=managed&status=judging',
-  completed: 'scope=managed&status=completed&ordering=-starts_at',
+  all: () => true,
+  draft: (h: Hackathon) => h.status === 'draft',
+  published: (h: Hackathon) => h.status === 'published',
+  judging: (h: Hackathon) => h.status === 'judging',
+  completed: (h: Hackathon) => h.status === 'completed',
 }
 type HackathonFilter = keyof typeof HACKATHON_FILTERS
 
@@ -204,78 +141,66 @@ export function HackathonsList() {
   const access = useAccess()
   const navigate = useNavigate()
   const [filter, setFilter] = useState<HackathonFilter>('all')
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
-  const { selected, counts } = useFiltered<Hackathon, HackathonFilter>('/hackathons/', HACKATHON_FILTERS, filter, search, page)
-  const rows = selected.data?.results ?? []
+  const hackathons = useManaged<Hackathon>('hackathons')
+  const all = useMemo(() => hackathons.data ?? [], [hackathons.data])
+  const rows = useMemo(() => all.filter(HACKATHON_FILTERS[filter]), [all, filter])
+  const count = (f: HackathonFilter) => all.filter(HACKATHON_FILTERS[f]).length
+  const number = (n: number) => <span className="font-mono tabular-nums">{n}</span>
+
+  const columns: Col<Hackathon>[] = [
+    {
+      title: 'Hackathon',
+      value: (h) => `${h.title} ${h.organization.name} ${h.theme}`,
+      cell: (h) => (
+        <>
+          <p className="font-semibold">{h.title}</p>
+          <p className="text-xs text-stone-500">{h.organization.name}{h.theme && ` · ${h.theme}`}</p>
+        </>
+      ),
+      priority: 1,
+    },
+    { title: 'Starts', value: (h) => h.starts_at, cell: (h) => <span className="whitespace-nowrap font-mono text-xs">{formatDate(h.starts_at)}</span>, priority: 2 },
+    { title: 'Status', value: (h) => h.status, cell: (h) => <StatusBadge status={h.status} />, priority: 3 },
+    { title: 'People', value: (h) => h.participant_count, cell: (h) => number(h.participant_count), align: 'right', priority: 4 },
+    { title: 'Teams', value: (h) => h.team_count, cell: (h) => number(h.team_count), align: 'right', priority: 5 },
+    { title: 'Projects', value: (h) => h.submission_count, cell: (h) => number(h.submission_count), align: 'right', priority: 6 },
+  ]
 
   return (
-    <ListShell
-      title="Hackathons"
-      subtitle="Run registration, teams, judging and results."
-      create={access.hackathons && <LinkButton to="/manage/hackathons/new"><Icon name="plus" className="h-4 w-4" />New hackathon</LinkButton>}
-      chips={
-        <FilterChips
-          current={filter}
-          onChange={(f) => { setFilter(f); setPage(1) }}
-          options={[
-            { id: 'all', label: 'All', count: counts.all },
-            { id: 'draft', label: 'Drafts', count: counts.draft },
-            { id: 'published', label: 'Open', count: counts.published },
-            { id: 'judging', label: 'Judging', count: counts.judging },
-            { id: 'completed', label: 'Completed', count: counts.completed },
-          ]}
-        />
-      }
-      search={search}
-      onSearch={(v) => { setSearch(v); setPage(1) }}
-      page={page}
-      count={selected.data?.count ?? 0}
-      onPage={setPage}
-    >
-      <ErrorNote error={selected.error} />
-      {selected.isLoading ? (
-        <Spinner />
-      ) : rows.length ? (
-        <div className={table.wrap}>
-          <table className={table.table}>
-            <thead className={table.head}>
-              <tr>
-                <th className={table.th}>Hackathon</th>
-                <th className={table.th}>Dates</th>
-                <th className={table.th}>Status</th>
-                <th className={`${table.th} text-right`}>People</th>
-                <th className={`${table.th} text-right`}>Teams</th>
-                <th className={`${table.th} text-right`}>Projects</th>
-                <th className={table.th}><span className="sr-only">Open</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((h) => (
-                <tr key={h.slug} className={`${table.row} cursor-pointer`} onClick={() => navigate(`/manage/hackathons/${h.slug}`)}>
-                  <td className={table.td}>
-                    <p className="font-semibold">{h.title}</p>
-                    <p className="text-xs text-stone-500">{h.organization.name}{h.theme && ` · ${h.theme}`}</p>
-                  </td>
-                  <td className={`${table.td} whitespace-nowrap`}>{formatDate(h.starts_at)} to {formatDate(h.ends_at)}</td>
-                  <td className={table.td}><StatusBadge status={h.status} /></td>
-                  <td className={`${table.td} text-right tabular-nums`}>{h.participant_count}</td>
-                  <td className={`${table.td} text-right tabular-nums`}>{h.team_count}</td>
-                  <td className={`${table.td} text-right tabular-nums`}>{h.submission_count}</td>
-                  <td className={`${table.td} text-right`}><Icon name="chevronRight" className="inline h-4 w-4 text-stone-400" /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <EmptyRows>
-          <p className="font-semibold text-ink">{search ? 'Nothing matches your search' : 'No hackathons here'}</p>
-          {!search && filter === 'all' && access.hackathons && (
-            <div className="mt-4"><LinkButton to="/manage/hackathons/new">Create a hackathon</LinkButton></div>
-          )}
-        </EmptyRows>
-      )}
-    </ListShell>
+    <>
+      <ConsoleHeader
+        title="Hackathons"
+        subtitle="Run registration, teams, judging and results."
+        actions={access.hackathons && <LinkButton to="/manage/hackathons/new"><Icon name="plus" className="h-4 w-4" />New hackathon</LinkButton>}
+      />
+      <ErrorNote error={hackathons.error} />
+      <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+        {hackathons.isLoading ? (
+          <Spinner />
+        ) : (
+          <DataTable
+            rows={rows}
+            columns={columns}
+            order={[1, 'desc']}
+            onOpen={(h) => navigate(`/manage/hackathons/${h.slug}`)}
+            searchPlaceholder="Search hackathons"
+            empty="No hackathons here."
+            toolbar={
+              <FilterChips
+                current={filter}
+                onChange={setFilter}
+                options={[
+                  { id: 'all', label: 'All', count: all.length },
+                  { id: 'draft', label: 'Drafts', count: count('draft') },
+                  { id: 'published', label: 'Open', count: count('published') },
+                  { id: 'judging', label: 'Judging', count: count('judging') },
+                  { id: 'completed', label: 'Completed', count: count('completed') },
+                ]}
+              />
+            }
+          />
+        )}
+      </div>
+    </>
   )
 }

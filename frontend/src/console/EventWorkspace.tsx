@@ -1,12 +1,14 @@
 /** One event in the console: a header with its lifecycle actions, and a page per section. */
 import { useQuery } from '@tanstack/react-query'
 import { Scanner } from '@yudiel/react-qr-scanner'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, Outlet, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 
 import { api } from '../api'
 import type { Announcement, CommunityEvent, EventStats, Feedback, Registration, Resource } from '../api'
+import { DataTable, downloadCsv } from '../components/DataTable'
+import type { Col } from '../components/DataTable'
 import { Icon } from '../components/icons'
 import {
   Badge, Button, Empty, ErrorNote, Field, Input, LinkButton, Notice, Spinner, StatusBadge, Textarea,
@@ -15,7 +17,7 @@ import {
 import { useAct } from '../hooks'
 import { EVENT_TYPE_LABELS } from '../pages/Events'
 import { DailyBars } from './charts'
-import { ConsoleHeader, Kpi, Meter, Panel, relative, table } from './shared'
+import { ConsoleHeader, FilterChips, Kpi, Meter, Panel, relative } from './shared'
 
 type Ctx = { event: CommunityEvent }
 const useEvent = () => useOutletContext<Ctx>().event
@@ -204,112 +206,96 @@ export function EventOverview() {
 
 type Who = 'all' | 'registered' | 'checked_in' | 'waitlisted' | 'cancelled'
 
+const WHO: Record<Who, (r: Registration) => boolean> = {
+  all: () => true,
+  registered: (r) => r.status === 'registered' && !r.checked_in_at,
+  checked_in: (r) => !!r.checked_in_at,
+  waitlisted: (r) => r.status === 'waitlisted',
+  cancelled: (r) => r.status === 'cancelled',
+}
+
 export function EventRegistrations() {
   const e = useEvent()
   const registrations = useRegistrations(e.slug)
-  const [search, setSearch] = useState('')
   const [who, setWho] = useState<Who>('all')
   const checkIn = useAct((registration: number) => api(`/events/${e.slug}/check-in/`, { method: 'POST', body: { registration } }))
   const undo = useAct((registration: number) => api(`/events/${e.slug}/check-in/?registration=${registration}`, { method: 'DELETE' }))
+  const all = useMemo(() => registrations.data ?? [], [registrations.data])
+  const rows = useMemo(() => all.filter(WHO[who]), [all, who])
   if (!registrations.data) return <Spinner />
-  const all = registrations.data
-  const matches: Record<Who, (r: Registration) => boolean> = {
-    all: () => true,
-    registered: (r) => r.status === 'registered' && !r.checked_in_at,
-    checked_in: (r) => !!r.checked_in_at,
-    waitlisted: (r) => r.status === 'waitlisted',
-    cancelled: (r) => r.status === 'cancelled',
-  }
-  const term = search.toLowerCase()
-  const rows = all.filter(matches[who]).filter((r) => r.person.name.toLowerCase().includes(term) || r.email.toLowerCase().includes(term))
-  const download = () => {
-    const quote = (v: string) => `"${v.replace(/"/g, '""')}"`
-    const lines = [
-      ['Name', 'Email', 'Institution', 'Status', 'Registered', 'Checked in'].join(','),
-      ...all.map((r) => [r.person.name, r.email, r.person.institution, r.status, r.created_at, r.checked_in_at ?? ''].map(quote).join(',')),
-    ]
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }))
-    link.download = `event-${e.slug}-registrations.csv`
-    link.click()
-    URL.revokeObjectURL(link.href)
-  }
-  const chip = (id: Who, text: string) => {
-    const count = all.filter(matches[id]).length
-    return (
-      <button
-        key={id}
-        type="button"
-        role="tab"
-        aria-selected={who === id}
-        onClick={() => setWho(id)}
-        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium ${who === id ? 'border-ink bg-ink text-white' : 'border-stone-300 bg-white text-stone-700 hover:border-stone-400'}`}
-      >
-        {text}<span className={`text-xs tabular-nums ${who === id ? 'text-white/70' : 'text-stone-500'}`}>{count}</span>
-      </button>
+  const count = (id: Who) => all.filter(WHO[id]).length
+
+  const columns: Col<Registration>[] = [
+    {
+      title: 'Name',
+      value: (r) => `${r.person.name} ${r.email} ${r.person.institution}`,
+      cell: (r) => (
+        <>
+          <p className="font-semibold">{r.person.name}</p>
+          <p className="text-xs text-stone-500">{r.person.institution || r.email}</p>
+        </>
+      ),
+      priority: 1,
+    },
+    { title: 'Email', value: (r) => r.email, priority: 4 },
+    { title: 'Registered', value: (r) => r.created_at, cell: (r) => <span className="whitespace-nowrap font-mono text-xs text-stone-600">{formatDateTime(r.created_at)}</span>, priority: 5 },
+    {
+      title: 'Status',
+      value: (r) => (r.checked_in_at ? 'checked in' : r.status),
+      cell: (r) => (r.checked_in_at ? <Badge tone="blue">Checked in</Badge> : <StatusBadge status={r.status} />),
+      priority: 3,
+    },
+    {
+      title: 'Check-in',
+      value: (r) => r.checked_in_at ?? '',
+      sortable: false,
+      align: 'right',
+      priority: 2,
+      cell: (r) =>
+        r.checked_in_at ? (
+          <span className="inline-flex items-center gap-2">
+            <span className="font-mono text-xs text-stone-500">{formatDateTime(r.checked_in_at)}</span>
+            <Button variant="ghost" className="px-2 py-1" onClick={() => undo.mutate(r.id)}>Undo</Button>
+          </span>
+        ) : r.status === 'registered' ? (
+          <Button variant="secondary" className="px-3 py-1" onClick={() => checkIn.mutate(r.id)}>Check in</Button>
+        ) : null,
+    },
+  ]
+
+  const exportCsv = () =>
+    downloadCsv(
+      `${e.slug}-registrations.csv`,
+      ['Name', 'Email', 'Institution', 'Status', 'Registered', 'Checked in'],
+      rows.map((r) => [r.person.name, r.email, r.person.institution, r.status, r.created_at, r.checked_in_at]),
     )
-  }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-stone-200 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap gap-1.5" role="tablist">
-          {chip('all', 'All')}
-          {chip('registered', 'Not yet in')}
-          {chip('checked_in', 'Checked in')}
-          {chip('waitlisted', 'Waiting list')}
-          {chip('cancelled', 'Cancelled')}
-        </div>
-        <div className="flex gap-2">
-          <label className="relative block flex-1 lg:w-64">
-            <span className="sr-only">Search registrations</span>
-            <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-            <Input type="search" placeholder="Name or email" value={search} onChange={(ev) => setSearch(ev.target.value)} className="pl-9" />
-          </label>
-          <Button variant="secondary" onClick={download} disabled={!all.length}>Export CSV</Button>
-        </div>
-      </div>
-      <div className="px-5 empty:hidden"><ErrorNote error={checkIn.error ?? undo.error} /></div>
-      {rows.length ? (
-        <div className={table.wrap}>
-          <table className={table.table}>
-            <thead className={table.head}>
-              <tr>
-                <th className={table.th}>Name</th>
-                <th className={table.th}>Email</th>
-                <th className={table.th}>Registered</th>
-                <th className={table.th}>Status</th>
-                <th className={`${table.th} text-right`}>Check-in</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className={table.row}>
-                  <td className={table.td}>
-                    <p className="font-semibold">{r.person.name}</p>
-                    {r.person.institution && <p className="text-xs text-stone-500">{r.person.institution}</p>}
-                  </td>
-                  <td className={table.td}>{r.email}</td>
-                  <td className={`${table.td} whitespace-nowrap text-stone-600`}>{formatDateTime(r.created_at)}</td>
-                  <td className={table.td}>{r.checked_in_at ? <Badge tone="blue">Checked in</Badge> : <StatusBadge status={r.status} />}</td>
-                  <td className={`${table.td} text-right`}>
-                    {r.checked_in_at ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span className="text-xs text-stone-500">{formatDateTime(r.checked_in_at)}</span>
-                        <Button variant="ghost" className="px-2 py-1" onClick={() => undo.mutate(r.id)}>Undo</Button>
-                      </span>
-                    ) : (
-                      r.status === 'registered' && <Button variant="secondary" className="px-3 py-1" onClick={() => checkIn.mutate(r.id)}>Check in</Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="px-5 py-12 text-center text-stone-600">{all.length ? 'Nobody matches.' : 'Nobody has registered yet.'}</p>
-      )}
+    <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+      <div className="px-5 pt-3 empty:hidden"><ErrorNote error={checkIn.error ?? undo.error} /></div>
+      <DataTable
+        rows={rows}
+        columns={columns}
+        order={[2, 'desc']}
+        searchPlaceholder="Name, email or institution"
+        empty="Nobody has registered yet."
+        toolbar={
+          <>
+            <FilterChips
+              current={who}
+              onChange={setWho}
+              options={[
+                { id: 'all', label: 'All', count: all.length },
+                { id: 'registered', label: 'Not yet in', count: count('registered') },
+                { id: 'checked_in', label: 'Checked in', count: count('checked_in') },
+                { id: 'waitlisted', label: 'Waiting list', count: count('waitlisted') },
+                { id: 'cancelled', label: 'Cancelled', count: count('cancelled') },
+              ]}
+            />
+            <Button variant="secondary" onClick={exportCsv} disabled={!rows.length}>Export CSV</Button>
+          </>
+        }
+      />
     </div>
   )
 }
