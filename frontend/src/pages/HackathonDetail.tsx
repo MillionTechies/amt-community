@@ -102,8 +102,8 @@ export default function HackathonDetail() {
           <Card className="space-y-3">
             <p className="text-sm font-semibold">You manage this hackathon</p>
             <div className="flex flex-wrap gap-2">
-              <LinkButton to={`/hackathons/${h.id}/manage`}>Manage</LinkButton>
-              <LinkButton to={`/hackathons/${h.id}/edit`} variant="secondary">Edit details</LinkButton>
+              <LinkButton to={`/manage/hackathons/${h.id}`}>Manage</LinkButton>
+              <LinkButton to={`/manage/hackathons/${h.id}/edit`} variant="secondary">Edit details</LinkButton>
             </div>
           </Card>
         )}

@@ -87,15 +87,13 @@ export default function HackathonForm() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    save.mutate(undefined, { onSuccess: (h) => navigate(`/hackathons/${h.id}/manage`) })
+    save.mutate(undefined, { onSuccess: (h) => navigate(`/manage/hackathons/${h.id}`) })
   }
 
   return (
-    <form onSubmit={submit} className="mx-auto max-w-3xl">
-      <PageHeader
-        title={id ? 'Edit hackathon' : 'Create hackathon'}
-        subtitle={id ? undefined : 'It is saved as a draft. Add challenges and judging criteria, then publish.'}
-      />
+    <form onSubmit={submit} className="max-w-3xl">
+      {/* When editing, the console's workspace header already names the hackathon. */}
+      {!id && <PageHeader title="Create hackathon" subtitle='It is saved as a draft. Add challenges and judging criteria, then publish.' />}
       <Card className="space-y-5">
         {!id && organizations.length > 1 && (
           <Field label="Organisation">

@@ -1,0 +1,184 @@
+/** Organisation admins choose who runs events and hackathons; platform admins refresh from Keycloak. */
+import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+
+import { api } from '../api'
+import type { RoleAssignment } from '../api'
+import { Icon } from '../components/icons'
+import { Badge, Button, Empty, ErrorNote, Field, Input, Notice, Select, Spinner, label } from '../components/ui'
+import { useAct } from '../hooks'
+import { ConsoleHeader, FilterChips, Panel, table, useAccess } from './shared'
+
+const ROLES = [
+  { id: 'event_organiser', label: 'Event organiser', detail: 'Creates and runs events: registrations, check-in, announcements.' },
+  { id: 'hackathon_manager', label: 'Hackathon manager', detail: 'Creates and runs hackathons: challenges, judges, results.' },
+]
+
+export function Team() {
+  const { me } = useAccess()
+  const organizations = me?.organizations.filter((o) => o.is_admin) ?? []
+  const [selected, setSelected] = useState('')
+  const organizationId = selected || organizations[0]?.id
+  const roles = useQuery({
+    queryKey: ['roles', organizationId],
+    queryFn: () => api<RoleAssignment[]>(`/organizations/${organizationId}/roles/`),
+    enabled: !!organizationId,
+  })
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState('event_organiser')
+  const [show, setShow] = useState<'all' | 'event_organiser' | 'hackathon_manager'>('all')
+  const grant = useAct(() => api(`/organizations/${organizationId}/roles/`, { method: 'POST', body: { email, role } }))
+  const revoke = useAct((id: number) => api(`/organizations/${organizationId}/roles/${id}/`, { method: 'DELETE' }))
+
+  if (!me) return <Spinner />
+  if (!organizations.length) return <Empty>You do not administer an organisation.</Empty>
+  const current = organizations.find((o) => o.id === organizationId)
+  const all = roles.data ?? []
+  const rows = all.filter((r) => show === 'all' || r.role === show)
+  const count = (id: string) => all.filter((r) => r.role === id).length
+
+  return (
+    <>
+      <ConsoleHeader
+        title="Team and roles"
+        subtitle="Choose who can run events and hackathons. Admins can do everything and are managed in Keycloak."
+        actions={
+          organizations.length > 1 && (
+            <label className="flex items-center gap-2 text-sm">
+              <span className="text-stone-600">Organisation</span>
+              <Select value={organizationId} onChange={(e) => setSelected(e.target.value)} className="w-56">
+                {organizations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </Select>
+            </label>
+          )
+        }
+      />
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-5 py-3">
+              <h2 className="font-semibold">People at {current?.name}</h2>
+              <FilterChips
+                current={show}
+                onChange={setShow}
+                options={[
+                  { id: 'all', label: 'All', count: all.length },
+                  { id: 'event_organiser', label: 'Event organisers', count: count('event_organiser') },
+                  { id: 'hackathon_manager', label: 'Hackathon managers', count: count('hackathon_manager') },
+                ]}
+              />
+            </div>
+            <div className="px-5 empty:hidden"><ErrorNote error={revoke.error ?? roles.error} /></div>
+            {roles.isLoading ? (
+              <Spinner />
+            ) : rows.length ? (
+              <div className={table.wrap}>
+                <table className={table.table}>
+                  <thead className={table.head}>
+                    <tr>
+                      <th className={table.th}>Name</th>
+                      <th className={table.th}>Role</th>
+                      <th className={table.th}><span className="sr-only">Remove</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.id} className={table.row}>
+                        <td className={table.td}>
+                          <p className="font-semibold">{r.person.name}</p>
+                          <p className="text-xs text-stone-500">{r.email}</p>
+                        </td>
+                        <td className={table.td}><Badge tone="blue">{label(r.role)}</Badge></td>
+                        <td className={`${table.td} text-right`}>
+                          <Button variant="ghost" onClick={() => window.confirm(`Remove ${r.person.name} as ${label(r.role).toLowerCase()}?`) && revoke.mutate(r.id)}>Remove</Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="px-5 py-10 text-center text-stone-600">Nobody has been given a role yet.</p>
+            )}
+          </div>
+        </div>
+        <Panel title="Give someone a role">
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              grant.mutate(undefined, { onSuccess: () => setEmail('') })
+            }}
+          >
+            <Field label="Member's email" hint="They must have signed in to Community at least once.">
+              <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            </Field>
+            <fieldset className="space-y-2">
+              <legend className="mb-1 text-sm font-medium">Role</legend>
+              {ROLES.map((r) => (
+                <label key={r.id} className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${role === r.id ? 'border-brand-600 bg-brand-50' : 'border-stone-200 hover:border-stone-300'}`}>
+                  <input type="radio" name="role" value={r.id} checked={role === r.id} onChange={() => setRole(r.id)} className="mt-1 accent-brand-600" />
+                  <span>
+                    <span className="block text-sm font-semibold">{r.label}</span>
+                    <span className="block text-xs text-stone-600">{r.detail}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+            <ErrorNote error={grant.error} />
+            <Button type="submit" disabled={grant.isPending} className="w-full"><Icon name="plus" className="h-4 w-4" />Give role</Button>
+          </form>
+        </Panel>
+      </div>
+    </>
+  )
+}
+
+export function Platform() {
+  const { me } = useAccess()
+  const sync = useAct(() => api<{ organizations: number }>('/organizations/sync/', { method: 'POST' }))
+  if (!me) return <Spinner />
+  if (!me.is_platform_admin) return <Empty>Only platform admins can see this page.</Empty>
+  const organizations = me.organizations
+  return (
+    <>
+      <ConsoleHeader title="Platform" subtitle="Organisations and their members are kept in Keycloak." />
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <Panel title={`Organisations (${organizations.length})`} flush>
+            <div className={table.wrap}>
+              <table className={table.table}>
+                <thead className={table.head}>
+                  <tr>
+                    <th className={table.th}>Name</th>
+                    <th className={table.th}>Alias</th>
+                    <th className={table.th}>Your roles</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {organizations.map((o) => (
+                    <tr key={o.id} className={table.row}>
+                      <td className={`${table.td} font-semibold`}>{o.name}</td>
+                      <td className={`${table.td} font-mono text-xs text-stone-600`}>{o.alias}</td>
+                      <td className={table.td}>{o.roles.length ? o.roles.map(label).join(', ') : <span className="text-stone-500">Admin</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        </div>
+        <Panel title="Refresh from Keycloak">
+          <p className="mb-4 text-sm text-stone-600">Refresh Community's copy after adding or changing an organisation in Keycloak.</p>
+          <div className="mb-3 space-y-3 empty:hidden">
+            <ErrorNote error={sync.error} />
+            {sync.data && <Notice>Refreshed {sync.data.organizations} organisations.</Notice>}
+          </div>
+          <Button variant="secondary" disabled={sync.isPending} onClick={() => sync.mutate()}>
+            <Icon name="refresh" className="h-4 w-4" />{sync.isPending ? 'Refreshing…' : 'Refresh organisations'}
+          </Button>
+        </Panel>
+      </div>
+    </>
+  )
+}

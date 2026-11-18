@@ -26,7 +26,7 @@ export default function Hackathons() {
       <PageHeader
         title="Hackathons"
         subtitle="Form a team, build a project and have it judged."
-        action={canManage && <LinkButton to="/hackathons/new">Create hackathon</LinkButton>}
+        action={canManage && <LinkButton to="/manage/hackathons/new">Create hackathon</LinkButton>}
       />
       {canManage && (
         <Tabs

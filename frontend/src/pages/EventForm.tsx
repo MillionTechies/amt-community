@@ -84,17 +84,15 @@ export default function EventForm() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    save.mutate(undefined, { onSuccess: (event) => navigate(`/events/${event.id}/manage`) })
+    save.mutate(undefined, { onSuccess: (event) => navigate(`/manage/events/${event.id}`) })
   }
   const online = form.delivery_mode !== 'in_person'
   const inPerson = form.delivery_mode !== 'online'
 
   return (
-    <form onSubmit={submit} className="mx-auto max-w-3xl">
-      <PageHeader
-        title={id ? 'Edit event' : 'Create event'}
-        subtitle={id ? undefined : 'It is saved as a draft. Publish it when you are ready.'}
-      />
+    <form onSubmit={submit} className="max-w-3xl">
+      {/* When editing, the console's workspace header already names the event. */}
+      {!id && <PageHeader title="Create event" subtitle='It is saved as a draft. Publish it when you are ready.' />}
       <Card className="space-y-5">
         {!id && organizations.length > 1 && (
           <Field label="Organisation">

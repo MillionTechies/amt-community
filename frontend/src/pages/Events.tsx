@@ -47,7 +47,7 @@ export default function Events() {
       <PageHeader
         title="Events"
         subtitle="Workshops, meetups, webinars and outreach days."
-        action={canManage && <LinkButton to="/events/new">Create event</LinkButton>}
+        action={canManage && <LinkButton to="/manage/events/new">Create event</LinkButton>}
       />
       <Tabs
         tabs={[

@@ -154,8 +154,8 @@ export default function EventDetail() {
           <Card className="space-y-3">
             <p className="text-sm font-semibold">You organise this event</p>
             <div className="flex flex-wrap gap-2">
-              <LinkButton to={`/events/${e.id}/manage`}>Manage</LinkButton>
-              <LinkButton to={`/events/${e.id}/edit`} variant="secondary">Edit details</LinkButton>
+              <LinkButton to={`/manage/events/${e.id}`}>Manage</LinkButton>
+              <LinkButton to={`/manage/events/${e.id}/edit`} variant="secondary">Edit details</LinkButton>
             </div>
           </Card>
         )}

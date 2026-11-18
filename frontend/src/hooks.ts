@@ -36,6 +36,12 @@ export function useSignIn() {
   return () => void auth.signinRedirect(signInArgs())
 }
 
+/** Sign in to the organiser console, whatever page the visitor is on. */
+export function useOrganiserSignIn() {
+  const auth = useAuth()
+  return () => void auth.signinRedirect(signInArgs('/manage'))
+}
+
 /** Send the visitor straight to Keycloak's sign-up form (OIDC `prompt=create`). */
 export function useSignUp() {
   const auth = useAuth()

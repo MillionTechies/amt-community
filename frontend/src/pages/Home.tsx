@@ -473,7 +473,7 @@ export default function Home() {
                 <span className="block text-sm text-stone-500">Run a workshop, meetup or hackathon for your campus or community.</span>
               </span>
               {auth.isAuthenticated && canOrganise ? (
-                <Link to="/events/new" className="shrink-0 text-sm font-semibold text-brand-700 hover:text-brand-800">Create an event</Link>
+                <Link to="/manage/events/new" className="shrink-0 text-sm font-semibold text-brand-700 hover:text-brand-800">Create an event</Link>
               ) : !auth.isAuthenticated ? (
                 <button type="button" onClick={signIn} className="shrink-0 text-sm font-semibold text-brand-700 hover:text-brand-800">Sign in</button>
               ) : null}
