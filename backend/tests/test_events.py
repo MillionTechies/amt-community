@@ -246,3 +246,43 @@ def test_events_are_addressed_by_a_slug_that_survives_renaming(admin, org):
     url = f"/api/events/{first['slug']}/"
     assert admin.patch(url, {"title": "Renamed"}, format="json").json()["slug"] == first["slug"]
     assert admin.get(f"/api/events/{Event.objects.get(slug=first['slug']).pk}/").status_code == 404
+
+
+def test_meeting_links_name_their_service(admin, bob, org):
+    event = create_event(
+        admin, org, delivery_mode="online", venue="",
+        online_url="https://us02web.zoom.us/j/123?pwd=x",
+    )
+    assert event["meeting_provider"] == {"id": "zoom", "name": "Zoom"}
+    # Someone not registered sees the service but not the link.
+    seen = bob.get(f"/api/events/{event['slug']}/").json()
+    assert seen["meeting_provider"]["name"] == "Zoom" and seen["online_url"] == ""
+
+    url = f"/api/events/{event['slug']}/"
+    teams = "https://teams.microsoft.com/l/meetup-join/19%3ameeting"
+    assert admin.patch(url, {"online_url": teams}, format="json").json()["meeting_provider"]["id"] == "teams"
+    other = admin.patch(url, {"online_url": "https://example.com/room"}, format="json").json()
+    assert other["meeting_provider"] is None
+    assert admin.patch(url, {"online_url": "http://meet.google.com/x"}, format="json").status_code == 400
+
+
+def test_calendar_invites(admin, bob, org):
+    event = create_event(
+        admin, org, title="Intro to APIs", delivery_mode="online", venue="",
+        online_url="https://meet.google.com/abc-defg-hij", description="<p>Bring a <b>laptop</b>.</p>",
+    )
+    public = bob.get(f"/api/events/{event['slug']}/calendar.ics")
+    assert public.status_code == 200 and public["Content-Type"].startswith("text/calendar")
+    unfold = lambda text: text.replace("\r\n ", "")  # .ics wraps lines at 75 characters
+    body = unfold(public.content.decode())
+    assert "SUMMARY:Intro to APIs" in body and "STATUS:CONFIRMED" in body
+    assert f"UID:event-{event['slug']}@community.amilliontechies.com" in body
+    assert "meet.google.com" not in body and "Online (Google Meet)" in body
+
+    bob.post(f"/api/events/{event['slug']}/register/")
+    ticket = bob.get(f"/api/events/{event['slug']}/").json()["my_registration"]["ticket_code"]
+    personal = unfold(bob.get(f"/api/tickets/{ticket}/calendar.ics").content.decode())
+    assert "meet.google.com/abc-defg-hij" in personal and "Bring a laptop." in personal
+
+    draft = create_event(admin, org, publish=False)
+    assert bob.get(f"/api/events/{draft['slug']}/calendar.ics").status_code == 404

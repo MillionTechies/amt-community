@@ -15,7 +15,7 @@ organisations, scoped roles), Events and Hackathons.
 You need Docker, Python 3.12 and Node 22.
 
 ```bash
-# 1. PostgreSQL (port 5433) and Keycloak (port 8080)
+# 1. PostgreSQL (port 5433), Keycloak (port 8080) and Mailpit (inbox on port 8025)
 docker compose up -d
 
 # 2. Create the dev realm, clients and sample users. Once, after Keycloak is up.
@@ -28,6 +28,8 @@ cp .env.example .env
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py amt_sync      # copy organisations from Keycloak
 .venv/bin/python manage.py runserver
+# In a second terminal: sends reminders and retries failed emails
+.venv/bin/python manage.py run_worker
 
 # 4. Web app on http://localhost:5173
 cd frontend
@@ -45,6 +47,29 @@ Sample users (the password is the username):
 | `carol` | A member with no organisation |
 
 Keycloak's own admin console is at http://localhost:8080 (`admin` / `admin`).
+
+### Configuration
+
+**Console → Configuration** keeps the settings admins change in one place: the Google,
+Microsoft and Zoom apps, email (SMTP server, login, sender, reply-to, with a "send test
+email" button) and image storage (disk, or an S3-compatible bucket). Platform admins edit
+the platform's values; an organisation's admins can override its apps, sender name and
+reply-to. Secrets are stored encrypted and never shown again. Anything left empty falls
+back to the platform's value, then to `backend/.env`.
+
+### Email
+
+Community emails people when they register, come off the waiting list, or get an
+announcement, when an event's time, place or link changes, when it is cancelled, and a
+day and an hour before it starts. Invites (`.ics`) are attached, so the event lands in
+Google, Outlook or Apple Calendar and updates there when it changes.
+
+Locally every email goes to Mailpit: open http://localhost:8025 to read them. Nothing
+leaves your machine. Emails are queued in the `OutboundEmail` table and sent right after
+the request; `run_worker` sends reminders and retries anything that failed, so keep it
+running (in production, as its own process or container). To send for real, point the
+`EMAIL_*` settings in `backend/.env` at any SMTP service (Google Workspace, Microsoft 365,
+SendGrid, Mailgun, Amazon SES).
 
 ### Sign-up and the login theme
 
@@ -95,6 +120,43 @@ Google has already verified the address, so members who join this way skip the
 verification email. If someone signs in with Google using the email of an existing account,
 Keycloak asks them to confirm it is theirs before linking the two.
 API docs are at http://localhost:8000/api/docs/.
+
+### Google, Microsoft and Zoom (connected accounts)
+
+Organisers can connect their own Google, Microsoft or Zoom account under **Console →
+Connected accounts**, then, in an event, create a Google Meet, Teams or Zoom meeting with
+one click (it becomes the join link) or keep the event in their Google or Outlook calendar.
+Those copies follow every change to the event and are removed if it is cancelled. Pasting a
+meeting link by hand always works, with or without any of this.
+
+Each service needs an OAuth app, registered once by an admin. The redirect URI is
+`<API_URL>/api/integrations/<google|microsoft|zoom>/callback/`, so locally
+`http://localhost:8000/api/integrations/google/callback/` (the Configuration page shows it
+with a copy button). Enter the keys on **Console → Configuration**: platform admins set
+them for everyone, and an organisation's admins can enter its own app (say, the
+university's Google Workspace) for its events alone. Values in `backend/.env` are used
+when nothing is set there.
+
+- **Google**: in the [Google Cloud console](https://console.cloud.google.com/), create a
+  project, enable the **Google Calendar API**, configure the OAuth consent screen with the
+  `.../auth/calendar.events` scope, then create an **OAuth client ID** (Web application)
+  with the redirect URI. Set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`.
+  While the app is in "Testing", only the test users you list can connect.
+- **Microsoft**: in the [Azure portal](https://portal.azure.com/), go to **Microsoft Entra ID
+  → App registrations → New registration**, allow work, school and personal accounts, and
+  add the redirect URI as a **Web** platform. Create a client secret, and add the delegated
+  Microsoft Graph permissions `User.Read`, `Calendars.ReadWrite`, `offline_access`, `openid`
+  and `email`. Set `MICROSOFT_OAUTH_CLIENT_ID`, `MICROSOFT_OAUTH_CLIENT_SECRET` and, to
+  limit it to your organisation, `MICROSOFT_OAUTH_TENANT`. Teams links need an account
+  with Microsoft Teams.
+- **Zoom**: in the [Zoom App Marketplace](https://marketplace.zoom.us/), build a **General
+  app** with user-managed OAuth, add the redirect URI (and to the allow list), and the
+  scopes `user:read:user`, `meeting:write:meeting`, `meeting:update:meeting` and
+  `meeting:delete:meeting`. Set `ZOOM_OAUTH_CLIENT_ID` and `ZOOM_OAUTH_CLIENT_SECRET`. If
+  Zoom refuses an `http://localhost` redirect, use an HTTPS tunnel and set `API_URL` to it.
+
+Tokens are stored encrypted (`INTEGRATIONS_ENCRYPTION_KEY`, or a key derived from
+`DJANGO_SECRET_KEY`).
 
 ## Tests
 

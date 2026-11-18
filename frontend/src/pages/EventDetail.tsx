@@ -10,6 +10,8 @@ import {
   Badge, Button, Card, ErrorNote, Field, LinkButton, Notice, Prose, Section, Spinner, StatusBadge,
   Textarea, formatDateTime, formatRange, label,
 } from '../components/ui'
+import { AddToCalendar } from '../components/AddToCalendar'
+import { RichText } from '../components/RichText'
 import { useAct, useSignIn } from '../hooks'
 
 export default function EventDetail() {
@@ -52,7 +54,7 @@ export default function EventDetail() {
           {e.summary && <p className="mt-3 text-lg text-stone-700">{e.summary}</p>}
         </div>
         {e.status === 'cancelled' && <Notice tone="amber">This event has been cancelled.</Notice>}
-        {e.description && <Section title="About this event"><Prose>{e.description}</Prose></Section>}
+        {e.description && <Section title="About this event"><RichText html={e.description} /></Section>}
         {e.eligibility && <Section title="Who can attend"><Prose>{e.eligibility}</Prose></Section>}
         {!!announcements.data?.length && (
           <Section title="Announcements">
@@ -61,7 +63,7 @@ export default function EventDetail() {
                 <li key={a.id}>
                   <p className="font-semibold">{a.title}</p>
                   <p className="text-xs text-stone-500">{formatDateTime(a.created_at)}</p>
-                  <Prose>{a.body}</Prose>
+                  <RichText html={a.body} />
                 </li>
               ))}
             </ul>
@@ -88,11 +90,25 @@ export default function EventDetail() {
         <Card className="space-y-3">
           <Detail label="When">{formatRange(e.starts_at, e.ends_at)}</Detail>
           {e.venue && <Detail label="Where">{e.venue}</Detail>}
-          {e.online_url && (
-            <Detail label="Join online">
-              <a className="break-all text-brand-700 hover:underline" href={e.online_url} target="_blank" rel="noreferrer">
-                {e.online_url}
-              </a>
+          {e.delivery_mode !== 'in_person' && (
+            <Detail label="Online">
+              {e.online_url ? (
+                <span className="block space-y-2">
+                  <a
+                    className="btn-prompt inline-flex items-center gap-2 rounded-lg bg-ink px-3 py-2 font-mono text-xs font-semibold uppercase tracking-wider text-white hover:bg-stone-800"
+                    href={e.online_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Join {e.meeting_provider ? `on ${e.meeting_provider.name}` : 'the meeting'}
+                  </a>
+                  <span className="block break-all text-xs text-stone-500">{e.online_url}</span>
+                </span>
+              ) : (
+                <span className="text-stone-600">
+                  {e.meeting_provider ? `On ${e.meeting_provider.name}. ` : ''}The link appears here once you register.
+                </span>
+              )}
             </Detail>
           )}
           {e.registration_deadline && <Detail label="Register by">{formatDateTime(e.registration_deadline)}</Detail>}
@@ -102,6 +118,7 @@ export default function EventDetail() {
               : `${e.registered_count} of ${e.capacity} taken`}
           </Detail>
 
+          {e.status !== 'draft' && e.status !== 'cancelled' && new Date(e.ends_at).getTime() > Date.now() && <AddToCalendar event={e} />}
           <div className="space-y-3 border-t border-stone-200 pt-4">
             {mine ? (
               <>
@@ -118,6 +135,17 @@ export default function EventDetail() {
                       <QRCodeSVG value={mine.ticket_code} size={176} />
                     </div>
                     <p className="mt-2 text-sm text-stone-600">Your ticket. Show this code at the door.</p>
+                    <p className="font-mono text-xs text-stone-500">Order #{mine.order_number}</p>
+                    {e.delivery_mode !== 'online' && (
+                      <a
+                        href={`${import.meta.env.VITE_API_URL}/api/tickets/${mine.ticket_code}/ticket.pdf`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-block font-mono text-xs font-semibold uppercase tracking-wider text-brand-700 hover:underline"
+                      >
+                        Download ticket (PDF)
+                      </a>
+                    )}
                   </div>
                 )}
                 {mine.certificate_available && (

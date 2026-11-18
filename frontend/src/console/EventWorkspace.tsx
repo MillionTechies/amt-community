@@ -10,13 +10,16 @@ import type { Announcement, CommunityEvent, EventStats, Feedback, Registration, 
 import { DataTable, downloadCsv } from '../components/DataTable'
 import type { Col } from '../components/DataTable'
 import { Icon } from '../components/icons'
+import { RichText } from '../components/RichText'
+import { RichTextEditor } from '../components/RichTextEditor'
 import {
-  Badge, Button, Empty, ErrorNote, Field, Input, LinkButton, Notice, Spinner, StatusBadge, Textarea,
+  Badge, Button, Empty, ErrorNote, Field, Input, LinkButton, Notice, Spinner, StatusBadge,
   formatDateTime, formatRange, label,
 } from '../components/ui'
 import { useAct } from '../hooks'
 import { EVENT_TYPE_LABELS } from '../pages/Events'
 import { DailyBars } from './charts'
+import { MeetingPanel } from './MeetingPanel'
 import { ConsoleHeader, FilterChips, Kpi, Meter, Panel, relative } from './shared'
 
 type Ctx = { event: CommunityEvent }
@@ -179,12 +182,14 @@ export function EventOverview() {
               ))}
             </ul>
           </Panel>
+          <MeetingPanel event={e} />
           <Panel title="Details" action={<Link to={`${base}/edit`} className="text-sm font-semibold text-brand-700 hover:underline">Edit</Link>}>
             <dl className="space-y-3 text-sm">
               {[
                 ['Type', EVENT_TYPE_LABELS[e.event_type] ?? label(e.event_type)],
                 ['Format', label(e.delivery_mode)],
-                ['Venue', e.venue || (e.online_url ? 'Online' : 'Not set')],
+                ['Venue', e.venue || 'Not set'],
+                ['Online', e.delivery_mode === 'in_person' ? 'No' : e.meeting_provider?.name ?? (e.online_url ? 'Link added' : 'No link yet')],
                 ['Places', e.capacity ? String(e.capacity) : 'No limit'],
                 ['Registration closes', e.registration_deadline ? formatDateTime(e.registration_deadline) : 'When the event ends'],
                 ['Registration', e.registration_open ? 'Open' : 'Closed'],
@@ -394,12 +399,12 @@ export function EventContent() {
   const { slug: id } = useEvent()
   const announcements = useQuery({ queryKey: ['event', String(id), 'announcements'], queryFn: () => api<Announcement[]>(`/events/${id}/announcements/`) })
   const resources = useQuery({ queryKey: ['event', String(id), 'resources'], queryFn: () => api<Resource[]>(`/events/${id}/resources/`) })
-  const [note, setNote] = useState({ title: '', body: '' })
+  const [note, setNote] = useState({ title: '', body: '', notify: true })
   const [link, setLink] = useState({ title: '', url: '', description: '' })
-  const post = useAct(() => api(`/events/${id}/announcements/`, { method: 'POST', body: note }))
+  const post = useAct(() => api<Announcement & { emailed_to?: number }>(`/events/${id}/announcements/`, { method: 'POST', body: note }))
   const add = useAct(() => api(`/events/${id}/resources/`, { method: 'POST', body: link }))
   const remove = useAct((path: string) => api(`/events/${id}/${path}/`, { method: 'DELETE' }))
-  const submit = (action: typeof post, reset: () => void) => (ev: FormEvent) => {
+  const submit = (action: { mutate: (v: undefined, o: { onSuccess: () => void }) => void }, reset: () => void) => (ev: FormEvent) => {
     ev.preventDefault()
     action.mutate(undefined, { onSuccess: reset })
   }
@@ -407,18 +412,25 @@ export function EventContent() {
     <div className="grid gap-6 lg:grid-cols-2">
       <Panel title="Announcements">
         <p className="mb-4 text-sm text-stone-600">Shown on the event page to everyone registered.</p>
-        <form className="space-y-3" onSubmit={submit(post, () => setNote({ title: '', body: '' }))}>
+        <form className="space-y-3" onSubmit={submit(post, () => setNote({ title: '', body: '', notify: note.notify }))}>
           <Field label="Title"><Input required value={note.title} onChange={(ev) => setNote({ ...note, title: ev.target.value })} /></Field>
-          <Field label="Message"><Textarea required rows={3} value={note.body} onChange={(ev) => setNote({ ...note, body: ev.target.value })} /></Field>
+          <Field label="Message" group>
+            <RichTextEditor value={note.body} onChange={(body) => setNote((n) => ({ ...n, body }))} placeholder="What do attendees need to know?" minHeight="8rem" />
+          </Field>
           <ErrorNote error={post.error} />
-          <Button type="submit" disabled={post.isPending}>Post announcement</Button>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={note.notify} onChange={(ev) => setNote({ ...note, notify: ev.target.checked })} />
+            Also email everyone registered
+          </label>
+          {post.data?.emailed_to !== undefined && <Notice>Posted and emailed to {post.data.emailed_to} {post.data.emailed_to === 1 ? 'person' : 'people'}.</Notice>}
+          <Button type="submit" disabled={post.isPending || !note.body}>Post announcement</Button>
         </form>
         <ul className="mt-5 divide-y divide-stone-100 border-t border-stone-200">
           {announcements.data?.map((a) => (
             <li key={a.id} className="flex items-start justify-between gap-2 py-3">
               <div>
                 <p className="font-semibold">{a.title}</p>
-                <p className="text-sm text-stone-600">{a.body}</p>
+                <RichText html={a.body} className="text-sm" />
                 <p className="mt-1 text-xs text-stone-500">{formatDateTime(a.created_at)}</p>
               </div>
               <Button variant="ghost" onClick={() => window.confirm('Remove this announcement?') && remove.mutate(`announcements/${a.id}`)}>Remove</Button>

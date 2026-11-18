@@ -55,6 +55,23 @@ export async function api<T = unknown>(
   return body as T
 }
 
+/** Upload an image for a description or announcement; returns its address. */
+export async function uploadImage(file: File): Promise<string> {
+  const body = new FormData()
+  body.append('file', file)
+  const headers: Record<string, string> = {}
+  if (currentToken) headers.Authorization = `Bearer ${currentToken}`
+  let response: Response
+  try {
+    response = await fetch(`${BASE}/api/uploads/`, { method: 'POST', headers, body })
+  } catch {
+    throw new ApiError(0, 'Could not reach the server. Check your connection and try again.')
+  }
+  const data = await response.json().catch(() => null)
+  if (!response.ok) throw toError(response.status, data)
+  return (data as { url: string }).url
+}
+
 /** Public, community-wide counts (GET /api/stats/). */
 export interface CommunityStats {
   members: number
@@ -111,6 +128,8 @@ export interface MyRegistration {
   id: number
   status: 'registered' | 'waitlisted' | 'cancelled'
   ticket_code: string
+  /** Short reference printed on the ticket, like AMT-7K3Q9X2M. */
+  order_number: string
   checked_in_at: string | null
   certificate_available: boolean
   has_feedback: boolean
@@ -127,6 +146,8 @@ export interface CommunityEvent {
   delivery_mode: string
   venue: string
   online_url: string
+  /** The web-conferencing service the meeting link is on, if we recognise it. */
+  meeting_provider: { id: string; name: string } | null
   starts_at: string
   ends_at: string
   registration_deadline: string | null
@@ -301,4 +322,67 @@ export interface RoleAssignment {
   role: string
   person: Person
   email: string
+}
+
+/** A service organisers can connect: Google, Microsoft or Zoom. */
+export interface Integration {
+  id: 'google' | 'microsoft' | 'zoom'
+  name: string
+  /** Whose OAuth app: an organisation's id when it set up its own, or null for the platform's. */
+  app: string | null
+  app_name: string
+  /** What its meetings are called ("Google Meet"), or "" if it makes none. */
+  meeting_name: string
+  has_calendar: boolean
+  /** Whether this server has the provider's OAuth app set up. */
+  configured: boolean
+  connected: boolean
+  account_email: string
+}
+
+/** An event's copy in an organiser's calendar or meeting tool. */
+export interface EventLink {
+  id: number
+  provider: Integration['id']
+  provider_name: string
+  account_email: string
+  is_meeting: boolean
+  join_url: string
+  /** Added through the signed-in organiser's own account. */
+  mine: boolean
+  synced_at: string
+}
+
+/** A place settings can be changed: the platform, or one organisation. */
+export interface ConfigScope {
+  id: string
+  name: string
+  kind: 'platform' | 'organization'
+}
+
+export interface ConfigField {
+  key: string
+  label: string
+  kind: 'text' | 'secret' | 'number' | 'boolean' | 'email' | 'url'
+  help: string
+  placeholder: string
+  /** Where the value in use comes from. */
+  source: 'organization' | 'platform' | 'environment' | 'default' | ''
+  /** Set at this scope (for secrets, the value itself is never sent). */
+  is_set: boolean
+  value: string
+  /** The value used when nothing is set here (for secrets, "set" or ""). */
+  inherited: string
+}
+
+export interface ConfigGroup {
+  id: string
+  title: string
+  description: string
+  fields: ConfigField[]
+  /** Everything it needs is set, here or inherited. */
+  ready: boolean
+  /** The organisation set up its own (rather than using the platform's). */
+  own: boolean
+  redirect_uri?: string
 }

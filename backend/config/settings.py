@@ -37,6 +37,10 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.events",
     "apps.hackathons",
+    "apps.content",
+    "apps.integrations",
+    "apps.notifications",
+    "apps.configuration",
 ]
 
 MIDDLEWARE = [
@@ -93,6 +97,64 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+
+# The member-facing site, for links in emails and calendar invites.
+COMMUNITY_URL = os.environ.get("COMMUNITY_URL", "http://localhost:5173").rstrip("/")
+
+# --- email ------------------------------------------------------------------
+# Any SMTP service works (Google Workspace, Microsoft 365, SendGrid, Mailgun, Amazon SES).
+# Locally, docker-compose runs Mailpit: mail goes to http://localhost:8025, never out.
+# The SMTP server, login and sender can also be set on the console's Configuration page,
+# which wins over these environment variables.
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "apps.configuration.mail.ConfiguredEmailBackend")
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "1025"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "false").lower() == "true"
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "false").lower() == "true"
+EMAIL_TIMEOUT = 20
+# How queued emails leave: "thread" sends right after the request on a background thread,
+# "worker" leaves everything to `manage.py run_worker`. The worker also sends reminders and
+# retries failures, so run it in every environment.
+EMAIL_DELIVERY = os.environ.get("EMAIL_DELIVERY", "thread")
+DEFAULT_FROM_EMAIL = os.environ.get(
+    "DEFAULT_FROM_EMAIL", "A Million Techies Community <community@amilliontechies.com>"
+)
+
+# --- connected accounts: Google, Microsoft, Zoom ---------------------------------------
+# Organisers connect these to create Meet, Teams or Zoom meetings and to keep events in
+# their own calendars. Each needs an OAuth app registered with the provider; see README.
+# The redirect URI to register is <API_URL>/api/integrations/<google|microsoft|zoom>/callback/
+API_URL = os.environ.get("API_URL", "http://localhost:8000").rstrip("/")
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
+MICROSOFT_OAUTH_CLIENT_ID = os.environ.get("MICROSOFT_OAUTH_CLIENT_ID", "")
+MICROSOFT_OAUTH_CLIENT_SECRET = os.environ.get("MICROSOFT_OAUTH_CLIENT_SECRET", "")
+MICROSOFT_OAUTH_TENANT = os.environ.get("MICROSOFT_OAUTH_TENANT", "common")
+ZOOM_OAUTH_CLIENT_ID = os.environ.get("ZOOM_OAUTH_CLIENT_ID", "")
+ZOOM_OAUTH_CLIENT_SECRET = os.environ.get("ZOOM_OAUTH_CLIENT_SECRET", "")
+# Encrypts their tokens at rest. Defaults to one derived from DJANGO_SECRET_KEY.
+INTEGRATIONS_ENCRYPTION_KEY = os.environ.get("INTEGRATIONS_ENCRYPTION_KEY", "")
+# "thread" calls the providers after the request; "inline" (tests) calls them straight away.
+BACKGROUND_TASKS = os.environ.get("BACKGROUND_TASKS", "thread")
+
+# --- uploaded images ---------------------------------------------------------
+# On local disk until a bucket is set, on the Configuration page or with MEDIA_S3_BUCKET:
+# then in S3-compatible storage (AWS S3, DigitalOcean Spaces, Cloudflare R2).
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_S3_BUCKET = os.environ.get("MEDIA_S3_BUCKET", "")
+MEDIA_S3_ENDPOINT_URL = os.environ.get("MEDIA_S3_ENDPOINT_URL", "")
+MEDIA_S3_REGION = os.environ.get("MEDIA_S3_REGION", "")
+MEDIA_S3_ACCESS_KEY_ID = os.environ.get("MEDIA_S3_ACCESS_KEY_ID", "")
+MEDIA_S3_SECRET_ACCESS_KEY = os.environ.get("MEDIA_S3_SECRET_ACCESS_KEY", "")
+MEDIA_S3_CUSTOM_DOMAIN = os.environ.get("MEDIA_S3_CUSTOM_DOMAIN", "")
+STORAGES = {
+    "default": {"BACKEND": "apps.configuration.storage.ConfiguredStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- API -------------------------------------------------------------------

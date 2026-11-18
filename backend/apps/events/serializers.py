@@ -3,7 +3,9 @@ from rest_framework import serializers
 
 from apps.accounts import access
 from apps.accounts.serializers import OrganizationSerializer, PersonSerializer
+from apps.content import richtext
 from apps.events.models import Announcement, Event, Feedback, Registration, Resource
+from apps.integrations import meetings
 
 
 class MyRegistrationSerializer(serializers.ModelSerializer):
@@ -12,7 +14,7 @@ class MyRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Registration
         fields = [
-            "id", "status", "ticket_code", "checked_in_at", "certificate_available",
+            "id", "status", "ticket_code", "order_number", "checked_in_at", "certificate_available",
             "has_feedback", "created_at",
         ]
 
@@ -39,6 +41,9 @@ class EventSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["status", "created_at"]
 
+    def validate_description(self, value):
+        return richtext.clean(value)
+
     def get_spots_left(self, event) -> int | None:
         if event.capacity is None:
             return None
@@ -56,9 +61,16 @@ class EventSerializer(serializers.ModelSerializer):
         # The join link is for people who are coming, and for the organisers.
         registration = self.context.get("my_registrations", {}).get(event.id)
         attending = registration and registration.status == Registration.Status.REGISTERED
+        # Which service the meeting is on is not secret, so everyone sees it.
+        data["meeting_provider"] = meetings.detect(event.online_url)
         if not (attending or data["can_manage"]):
             data["online_url"] = ""
         return data
+
+    def validate_online_url(self, value):
+        if value and not value.startswith("https://"):
+            raise serializers.ValidationError("Use the https:// link your meeting tool gives you.")
+        return value
 
     def validate_organization_id(self, value):
         if not Organization.objects.filter(id=value, deleted_at=None).exists():
@@ -97,9 +109,16 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
 
 class AnnouncementSerializer(serializers.ModelSerializer):
+    # Write-only: also email everyone registered. The reply says how many were emailed.
+    notify = serializers.BooleanField(write_only=True, required=False, default=False)
+    emailed_to = serializers.IntegerField(read_only=True, required=False)
+
     class Meta:
         model = Announcement
-        fields = ["id", "title", "body", "created_at"]
+        fields = ["id", "title", "body", "created_at", "notify", "emailed_to"]
+
+    def validate_body(self, value):
+        return richtext.clean(value)
 
 
 class ResourceSerializer(serializers.ModelSerializer):

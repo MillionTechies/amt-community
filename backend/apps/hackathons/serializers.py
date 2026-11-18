@@ -2,6 +2,7 @@ from amt_auth.django.models import Organization
 from rest_framework import serializers
 
 from apps.accounts.serializers import OrganizationSerializer, PersonSerializer
+from apps.content import richtext
 from apps.hackathons.models import (
     Challenge,
     Criterion,
@@ -55,6 +56,9 @@ class HackathonSerializer(serializers.ModelSerializer):
             "can_manage", "is_judge", "my_team_id", "created_at",
         ]
         read_only_fields = ["status", "created_at"]
+
+    def validate_description(self, value):
+        return richtext.clean(value)
 
     def get_can_manage(self, hackathon) -> bool:
         return hackathon.organization_id in self.context.get("managed_org_ids", ())

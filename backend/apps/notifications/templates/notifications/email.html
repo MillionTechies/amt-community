@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>{{ subject }}</title>
+{% if reservation_json %}<script type="application/ld+json">{{ reservation_json|safe }}</script>{% endif %}
+</head>
+{% comment %}
+  Layout: a band with the wordmark, then white cards on grey, then a quiet footer.
+  Inline styles and tables only, so it holds up in Gmail, Outlook and Apple Mail.
+{% endcomment %}
+<body style="margin:0;padding:0;background:#f1f2f1;color:#0c1410;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<span style="display:none;max-height:0;overflow:hidden;opacity:0;">{{ preheader }}</span>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f2f1;">
+<tr><td align="center" style="padding:20px 10px 32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
+
+  <!-- Above the card: who it is from, and a way to the page. -->
+  <tr><td style="padding:0 2px 10px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="font-size:11px;color:#57534e;">A Million Techies Community{% if org_name %} · {{ org_name }}{% endif %}</td>
+      <td align="right" style="font-size:11px;"><a href="{{ page_url }}" style="color:#57534e;">View event</a></td>
+    </tr></table>
+  </td></tr>
+
+  <!-- Band -->
+  <tr><td align="center" style="background:#16a34a;padding:26px 20px;">
+    <span style="display:inline-block;background:#ffffff;color:#16a34a;border-radius:6px;padding:4px 8px;font-family:Menlo,Consolas,'Courier New',monospace;font-size:13px;font-weight:700;">AMT</span>
+    <span style="font-family:Menlo,Consolas,'Courier New',monospace;font-size:15px;font-weight:700;color:#ffffff;">&nbsp;A Million Techies <span style="color:#bbf7d0;">Community_</span></span>
+  </td></tr>
+
+  <!-- Card 1: the message -->
+  <tr><td style="background:#ffffff;padding:30px 28px 28px;">
+    <p style="margin:0 0 6px;text-align:center;font-family:Menlo,Consolas,monospace;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#15803d;">// {{ eyebrow }}</p>
+    <h1 style="margin:0 0 16px;text-align:center;font-size:24px;line-height:1.3;font-weight:700;color:#0c1410;">{{ heading }}</h1>
+    {% for paragraph in paragraphs %}<p style="margin:0 0 10px;font-size:15px;line-height:1.6;color:#292524;">{{ paragraph }}</p>{% endfor %}
+    {% if booked_title %}
+    <p style="margin:0 0 4px;font-size:15px;line-height:1.6;color:#292524;">You have booked 1 ticket for <strong>{{ booked_title }}</strong>.</p>
+    <p style="margin:0;font-size:15px;line-height:1.6;color:#292524;"><strong>Order #{{ order_number }}</strong></p>
+    {% endif %}
+
+    {% if changes %}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:14px 0 4px;border:1px solid #fde68a;background:#fffbeb;border-radius:8px;">
+      {% for label, before, after in changes %}
+      <tr><td style="padding:10px 14px;font-size:14px;line-height:1.5;">
+        <span style="font-family:Menlo,Consolas,monospace;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#92400e;">{{ label }}</span><br>
+        {% if before %}<span style="color:#78716c;text-decoration:line-through;">{{ before }}</span><br>{% endif %}
+        <strong>{{ after }}</strong>
+      </td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if body_html %}<div style="margin:14px 0 0;font-size:15px;line-height:1.6;color:#292524;">{{ body_html|safe }}</div>{% endif %}
+
+    {% if ticket %}
+    <p style="margin:28px 0 12px;text-align:center;font-size:17px;font-weight:700;color:#0c1410;">Show this at check-in</p>
+    <p style="margin:0;text-align:center;"><img src="cid:ticket" width="176" height="176" alt="Your ticket QR code" style="display:inline-block;"></p>
+    {% endif %}
+
+    {% if join_url %}
+    <p style="margin:24px 0 0;text-align:center;"><a href="{{ join_url }}" style="display:inline-block;background:#0c1410;color:#ffffff;text-decoration:none;border-radius:6px;padding:12px 20px;font-family:Menlo,Consolas,monospace;font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">&gt; {{ join_label }}</a></p>
+    {% endif %}
+  </td></tr>
+
+  {% if show_event %}
+  <tr><td style="height:14px;line-height:14px;font-size:0;">&nbsp;</td></tr>
+  <!-- Card 2: when, where, and the ticket -->
+  <tr><td style="background:#ffffff;padding:26px 28px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td width="34" valign="top" style="padding-top:2px;font-size:20px;line-height:1;">&#128197;</td>
+        <td valign="top" style="padding-bottom:18px;">
+          <p style="margin:0 0 2px;font-size:16px;font-weight:600;color:#0c1410;">Date &amp; time</p>
+          <p style="margin:0 0 4px;font-size:14px;color:#44403c;">{{ when }}</p>
+          {% if add_to %}<p style="margin:0;font-size:11px;color:#78716c;">Add to {% for label, url in add_to %}<a href="{{ url }}" style="color:#15803d;">{{ label }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td width="34" valign="top" style="padding-top:2px;font-size:20px;line-height:1;">&#128205;</td>
+        <td valign="top">
+          <p style="margin:0 0 2px;font-size:16px;font-weight:600;color:#0c1410;">{% if online_only %}Online{% else %}Address{% endif %}</p>
+          {% if map_url %}<p style="margin:0;font-size:14px;"><a href="{{ map_url }}" style="color:#15803d;">{{ where }}</a></p>{% else %}<p style="margin:0;font-size:14px;color:#44403c;">{{ where }}</p>{% endif %}
+        </td>
+      </tr>
+    </table>
+
+    {% if ticket_url %}
+    <p style="margin:28px 0 12px;text-align:center;font-size:17px;font-weight:700;color:#0c1410;">Here is your ticket</p>
+    <!-- An "admit one" stub, drawn with tables so it needs no image. -->
+    <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:0 auto;border:2px dashed #a8a29e;border-radius:10px;background:#f0fdf4;">
+      <tr>
+        <td align="center" style="padding:14px 22px;border-right:2px dashed #a8a29e;">
+          <p style="margin:0 0 2px;font-family:Menlo,Consolas,monospace;font-size:10px;font-weight:700;letter-spacing:0.12em;color:#15803d;">A MILLION TECHIES COMMUNITY</p>
+          <p style="margin:0;font-family:Menlo,Consolas,monospace;font-size:26px;font-weight:800;letter-spacing:0.04em;color:#16a34a;">ADMIT ONE</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#57534e;">&bull; Learn. Build. Grow. &bull;</p>
+        </td>
+        <td align="center" style="padding:14px 12px;font-family:Menlo,Consolas,monospace;font-size:10px;font-weight:700;color:#57534e;">#{{ order_number }}</td>
+      </tr>
+    </table>
+    <p style="margin:20px 0 0;text-align:center;"><a href="{{ ticket_url }}" style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;border-radius:6px;padding:11px 20px;font-family:Menlo,Consolas,monospace;font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">&gt; Download</a></p>
+    {% endif %}
+  </td></tr>
+  {% endif %}
+
+  {% if about %}
+  <tr><td style="height:14px;line-height:14px;font-size:0;">&nbsp;</td></tr>
+  <!-- Card 3: changing plans, and the event itself -->
+  <tr><td style="background:#ffffff;padding:26px 28px;">
+    {% if cancel_url %}<p style="margin:0 0 22px;text-align:center;font-size:13px;color:#44403c;">No longer attending? Please <a href="{{ cancel_url }}" style="color:#15803d;">cancel your registration</a>, so someone on the waiting list can come.</p>{% endif %}
+    <p style="margin:0 0 12px;text-align:center;font-size:18px;font-weight:700;color:#0c1410;">About this event</p>
+    {% if share %}
+    <p style="margin:0 0 20px;text-align:center;font-size:12px;color:#57534e;">Tell your friends about it:
+      {% for label, url in share %}<a href="{{ url }}" style="display:inline-block;margin:2px 3px;padding:4px 10px;border-radius:999px;background:#0c1410;color:#ffffff;text-decoration:none;font-family:Menlo,Consolas,monospace;font-size:10px;font-weight:700;">{{ label }}</a>{% endfor %}
+    </p>
+    {% endif %}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid #16a34a;">
+      <tr><td style="padding:2px 0 2px 14px;">
+        <p style="margin:0 0 2px;font-size:12px;color:#57534e;">{{ about.date }}</p>
+        <p style="margin:0 0 2px;font-size:16px;font-weight:700;color:#0c1410;">{{ about.title }}</p>
+        <p style="margin:0 0 8px;font-size:12px;color:#57534e;">{{ about.kind }} · {{ org_name }}</p>
+        {% if about.excerpt %}<p style="margin:0;font-size:14px;line-height:1.55;color:#44403c;">{{ about.excerpt }}</p>{% endif %}
+      </td></tr>
+    </table>
+    <p style="margin:20px 0 0;text-align:center;"><a href="{{ page_url }}" style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;border-radius:6px;padding:11px 20px;font-family:Menlo,Consolas,monospace;font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">&gt; Read more</a></p>
+  </td></tr>
+  {% elif button_url %}
+  <tr><td style="background:#ffffff;padding:0 28px 28px;text-align:center;">
+    <a href="{{ button_url }}" style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;border-radius:6px;padding:11px 20px;font-family:Menlo,Consolas,monospace;font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;">&gt; {{ button_label }}</a>
+  </td></tr>
+  {% endif %}
+
+  {% if org_name %}
+  <tr><td style="height:14px;line-height:14px;font-size:0;">&nbsp;</td></tr>
+  <!-- Card 4: who runs it -->
+  <tr><td align="center" style="background:#ffffff;padding:20px 28px;">
+    <p style="margin:0 0 6px;font-size:12px;font-style:italic;color:#78716c;">Hosted by</p>
+    <p style="margin:0;font-size:18px;font-weight:800;color:#0c1410;">{{ org_name }}</p>
+  </td></tr>
+  {% endif %}
+
+  {% if calendar_note %}<tr><td align="center" style="padding:14px 10px 0;font-size:12px;color:#57534e;">{{ calendar_note }}</td></tr>{% endif %}
+
+  <!-- Footer -->
+  <tr><td align="center" style="padding:26px 16px 0;">
+    <p style="margin:0 0 10px;font-size:13px;font-weight:700;"><a href="{{ community_url }}" style="color:#15803d;text-decoration:none;">Join the conversation on A Million Techies Community</a></p>
+    <p style="margin:0 0 6px;font-size:11px;line-height:1.6;color:#78716c;">
+      <a href="{{ community_url }}/events" style="color:#78716c;">Events</a> · <a href="{{ community_url }}/hackathons" style="color:#78716c;">Hackathons</a> · <a href="https://amilliontechies.com" style="color:#78716c;">amilliontechies.com</a>
+    </p>
+    <p style="margin:0 0 14px;font-size:11px;line-height:1.6;color:#78716c;">You are getting this because of your registration on A Million Techies Community.<br>&copy; {{ year }} A Million Techies. Learn. Build. Grow.</p>
+    <p style="margin:0;font-family:Menlo,Consolas,monospace;font-size:13px;font-weight:700;color:#57534e;">A Million Techies</p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>

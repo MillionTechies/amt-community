@@ -9,6 +9,7 @@ import {
   Button, Card, Empty, ErrorNote, Field, Input, PageHeader, Select, Spinner, Textarea,
   fromLocalInput, toLocalInput,
 } from '../components/ui'
+import { RichTextEditor } from '../components/RichTextEditor'
 import { useAct, useMe } from '../hooks'
 
 const blank = {
@@ -112,7 +113,9 @@ export default function HackathonForm() {
           <Field label="Theme"><Input maxLength={200} value={form.theme} onChange={set('theme')} /></Field>
           <Field label="Venue" hint="Leave empty if it is online."><Input value={form.venue} onChange={set('venue')} /></Field>
         </div>
-        <Field label="Description"><Textarea rows={6} value={form.description} onChange={set('description')} /></Field>
+        <Field label="Description" error={errors.description} group hint="Headings, text sizes, lists, links, images and YouTube videos.">
+          <RichTextEditor value={form.description} onChange={(description) => setForm((f) => ({ ...f, description }))} placeholder="The challenge, the schedule, what teams will build…" />
+        </Field>
         <Field label="Rules"><Textarea value={form.rules} onChange={set('rules')} /></Field>
         <Field label="Who can take part"><Textarea rows={2} value={form.eligibility} onChange={set('eligibility')} /></Field>
         <Field label="Prizes"><Textarea rows={2} value={form.prizes} onChange={set('prizes')} /></Field>

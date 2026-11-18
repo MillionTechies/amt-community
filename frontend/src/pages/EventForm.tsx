@@ -9,6 +9,8 @@ import {
   Button, Card, Empty, ErrorNote, Field, Input, PageHeader, Select, Spinner, Textarea,
   fromLocalInput, toLocalInput,
 } from '../components/ui'
+import { detectMeeting } from '../meetings'
+import { RichTextEditor } from '../components/RichTextEditor'
 import { useAct, useMe } from '../hooks'
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from './Events'
 
@@ -107,8 +109,8 @@ export default function EventForm() {
         <Field label="Summary" hint="One or two sentences shown on the events list." error={errors.summary}>
           <Input maxLength={300} value={form.summary} onChange={set('summary')} />
         </Field>
-        <Field label="Description" error={errors.description}>
-          <Textarea rows={6} value={form.description} onChange={set('description')} />
+        <Field label="Description" error={errors.description} group hint="Headings, text sizes, lists, links, images and YouTube videos.">
+          <RichTextEditor value={form.description} onChange={(description) => setForm((f) => ({ ...f, description }))} placeholder="What happens at this event, who it is for, what to bring…" />
         </Field>
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="Type">
@@ -135,7 +137,15 @@ export default function EventForm() {
             </Field>
           )}
           {online && (
-            <Field label="Meeting link" hint="Only shown to people who register." error={errors.online_url}>
+            <Field
+              label="Meeting link"
+              hint={
+                detectMeeting(form.online_url)
+                  ? `✓ ${detectMeeting(form.online_url)!.name} link. Only people who register will see it.`
+                  : 'Paste the link from Google Meet, Microsoft Teams, Zoom, Webex or any other tool. Only people who register will see it.'
+              }
+              error={errors.online_url}
+            >
               <Input type="url" placeholder="https://" value={form.online_url} onChange={set('online_url')} />
             </Field>
           )}

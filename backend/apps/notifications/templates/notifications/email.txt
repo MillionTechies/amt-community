@@ -1,0 +1,31 @@
+{% autoescape off %}{{ heading }}
+
+{% for paragraph in paragraphs %}{{ paragraph }}
+
+{% endfor %}{% if booked_title %}You have booked 1 ticket for {{ booked_title }}.
+Order #{{ order_number }}
+
+{% endif %}{% for label, before, after in changes %}{{ label }}: {% if before %}{{ before }} -> {% endif %}{{ after }}
+{% endfor %}{% if changes %}
+{% endif %}{% if body_text %}{{ body_text }}
+
+{% endif %}{% if show_event %}Date & time: {{ when }}
+{% if online_only %}Online{% else %}Address{% endif %}: {{ where }}
+{% if map_url %}Directions: {{ map_url }}
+{% endif %}{% endif %}{% if join_url %}
+{{ join_label }}: {{ join_url }}
+{% endif %}{% if ticket_url %}
+Your ticket (show the QR code at check-in): {{ ticket_url }}
+{% endif %}{% if cancel_url %}
+No longer attending? Cancel your registration: {{ cancel_url }}
+{% endif %}{% if page_url %}
+Event page: {{ page_url }}
+{% elif button_url %}
+{{ button_label }}: {{ button_url }}
+{% endif %}{% if calendar_note %}
+{{ calendar_note }}
+{% endif %}
+--
+A Million Techies Community. Learn. Build. Grow.
+{{ community_url }}
+{% endautoescape %}
