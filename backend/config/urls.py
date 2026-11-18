@@ -18,6 +18,7 @@ urlpatterns = [
     path("api/", include("apps.hackathons.urls")),
     path("api/", include("apps.content.urls")),
     path("api/", include("apps.configuration.urls")),
+    path("api/", include("apps.platform_admin.urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="docs"),
 ]
