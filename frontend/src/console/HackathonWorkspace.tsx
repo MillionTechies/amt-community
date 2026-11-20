@@ -36,8 +36,9 @@ export default function HackathonWorkspace() {
   if (!h.can_manage) return <Empty>You do not manage this hackathon.</Empty>
   const confirmMove = (status: string, question: string) => () => window.confirm(question) && move.mutate(status)
   const cancel = (
-    <Button variant="danger" onClick={confirmMove('cancelled', 'Cancel this hackathon? This cannot be undone.')}>Cancel</Button>
+    <Button variant="danger" onClick={confirmMove('cancelled', 'Cancel this hackathon? Teams can no longer join or submit. You can restore it later.')}>Cancel</Button>
   )
+  const restoreTo = h.cancelled_from || 'published'
 
   return (
     <>
@@ -67,6 +68,14 @@ export default function HackathonWorkspace() {
                 <Button onClick={confirmMove('judging', 'Start judging? Submissions close, and teams and criteria can no longer change.')}>Start judging</Button>
               </>
             )}
+            {h.status === 'cancelled' && (
+              <Button
+                disabled={move.isPending}
+                onClick={confirmMove(restoreTo, `Restore this hackathon? It goes back to ${restoreTo === 'judging' ? 'judging' : 'open'}, as it was before it was cancelled.`)}
+              >
+                Restore
+              </Button>
+            )}
             {h.status === 'judging' && (
               <>
                 {cancel}
@@ -95,7 +104,8 @@ const STAGES = [
 ]
 
 function Stages({ h }: { h: Hackathon }) {
-  if (h.status === 'cancelled') return <Notice tone="amber">This hackathon was cancelled.</Notice>
+  if (h.status === 'cancelled')
+    return <Notice tone="amber">This hackathon was cancelled. Use Restore at the top of the page to bring it back.</Notice>
   const at = STAGES.findIndex((s) => s.id === h.status)
   const dates: Record<string, string> = {
     published: `Registration closes ${formatDate(h.registration_deadline)}`,

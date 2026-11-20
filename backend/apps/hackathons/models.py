@@ -39,6 +39,8 @@ class Hackathon(models.Model):
     min_team_size = models.PositiveSmallIntegerField(default=1)  # 1 allows individuals
     max_team_size = models.PositiveSmallIntegerField(default=4)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    # Where a cancelled hackathon was (open or judging), so restoring puts it back there.
+    cancelled_from = models.CharField(max_length=20, choices=Status.choices, blank=True)
     created_by = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

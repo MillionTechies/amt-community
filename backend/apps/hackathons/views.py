@@ -44,7 +44,8 @@ TRANSITIONS = {
     Status.PUBLISHED: {Status.JUDGING, Status.CANCELLED},
     Status.JUDGING: {Status.COMPLETED, Status.CANCELLED},
     Status.COMPLETED: set(),
-    Status.CANCELLED: set(),
+    # Restoring: back to where it was cancelled from (checked in `transition`).
+    Status.CANCELLED: {Status.PUBLISHED, Status.JUDGING},
 }
 
 
@@ -176,7 +177,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def transition(self, request, slug=None):
-        """Publish, start judging, publish the results (complete) or cancel."""
+        """Publish, start judging, publish the results (complete), cancel, or restore a cancelled one."""
         hackathon = self._manageable()
         data = TransitionSerializer(data=request.data)
         data.is_valid(raise_exception=True)
@@ -185,10 +186,18 @@ class HackathonViewSet(viewsets.ModelViewSet):
             raise ValidationError(
                 f"A hackathon that is {hackathon.get_status_display().lower()} cannot become {target}."
             )
-        if target == Status.JUDGING and not hackathon.criteria.exists():
+        if hackathon.status == Status.CANCELLED:
+            restore_to = hackathon.cancelled_from or Status.PUBLISHED
+            if target != restore_to:
+                raise ValidationError(
+                    f"This hackathon was cancelled while {Status(restore_to).label.lower()}, "
+                    "so it can only be restored to that."
+                )
+        elif target == Status.JUDGING and not hackathon.criteria.exists():
             raise ValidationError("Add at least one judging criterion before judging starts.")
+        hackathon.cancelled_from = hackathon.status if target == Status.CANCELLED else ""
         hackathon.status = target
-        hackathon.save(update_fields=["status", "updated_at"])
+        hackathon.save(update_fields=["status", "cancelled_from", "updated_at"])
         return Response(self.get_serializer(hackathon).data)
 
     # --- teams -----------------------------------------------------------

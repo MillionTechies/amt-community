@@ -253,3 +253,30 @@ def test_other_organizations_cannot_manage(admin, org, other_org):
     assert rival.get(f"{url}judges/").status_code == 403
     assert rival.post(f"{url}transition/", {"status": "cancelled"}, format="json").status_code == 403
     assert rival.post(f"{url}criteria/", {"name": "X"}, format="json").status_code == 403
+
+
+def test_cancelled_hackathon_can_be_restored_to_open(admin, org):
+    hackathon = create_hackathon(admin, org)
+    cancelled = move(admin, hackathon["slug"], "cancelled")
+    assert cancelled["cancelled_from"] == "published"
+    restored = move(admin, hackathon["slug"], "published")
+    assert restored["status"] == "published"
+    assert restored["cancelled_from"] == ""
+    assert restored["registration_open"] is True
+
+
+def test_restore_returns_to_the_status_it_was_cancelled_from(admin, org):
+    hackathon = create_hackathon(admin, org)
+    move(admin, hackathon["slug"], "judging")
+    move(admin, hackathon["slug"], "cancelled")
+    url = f"/api/hackathons/{hackathon['slug']}/transition/"
+    wrong = admin.post(url, {"status": "published"}, format="json")
+    assert wrong.status_code == 400
+    assert move(admin, hackathon["slug"], "judging")["status"] == "judging"
+
+
+def test_only_managers_restore_a_hackathon(admin, bob, org):
+    hackathon = create_hackathon(admin, org)
+    move(admin, hackathon["slug"], "cancelled")
+    url = f"/api/hackathons/{hackathon['slug']}/transition/"
+    assert bob.post(url, {"status": "published"}, format="json").status_code == 403

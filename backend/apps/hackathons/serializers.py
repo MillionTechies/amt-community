@@ -51,11 +51,11 @@ class HackathonSerializer(serializers.ModelSerializer):
             "slug", "organization", "organization_id", "title", "tagline", "description", "theme",
             "rules", "eligibility", "prizes", "venue", "starts_at", "ends_at",
             "registration_deadline", "submission_deadline", "min_team_size", "max_team_size",
-            "status", "challenges", "criteria", "team_count", "participant_count",
+            "status", "cancelled_from", "challenges", "criteria", "team_count", "participant_count",
             "submission_count", "registration_open", "submissions_open", "results_published",
             "can_manage", "is_judge", "my_team_id", "created_at",
         ]
-        read_only_fields = ["status", "created_at"]
+        read_only_fields = ["status", "cancelled_from", "created_at"]
 
     def validate_description(self, value):
         return richtext.clean(value)
