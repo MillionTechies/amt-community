@@ -1,13 +1,11 @@
+/** Event and hackathon cards for lists: a cover, the essentials, and who is going. */
+import type { CSSProperties, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 import type { CommunityEvent, Hackathon } from '../api'
 import { Icon } from './icons'
-import { Badge, StatusBadge, formatDate, label } from './ui'
-
-const cardStyle =
-  'group flex flex-col rounded-xl border border-stone-200 bg-white p-4 shadow-sm transition hover:border-brand-500 hover:shadow-md active:scale-[0.99] sm:p-5'
-
-const timeFormat = new Intl.DateTimeFormat('en-GB', { timeStyle: 'short' })
+import type { IconName } from './icons'
+import { StatusBadge, formatDate, label } from './ui'
 
 /** A small calendar leaf: "NOV / 30". */
 export function DateBlock({ iso, large = false }: { iso: string; large?: boolean }) {
@@ -30,96 +28,179 @@ export function dateSpan(start: string, end: string) {
 
 /** "Online", the venue, or both. */
 export function eventPlace(event: CommunityEvent) {
-  if (event.delivery_mode === 'online') return 'Online'
-  if (event.delivery_mode === 'hybrid') return event.venue ? `${event.venue} or online` : 'In person or online'
-  return event.venue || 'Venue to be confirmed'
+  const places: Record<string, string> = {
+    online: 'Online',
+    hybrid: event.venue ? `${event.venue} or online` : 'In person or online',
+    in_person: event.venue || 'Venue to be confirmed',
+  }
+  return places[event.delivery_mode] ?? event.venue
 }
+
+/** "Sat, 28 Nov · 08:00" in the visitor's time zone. */
+export function when(iso: string) {
+  const d = new Date(iso)
+  const day = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return `${day} · ${time}`
+}
+
+export const EVENT_TYPE_ICONS: Record<string, IconName> = {
+  workshop: 'code',
+  outreach: 'school',
+  conference: 'mic',
+  meetup: 'users',
+  webinar: 'video',
+  training: 'book',
+  networking: 'link',
+  hackathon: 'trophy',
+}
+
+// Each kind of event gets its own glow on the drawn cover.
+const GLOWS: Record<string, string> = {
+  workshop: 'bg-brand-500/45',
+  outreach: 'bg-sky-500/45',
+  conference: 'bg-amber-500/45',
+  meetup: 'bg-violet-500/45',
+  webinar: 'bg-rose-500/40',
+  training: 'bg-teal-500/45',
+  networking: 'bg-indigo-500/45',
+  hackathon: 'bg-amber-400/45',
+}
+
+const GRID: CSSProperties = {
+  backgroundImage:
+    'linear-gradient(rgb(255 255 255 / 0.06) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.06) 1px, transparent 1px)',
+  backgroundSize: '22px 22px',
+}
+
+/**
+ * The organiser's banner, or a drawn one in the house style when there is none,
+ * so a list never looks empty. Overlays (pills) go in `children`.
+ */
+export function Cover({
+  image,
+  kind,
+  title,
+  className = '',
+  children,
+}: {
+  image: string
+  kind: string
+  title: string
+  className?: string
+  children?: ReactNode
+}) {
+  return (
+    <div className={`relative aspect-[16/9] overflow-hidden rounded-xl bg-ink ${className}`}>
+      {image ? (
+        <img src={image} alt="" loading="lazy" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
+      ) : (
+        <div className="absolute inset-0" style={GRID} aria-hidden="true">
+          <div className={`absolute -right-10 -top-12 h-44 w-44 rounded-full blur-3xl ${GLOWS[kind] ?? GLOWS.workshop}`} />
+          <Icon name={EVENT_TYPE_ICONS[kind] ?? 'calendar'} className="absolute right-5 top-5 h-12 w-12 text-white/25" />
+          <div className="absolute inset-x-5 bottom-4">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-brand-300">
+              <span className="text-brand-500">// </span>{label(kind)}
+            </p>
+            <p className="mt-1 line-clamp-2 text-lg font-bold leading-tight text-white">{title}</p>
+          </div>
+        </div>
+      )}
+      {children && <div className="absolute inset-x-3 top-3 flex flex-wrap items-start gap-1.5">{children}</div>}
+    </div>
+  )
+}
+
+/** A small pill laid over a cover. */
+export function Pill({ children, tone = 'light' }: { children: ReactNode; tone?: 'light' | 'green' | 'amber' | 'dark' }) {
+  const tones = {
+    light: 'bg-white/95 text-ink',
+    green: 'bg-brand-600 text-white',
+    amber: 'bg-amber-400 text-amber-950',
+    dark: 'bg-ink/80 text-white',
+  }
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold shadow-sm backdrop-blur ${tones[tone]}`}>
+      {children}
+    </span>
+  )
+}
+
+const FACE_COLOURS = ['bg-brand-600', 'bg-sky-600', 'bg-amber-500', 'bg-violet-600', 'bg-rose-500', 'bg-teal-600']
+
+/** Overlapping initials and a count: the "169 attendees" line. */
+export function Faces({ initials, count, noun }: { initials: string[]; count: number; noun: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      {initials.length > 0 && (
+        <span className="flex -space-x-1.5">
+          {initials.map((text, i) => (
+            <span
+              key={i}
+              className={`grid h-8 w-8 place-items-center rounded-full text-[11px] font-bold tracking-tight text-white ring-2 ring-stone-50 ${FACE_COLOURS[(text.charCodeAt(0) + i) % FACE_COLOURS.length]}`}
+            >
+              {text}
+            </span>
+          ))}
+        </span>
+      )}
+      <span className="text-sm font-semibold text-stone-700">
+        {count > 0 ? `${count} ${noun}` : 'Be the first to join'}
+      </span>
+    </div>
+  )
+}
+
+const cardStyle = 'group flex flex-col rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-600'
 
 export function EventCard({ event }: { event: CommunityEvent }) {
-  const mine = event.my_registration && event.my_registration.status !== 'cancelled' ? event.my_registration : null
-  const start = new Date(event.starts_at)
-  const sameDay = start.toDateString() === new Date(event.ends_at).toDateString()
+  const mine = event.my_registration?.status === 'cancelled' ? null : event.my_registration
+  const left = event.spots_left
   return (
     <Link to={`/events/${event.slug}`} className={cardStyle}>
-      <div className="flex gap-4">
-        <DateBlock iso={event.starts_at} />
-        <div className="min-w-0 flex-1">
-          <h3 className="font-semibold leading-snug group-hover:text-brand-700 sm:text-lg">{event.title}</h3>
-          <p className="mt-1 flex items-center gap-1.5 text-sm text-stone-600">
-            <Icon name="clock" className="h-4 w-4 text-stone-400" />
-            {start.toLocaleDateString('en-GB', { weekday: 'short' })} {timeFormat.format(start)}
-            {sameDay ? ` to ${timeFormat.format(new Date(event.ends_at))}` : ` to ${formatDate(event.ends_at)}`}
-          </p>
-          <p className="mt-0.5 flex items-center gap-1.5 truncate text-sm text-stone-600">
-            <Icon name="pin" className="h-4 w-4 text-stone-400" />
-            <span className="truncate">{eventPlace(event)}</span>
-          </p>
-        </div>
-      </div>
-      {event.summary && <p className="mt-3 line-clamp-2 text-sm text-stone-700">{event.summary}</p>}
-      <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
-        <Badge tone="blue">{label(event.event_type)}</Badge>
-        {event.status !== 'published' && <StatusBadge status={event.status} />}
-        <span className="ml-auto text-xs font-semibold">
-          {mine ? (
-            mine.status === 'waitlisted' ? (
-              <span className="text-amber-700">On the waiting list</span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-brand-700"><Icon name="check" className="h-4 w-4" />You're going</span>
-            )
-          ) : event.spots_left === 0 ? (
-            <span className="text-amber-700">Full, join the waiting list</span>
-          ) : event.spots_left !== null && event.spots_left <= 10 ? (
-            <span className="text-amber-700">Only {event.spots_left} {event.spots_left === 1 ? 'place' : 'places'} left</span>
-          ) : (
-            <span className="text-stone-500">{event.registered_count} going</span>
-          )}
-        </span>
+      <Cover image={event.cover_image} kind={event.event_type} title={event.title}>
+        {mine?.status === 'registered' && <Pill tone="green"><Icon name="check" className="h-3.5 w-3.5" />Going</Pill>}
+        {mine?.status === 'waitlisted' && <Pill tone="amber">Waiting list</Pill>}
+        {event.status !== 'published' && <Pill tone="dark">{label(event.status)}</Pill>}
+        {mine === null && left === 0 && <Pill tone="amber">Full</Pill>}
+        {mine === null && left !== null && left > 0 && left <= 10 && (
+          <Pill><Icon name="alert" className="h-3.5 w-3.5 text-amber-600" />{left} {left === 1 ? 'seat' : 'seats'} left</Pill>
+        )}
+        {event.delivery_mode === 'online' && <Pill tone="dark"><Icon name="video" className="h-3.5 w-3.5" />Online</Pill>}
+      </Cover>
+      <h3 className="mt-3 line-clamp-2 text-lg font-bold leading-snug group-hover:text-brand-700">{event.title}</h3>
+      <p className="mt-1 text-sm font-medium text-stone-700">{when(event.starts_at)}</p>
+      <p className="mt-0.5 truncate text-sm text-stone-500">
+        by {event.organization.name} · {eventPlace(event)}
+      </p>
+      <div className="mt-2.5">
+        <Faces initials={event.attendee_preview} count={event.registered_count} noun="going" />
       </div>
     </Link>
   )
 }
 
-export function HackathonCard({ hackathon }: { hackathon: Hackathon }) {
-  const prize = hackathon.prizes[0]
+export function HackathonCard({ hackathon: h }: { hackathon: Hackathon }) {
+  const prize = h.prizes[0]
   return (
-    <Link to={`/hackathons/${hackathon.slug}`} className={cardStyle}>
-      <div className="flex gap-4">
-        <DateBlock iso={hackathon.starts_at} />
-        <div className="min-w-0 flex-1">
-          <h3 className="font-semibold leading-snug group-hover:text-brand-700 sm:text-lg">{hackathon.title}</h3>
-          <p className="mt-1 text-sm text-stone-600">{dateSpan(hackathon.starts_at, hackathon.ends_at)}</p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-sm text-stone-600">
-            <Icon name="pin" className="h-4 w-4 text-stone-400" />
-            <span className="truncate">{hackathon.venue || 'Online'}</span>
-          </p>
-        </div>
+    <Link to={`/hackathons/${h.slug}`} className={cardStyle}>
+      <Cover image={h.cover_image} kind="hackathon" title={h.title}>
+        {h.my_team_id && <Pill tone="green"><Icon name="check" className="h-3.5 w-3.5" />Taking part</Pill>}
+        {h.is_judge && <Pill tone="amber">Judge</Pill>}
+        {h.registration_open && h.my_team_id === null && <Pill>Open to join</Pill>}
+        {prize && <Pill tone="dark"><Icon name="trophy" className="h-3.5 w-3.5 text-amber-300" />{prize.value || prize.title}</Pill>}
+      </Cover>
+      <div className="mt-3 flex items-start justify-between gap-2">
+        <h3 className="line-clamp-2 text-lg font-bold leading-snug group-hover:text-brand-700">{h.title}</h3>
+        <span className="mt-1 shrink-0"><StatusBadge status={h.status} /></span>
       </div>
-      {hackathon.tagline && <p className="mt-3 line-clamp-2 text-sm text-stone-700">{hackathon.tagline}</p>}
-      {prize && (
-        <p className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm">
-          <Icon name="trophy" className="h-4 w-4 text-amber-700" />
-          <span className="font-semibold text-amber-900">{prize.title}</span>
-          {prize.value && <span className="ml-auto font-mono font-bold tabular-nums">{prize.value}</span>}
-        </p>
-      )}
-      <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
-        <StatusBadge status={hackathon.status} />
-        {hackathon.theme && <Badge tone="blue">{hackathon.theme}</Badge>}
-        <span className="ml-auto text-xs font-semibold">
-          {hackathon.my_team_id ? (
-            <span className="inline-flex items-center gap-1 text-brand-700"><Icon name="check" className="h-4 w-4" />You're taking part</span>
-          ) : hackathon.is_judge ? (
-            <span className="text-amber-700">You're a judge</span>
-          ) : hackathon.registration_open ? (
-            <span className="text-brand-700">Open to join</span>
-          ) : (
-            <span className="text-stone-500">{hackathon.team_count} {hackathon.team_count === 1 ? 'team' : 'teams'}</span>
-          )}
-        </span>
+      <p className="mt-1 text-sm font-medium text-stone-700">{dateSpan(h.starts_at, h.ends_at)}</p>
+      <p className="mt-0.5 truncate text-sm text-stone-500">by {h.organization.name} · {h.venue || 'Online'}</p>
+      <div className="mt-2.5">
+        <Faces initials={h.participant_preview} count={h.participant_count} noun={`taking part in ${h.team_count} ${h.team_count === 1 ? 'team' : 'teams'}`} />
       </div>
     </Link>
   )
 }
 
-export const grid = 'grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3'
+export const grid = 'grid gap-x-5 gap-y-8 sm:grid-cols-2 lg:grid-cols-3'

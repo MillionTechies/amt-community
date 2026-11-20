@@ -12,7 +12,7 @@ import {
   Textarea, formatDateTime, formatRange, label,
 } from '../components/ui'
 import { AddToCalendar } from '../components/AddToCalendar'
-import { eventPlace } from '../components/cards'
+import { Cover, eventPlace } from '../components/cards'
 import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
 import { ReadMore, StickyAction, TicketSheet, useScrolledPast } from '../components/mobile'
@@ -70,6 +70,7 @@ export default function EventDetail() {
 
   return (
     <div className="space-y-6">
+      <Cover image={e.cover_image} kind={e.event_type} title={e.title} className="-mx-4 -mt-8 rounded-none sm:mx-0 sm:mt-0 sm:aspect-[21/8] sm:rounded-2xl" />
       <div>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <Badge tone="blue">{label(e.event_type)}</Badge>

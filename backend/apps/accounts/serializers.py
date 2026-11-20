@@ -47,3 +47,13 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
 class GrantRoleSerializer(serializers.Serializer):
     email = serializers.EmailField()
     role = serializers.ChoiceField(choices=RoleAssignment.Role.choices)
+
+
+# How many faces a card shows: "AM", "JK", "WN" and 166 more.
+PREVIEW_SIZE = 3
+
+
+def initials(full_name: str) -> str:
+    """'Alice Wanjiku Kamau' -> 'AK'. Lists show initials rather than names."""
+    first, *rest = (full_name or "?").split() or ["?"]
+    return (first[0] + "".join(rest[-1:])[:1]).upper()

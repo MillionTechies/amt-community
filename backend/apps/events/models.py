@@ -35,6 +35,8 @@ class Event(models.Model):
     # The public address; see apps.slugs.
     slug = models.SlugField(max_length=MAX_LENGTH, unique=True, editable=False)
     summary = models.CharField(max_length=300, blank=True)
+    # A banner for lists and the event page: an address from the uploads endpoint.
+    cover_image = models.URLField(max_length=500, blank=True)
     description = models.TextField(blank=True)
     event_type = models.CharField(max_length=20, choices=Type.choices, default=Type.WORKSHOP)
     delivery_mode = models.CharField(max_length=20, choices=Mode.choices, default=Mode.IN_PERSON)

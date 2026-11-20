@@ -29,19 +29,19 @@ export function MeetingPanel({ event: e }: { event: CommunityEvent }) {
   const calendars = usable.filter((i) => i.has_calendar)
   const already = new Set(links.data.filter((l) => l.mine).map((l) => l.provider))
   const createMeeting = async (provider: string, name: string) => {
-    if (
-      e.online_url &&
-      !(await confirm({
-        tone: 'warning', title: `Replace the meeting link?`, confirmLabel: `Create ${name} meeting`, icon: 'refresh',
-        message: 'The current link stops being shown. Everyone registered is emailed the new one.',
-      }))
-    )
-      return
-    add.mutate({ provider, meeting: true }, { onSuccess: () => toast({ title: `${name} meeting created`, message: 'The link is on the event page for everyone registered.' }) })
+    // Replacing a link people already have needs a yes; a first link does not.
+    const go = e.online_url
+      ? await confirm({
+          tone: 'warning', title: 'Replace the meeting link?', confirmLabel: `Create ${name} meeting`, icon: 'refresh',
+          message: 'The current link stops being shown. Everyone registered is emailed the new one.',
+        })
+      : true
+    if (go) add.mutate({ provider, meeting: true }, { onSuccess: () => toast({ title: `${name} meeting created`, message: 'The link is on the event page for everyone registered.' }) })
   }
   const removeLink = async (l: EventLink) => {
-    if (!(await confirm({ tone: 'danger', title: `Remove it from ${l.provider_name}?`, message: 'The event is deleted from that calendar.', confirmLabel: 'Remove' }))) return
-    remove.mutate(l.id, { onSuccess: () => toast({ title: `Removed from ${l.provider_name}` }) })
+    if (await confirm({ tone: 'danger', title: `Remove it from ${l.provider_name}?`, message: 'The event is deleted from that calendar.', confirmLabel: 'Remove' })) {
+      remove.mutate(l.id, { onSuccess: () => toast({ title: `Removed from ${l.provider_name}` }) })
+    }
   }
 
   return (

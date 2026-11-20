@@ -102,16 +102,15 @@ function Toolbar({ editor, onImage, uploading }: { editor: Editor; onImage: () =
       title: current ? 'Edit link' : 'Add a link', label: 'Link address', icon: 'external',
       initial: current ?? 'https://', confirmLabel: 'Save link', message: current ? 'Clear the address to remove the link.' : undefined,
     })
-    if (url === null) return
-    if (!url || url === 'https://') chain().extendMarkRange('link').unsetLink().run()
-    else chain().extendMarkRange('link').setLink({ href: url, target: '_blank' }).run()
+    // Cancelled: null. Cleared: remove the link. Anything else: set it.
+    if (url === '' || url === 'https://') chain().extendMarkRange('link').unsetLink().run()
+    else if (url) chain().extendMarkRange('link').setLink({ href: url, target: '_blank' }).run()
   }
   const addVideo = async () => {
     const url = await prompt({
       title: 'Add a YouTube video', label: 'Video address', type: 'url', placeholder: 'https://youtu.be/…', confirmLabel: 'Add video',
     })
-    if (!url) return
-    if (!chain().setYoutubeVideo({ src: url }).run())
+    if (url && chain().setYoutubeVideo({ src: url }).run() === false)
       toast({ tone: 'error', title: 'That is not a YouTube address', message: 'Copy the link from the Share button on YouTube.' })
   }
 

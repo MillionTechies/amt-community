@@ -2,7 +2,7 @@ from amt_auth.django.models import Organization
 from rest_framework import serializers
 
 from apps.accounts import access
-from apps.accounts.serializers import OrganizationSerializer, PersonSerializer
+from apps.accounts.serializers import OrganizationSerializer, PersonSerializer, initials
 from apps.content import richtext
 from apps.events.models import Announcement, Event, Feedback, Registration, Resource
 from apps.integrations import meetings
@@ -30,19 +30,26 @@ class EventSerializer(serializers.ModelSerializer):
     registration_open = serializers.BooleanField(read_only=True)
     can_manage = serializers.SerializerMethodField()
     my_registration = serializers.SerializerMethodField()
+    attendee_preview = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
         fields = [
-            "slug", "organization", "organization_id", "title", "summary", "description",
+            "slug", "organization", "organization_id", "title", "summary", "cover_image", "description",
             "event_type", "delivery_mode", "venue", "online_url", "starts_at", "ends_at",
             "registration_deadline", "capacity", "eligibility", "status", "registered_count",
-            "spots_left", "registration_open", "can_manage", "my_registration", "created_at",
+            "spots_left", "registration_open", "can_manage", "my_registration", "attendee_preview",
+            "created_at",
         ]
         read_only_fields = ["status", "created_at"]
 
     def validate_description(self, value):
         return richtext.clean(value)
+
+    def get_attendee_preview(self, event) -> list[str]:
+        """Initials of the first few people going, for the faces on a card. Initials only."""
+        # Prefetched by visible_events; a just-created event has nobody going yet.
+        return [initials(r.profile.full_name) for r in getattr(event, "preview_registrations", [])]
 
     def get_spots_left(self, event) -> int | None:
         if event.capacity is None:

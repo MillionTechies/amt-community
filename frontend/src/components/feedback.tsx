@@ -92,9 +92,8 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
   )
 
   const close = (answer: boolean, value?: string) => {
-    if (!dialog) return
-    if (dialog.kind === 'confirm') dialog.resolve(answer)
-    else dialog.resolve(answer ? (value ?? '') : null)
+    if (dialog?.kind === 'confirm') dialog.resolve(answer)
+    if (dialog?.kind === 'prompt') dialog.resolve(answer ? (value ?? '') : null)
     setDialog(null)
   }
 

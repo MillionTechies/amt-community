@@ -10,6 +10,7 @@ import {
   fromLocalInput, toLocalInput,
 } from '../components/ui'
 import { Icon } from '../components/icons'
+import { CoverField } from '../components/CoverField'
 import { RichTextEditor } from '../components/RichTextEditor'
 import { useAct, useMe } from '../hooks'
 
@@ -17,6 +18,7 @@ const blank = {
   organization_id: '',
   title: '',
   tagline: '',
+  cover_image: '',
   theme: '',
   description: '',
   rules: '',
@@ -106,6 +108,7 @@ export default function HackathonForm() {
       organization_id: h.organization.id,
       title: h.title,
       tagline: h.tagline,
+      cover_image: h.cover_image,
       theme: h.theme,
       description: h.description,
       rules: h.rules,
@@ -163,6 +166,7 @@ export default function HackathonForm() {
         <Field label="Tagline" hint="One sentence shown on the hackathons list.">
           <Input maxLength={300} value={form.tagline} onChange={set('tagline')} />
         </Field>
+        <CoverField value={form.cover_image} onChange={(cover_image) => setForm((f) => ({ ...f, cover_image }))} kind="hackathon" title={form.title} />
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="Theme"><Input maxLength={200} value={form.theme} onChange={set('theme')} /></Field>
           <Field label="Venue" hint="Leave empty if it is online."><Input value={form.venue} onChange={set('venue')} /></Field>
