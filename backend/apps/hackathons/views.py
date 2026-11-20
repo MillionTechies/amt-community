@@ -1,5 +1,5 @@
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
@@ -7,6 +7,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 from rest_framework.response import Response
 
 from apps.accounts import access
+from apps.accounts.serializers import PREVIEW_SIZE
 from apps.accounts.views import find_profile_by_email
 from apps.hackathons.models import (
     Announcement,
@@ -58,6 +59,12 @@ def visible_hackathons(request):
         team_count=Count("teams", distinct=True),
         participant_count=Count("participants", distinct=True),
         submission_count=Count("teams__submission", distinct=True),
+    ).prefetch_related(
+        Prefetch(
+            "participants",
+            queryset=TeamMember.objects.select_related("profile").order_by("joined_at")[:PREVIEW_SIZE],
+            to_attr="preview_participants",
+        )
     ).order_by("-starts_at", "-id")
     if access.is_platform_admin(request):
         return hackathons

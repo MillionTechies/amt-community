@@ -41,10 +41,9 @@ export default function HackathonWorkspace() {
   const h = hackathon.data
   if (!h.can_manage) return <Empty>You do not manage this hackathon.</Empty>
   const failed = (title: string) => (error: Error) => toast({ tone: 'error', title, message: error.message })
-  /** Ask first (when `ask` is given), move the hackathon on, then say what happened. */
-  const moveTo = (status: string, done: ToastOptions, ask?: ConfirmOptions) => async () => {
-    if (ask && !(await confirm(ask))) return
-    move.mutate(status, { onSuccess: () => toast(done), onError: failed('Could not update the hackathon') })
+  /** Ask first, move the hackathon on, then say what happened. */
+  const moveTo = (status: string, done: ToastOptions, ask: ConfirmOptions) => async () => {
+    if (await confirm(ask)) move.mutate(status, { onSuccess: () => toast(done), onError: failed('Could not update the hackathon') })
   }
   const restoreTo = h.cancelled_from || 'published'
   const cancel = (
@@ -68,14 +67,15 @@ export default function HackathonWorkspace() {
       tone: 'danger', title: 'Delete this draft?', confirmLabel: 'Delete draft',
       message: <>“{h.title}” and its challenges and criteria are removed for good.</>,
     })
-    if (!ok) return
-    remove.mutate(undefined, {
-      onSuccess: () => {
-        toast({ title: 'Draft deleted' })
-        navigate('/manage/hackathons')
-      },
-      onError: failed('Could not delete the draft'),
-    })
+    if (ok) {
+      remove.mutate(undefined, {
+        onSuccess: () => {
+          toast({ title: 'Draft deleted' })
+          navigate('/manage/hackathons')
+        },
+        onError: failed('Could not delete the draft'),
+      })
+    }
   }
 
   return (
@@ -335,11 +335,12 @@ export function HackathonSetup() {
   const confirm = useConfirm()
   const toast = useToast()
   const removeItem = async (path: string, kind: string, name: string) => {
-    if (!(await confirm({ tone: 'danger', title: `Remove this ${kind}?`, message: <>“{name}” is removed from the hackathon.</>, confirmLabel: 'Remove' }))) return
-    remove.mutate(path, {
-      onSuccess: () => toast({ title: `${kind[0].toUpperCase()}${kind.slice(1)} removed` }),
-      onError: (error) => toast({ tone: 'error', title: `Could not remove the ${kind}`, message: error.message }),
-    })
+    if (await confirm({ tone: 'danger', title: `Remove this ${kind}?`, message: <>“{name}” is removed from the hackathon.</>, confirmLabel: 'Remove' })) {
+      remove.mutate(path, {
+        onSuccess: () => toast({ title: `${kind[0].toUpperCase()}${kind.slice(1)} removed` }),
+        onError: (error) => toast({ tone: 'error', title: `Could not remove the ${kind}`, message: error.message }),
+      })
+    }
   }
   const criteriaLocked = h.status !== 'draft' && h.status !== 'published'
   const submit = (action: typeof addChallenge, reset: () => void) => (e: FormEvent) => {
@@ -481,11 +482,12 @@ export function HackathonJudges() {
       tone: 'danger', title: `Remove ${j.person.name}?`, confirmLabel: 'Remove judge',
       message: j.evaluations ? `They have scored ${j.evaluations} ${j.evaluations === 1 ? 'project' : 'projects'}. Those scores are deleted too.` : 'They have not scored anything yet.',
     })
-    if (!ok) return
-    remove.mutate(j.id, {
-      onSuccess: () => toast({ title: 'Judge removed', message: `${j.person.name} can no longer score projects.` }),
-      onError: (error) => toast({ tone: 'error', title: 'Could not remove the judge', message: error.message }),
-    })
+    if (ok) {
+      remove.mutate(j.id, {
+        onSuccess: () => toast({ title: 'Judge removed', message: `${j.person.name} can no longer score projects.` }),
+        onError: (error) => toast({ tone: 'error', title: 'Could not remove the judge', message: error.message }),
+      })
+    }
   }
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -606,8 +608,9 @@ export function HackathonAnnouncements() {
     })
   }
   const removeAnnouncement = async (a: Announcement) => {
-    if (!(await confirm({ tone: 'danger', title: 'Remove this announcement?', message: <>“{a.title}” disappears from the hackathon page. Emails already sent stay sent.</>, confirmLabel: 'Remove' }))) return
-    remove.mutate(a.id, { onSuccess: () => toast({ title: 'Announcement removed' }) })
+    if (await confirm({ tone: 'danger', title: 'Remove this announcement?', message: <>“{a.title}” disappears from the hackathon page. Emails already sent stay sent.</>, confirmLabel: 'Remove' })) {
+      remove.mutate(a.id, { onSuccess: () => toast({ title: 'Announcement removed' }) })
+    }
   }
   const list = announcements.data ?? []
   return (

@@ -35,11 +35,12 @@ export function Team() {
   const toast = useToast()
   const removeRole = async (r: RoleAssignment) => {
     const role = label(r.role).toLowerCase()
-    if (!(await confirm({ tone: 'danger', title: `Remove ${r.person.name}?`, message: `They will no longer be ${/^[aeiou]/.test(role) ? 'an' : 'a'} ${role} here.`, confirmLabel: 'Remove' }))) return
-    revoke.mutate(r.id, {
-      onSuccess: () => toast({ title: 'Role removed', message: `${r.person.name} is no longer ${/^[aeiou]/.test(role) ? 'an' : 'a'} ${role}.` }),
-      onError: (error) => toast({ tone: 'error', title: 'Could not remove the role', message: error.message }),
-    })
+    if (await confirm({ tone: 'danger', title: `Remove ${r.person.name}?`, message: `They will no longer be ${/^[aeiou]/.test(role) ? 'an' : 'a'} ${role} here.`, confirmLabel: 'Remove' })) {
+      revoke.mutate(r.id, {
+        onSuccess: () => toast({ title: 'Role removed', message: `${r.person.name} is no longer ${/^[aeiou]/.test(role) ? 'an' : 'a'} ${role}.` }),
+        onError: (error) => toast({ tone: 'error', title: 'Could not remove the role', message: error.message }),
+      })
+    }
   }
 
   if (!me) return <Spinner />

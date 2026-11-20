@@ -41,23 +41,23 @@ export default function EventWorkspace() {
   const e = event.data
   if (!e.can_manage) return <Empty>You do not organise this event.</Empty>
   const failed = (title: string) => (error: Error) => toast({ tone: 'error', title, message: error.message })
-  const moveTo = (status: string, done: ToastOptions, ask?: ConfirmOptions) => async () => {
-    if (ask && !(await confirm(ask))) return
-    move.mutate(status, { onSuccess: () => toast(done), onError: failed('Could not update the event') })
+  const moveTo = (status: string, done: ToastOptions, ask: ConfirmOptions) => async () => {
+    if (await confirm(ask)) move.mutate(status, { onSuccess: () => toast(done), onError: failed('Could not update the event') })
   }
   const deleteDraft = async () => {
     const ok = await confirm({
       tone: 'danger', title: 'Delete this draft?', confirmLabel: 'Delete draft',
       message: <>“{e.title}” is removed for good.</>,
     })
-    if (!ok) return
-    remove.mutate(undefined, {
-      onSuccess: () => {
-        toast({ title: 'Draft deleted' })
-        navigate('/manage/events')
-      },
-      onError: failed('Could not delete the draft'),
-    })
+    if (ok) {
+      remove.mutate(undefined, {
+        onSuccess: () => {
+          toast({ title: 'Draft deleted' })
+          navigate('/manage/events')
+        },
+        onError: failed('Could not delete the draft'),
+      })
+    }
   }
 
   return (
@@ -459,8 +459,9 @@ export function EventContent() {
   const confirm = useConfirm()
   const toast = useToast()
   const removeAnnouncement = async (a: Announcement) => {
-    if (!(await confirm({ tone: 'danger', title: 'Remove this announcement?', message: <>“{a.title}” disappears from the event page. Emails already sent stay sent.</>, confirmLabel: 'Remove' }))) return
-    remove.mutate(`announcements/${a.id}`, { onSuccess: () => toast({ title: 'Announcement removed' }) })
+    if (await confirm({ tone: 'danger', title: 'Remove this announcement?', message: <>“{a.title}” disappears from the event page. Emails already sent stay sent.</>, confirmLabel: 'Remove' })) {
+      remove.mutate(`announcements/${a.id}`, { onSuccess: () => toast({ title: 'Announcement removed' }) })
+    }
   }
   const submit = (action: { mutate: (v: undefined, o: { onSuccess: () => void }) => void }, reset: () => void) => (ev: FormEvent) => {
     ev.preventDefault()

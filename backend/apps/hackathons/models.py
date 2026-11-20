@@ -26,6 +26,8 @@ class Hackathon(models.Model):
     # The public address; see apps.slugs.
     slug = models.SlugField(max_length=MAX_LENGTH, unique=True, editable=False)
     tagline = models.CharField(max_length=300, blank=True)
+    # A banner for lists and the hackathon page: an address from the uploads endpoint.
+    cover_image = models.URLField(max_length=500, blank=True)
     description = models.TextField(blank=True)
     theme = models.CharField(max_length=200, blank=True)
     rules = models.TextField(blank=True)

@@ -1,5 +1,7 @@
+from datetime import timedelta
+
 from django.db import transaction
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import mixins, permissions, status, viewsets
@@ -8,6 +10,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 from rest_framework.response import Response
 
 from apps.accounts import access
+from apps.accounts.serializers import PREVIEW_SIZE
 from apps.events.models import Announcement, Event, Feedback, Registration, Resource
 from apps.events.serializers import (
     AnnouncementSerializer,
@@ -35,10 +38,15 @@ TRANSITIONS = {
 
 def visible_events(request):
     """Published events for everyone; drafts only for those who manage the organization."""
+    first_going = Registration.objects.filter(status=Registration.Status.REGISTERED).select_related(
+        "profile"
+    ).order_by("created_at")
     events = Event.objects.select_related("organization").annotate(
         registered_count=Count(
             "registrations", filter=Q(registrations__status=Registration.Status.REGISTERED)
         )
+    ).prefetch_related(
+        Prefetch("registrations", queryset=first_going[:PREVIEW_SIZE], to_attr="preview_registrations")
     ).order_by("starts_at", "id")
     if access.is_platform_admin(request):
         return events
@@ -46,6 +54,19 @@ def visible_events(request):
         Q(status__in=PUBLIC_STATUSES)
         | Q(organization_id__in=access.managed_org_ids(request, ROLE))
     )
+
+
+def spans():
+    """(start, end) of today, this week (to Sunday night) and this weekend, local time."""
+    now = timezone.localtime()
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_end = midnight + timedelta(days=7 - midnight.weekday())  # the Monday 00:00 after it
+    saturday = midnight + timedelta(days=5 - midnight.weekday())
+    return {
+        "today": (now, midnight + timedelta(days=1)),
+        "week": (now, week_end),
+        "weekend": (max(now, saturday), week_end),
+    }
 
 
 class EventViewSet(viewsets.ModelViewSet):
@@ -59,6 +80,10 @@ class EventViewSet(viewsets.ModelViewSet):
         events = visible_events(self.request)
         params = self.request.query_params
         now = timezone.now()
+        span = spans().get(params.get("within"))
+        if span:
+            # Anything running at some point in the span.
+            events = events.filter(starts_at__lt=span[1], ends_at__gt=span[0])
         if params.get("when") == "upcoming":
             events = events.filter(ends_at__gte=now)
         elif params.get("when") == "past":

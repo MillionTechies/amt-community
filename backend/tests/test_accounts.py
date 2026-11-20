@@ -67,3 +67,11 @@ def test_platform_admin_manages_every_organization(org, other_org):
     assert me["is_platform_admin"] is True
     assert {o["alias"] for o in me["organizations"] if o["can_manage_events"]} == {"jkuat", "uon"}
     assert root.get(f"/api/organizations/{other_org.id}/roles/").status_code == 200
+
+
+def test_initials():
+    from apps.accounts.serializers import initials
+
+    assert initials("Alice Wanjiku Kamau") == "AK"
+    assert initials("Bob") == "B"
+    assert initials("") == "?"

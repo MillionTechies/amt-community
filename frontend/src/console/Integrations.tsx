@@ -34,8 +34,9 @@ export default function Integrations() {
   const confirm = useConfirm()
   const toast = useToast()
   const disconnectApp = async (i: Integration) => {
-    if (!(await confirm({ tone: 'danger', title: `Disconnect ${i.name}?`, message: 'Events already in your calendar stay there. New events are no longer added.', confirmLabel: 'Disconnect' }))) return
-    disconnect.mutate(i, { onSuccess: () => toast({ title: `${i.name} disconnected` }) })
+    if (await confirm({ tone: 'danger', title: `Disconnect ${i.name}?`, message: 'Events already in your calendar stay there. New events are no longer added.', confirmLabel: 'Disconnect' })) {
+      disconnect.mutate(i, { onSuccess: () => toast({ title: `${i.name} disconnected` }) })
+    }
   }
   const connected = integrations.data?.find((i) => i.id === params.get('connected'))
   const failed = integrations.data?.find((i) => i.id === params.get('error'))

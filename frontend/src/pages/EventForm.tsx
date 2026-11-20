@@ -10,6 +10,7 @@ import {
   fromLocalInput, toLocalInput,
 } from '../components/ui'
 import { detectMeeting } from '../meetings'
+import { CoverField } from '../components/CoverField'
 import { RichTextEditor } from '../components/RichTextEditor'
 import { useAct, useMe } from '../hooks'
 import { EVENT_TYPES, EVENT_TYPE_LABELS } from './Events'
@@ -18,6 +19,7 @@ const blank = {
   organization_id: '',
   title: '',
   summary: '',
+  cover_image: '',
   description: '',
   event_type: 'workshop',
   delivery_mode: 'in_person',
@@ -52,6 +54,7 @@ export default function EventForm() {
       organization_id: e.organization.id,
       title: e.title,
       summary: e.summary,
+      cover_image: e.cover_image,
       description: e.description,
       event_type: e.event_type,
       delivery_mode: e.delivery_mode,
@@ -109,6 +112,7 @@ export default function EventForm() {
         <Field label="Summary" hint="One or two sentences shown on the events list." error={errors.summary}>
           <Input maxLength={300} value={form.summary} onChange={set('summary')} />
         </Field>
+        <CoverField value={form.cover_image} onChange={(cover_image) => setForm((f) => ({ ...f, cover_image }))} kind={form.event_type} title={form.title} />
         <Field label="Description" error={errors.description} group hint="Headings, text sizes, lists, links, images and YouTube videos.">
           <RichTextEditor value={form.description} onChange={(description) => setForm((f) => ({ ...f, description }))} placeholder="What happens at this event, who it is for, what to bring…" />
         </Field>

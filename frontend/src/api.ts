@@ -141,6 +141,8 @@ export interface CommunityEvent {
   organization: Organization
   title: string
   summary: string
+  /** Banner image address, or '' for the drawn fallback. */
+  cover_image: string
   description: string
   event_type: string
   delivery_mode: string
@@ -159,6 +161,8 @@ export interface CommunityEvent {
   registration_open: boolean
   can_manage: boolean
   my_registration: MyRegistration | null
+  /** Initials of the first few people going. */
+  attendee_preview: string[]
 }
 
 export interface Registration {
@@ -239,6 +243,7 @@ export interface Hackathon {
   organization: Organization
   title: string
   tagline: string
+  cover_image: string
   description: string
   theme: string
   rules: string
@@ -265,6 +270,8 @@ export interface Hackathon {
   can_manage: boolean
   is_judge: boolean
   my_team_id: number | null
+  /** Initials of the first few people taking part. */
+  participant_preview: string[]
 }
 
 export interface TeamMember {

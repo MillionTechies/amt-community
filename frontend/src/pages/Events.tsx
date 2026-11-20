@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { api } from '../api'
 import type { CommunityEvent, Paginated } from '../api'
-import { EventCard, grid } from '../components/cards'
+import { EVENT_TYPE_ICONS, EventCard, grid } from '../components/cards'
+import { Icon } from '../components/icons'
 import { Button, Empty, ErrorNote, Input, LinkButton, PageHeader, Spinner, Tabs } from '../components/ui'
 import { useMe } from '../hooks'
 
@@ -26,6 +28,8 @@ export default function Events() {
   const [tab, setTab] = useState<Tab>('upcoming')
   const [search, setSearch] = useState('')
   const [type, setType] = useState('')
+  const [within, setWithin] = useState('')
+  const [online, setOnline] = useState(false)
   const [page, setPage] = useState(1)
 
   const params = new URLSearchParams({ page: String(page) })
@@ -33,6 +37,8 @@ export default function Events() {
   else params.set('when', tab)
   if (search) params.set('search', search)
   if (type) params.set('event_type', type)
+  if (within) params.set('within', within)
+  if (online) params.set('delivery_mode', 'online')
   const events = useQuery({
     queryKey: ['events', params.toString()],
     queryFn: () => api<Paginated<CommunityEvent>>(`/events/?${params}`),
@@ -58,7 +64,7 @@ export default function Events() {
         current={tab}
         onChange={reset(setTab)}
       />
-      <div className="mb-5 space-y-3">
+      <div className="mb-6 space-y-4">
         <Input
           type="search"
           placeholder="Search events"
@@ -66,22 +72,42 @@ export default function Events() {
           value={search}
           onChange={(e) => reset(setSearch)(e.target.value)}
         />
-        {/* Swipe sideways on a phone. */}
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0" role="group" aria-label="Event type">
-          {[['', 'All'], ...EVENT_TYPES.map((t) => [t, EVENT_TYPE_LABELS[t]])].map(([value, text]) => (
+        {/* Categories, Meetup style: swipe sideways on a phone. */}
+        <div
+          role="group"
+          aria-label="Event type"
+          className="-mx-4 flex gap-1 overflow-x-auto border-b border-stone-200 px-4 [scrollbar-width:none] sm:mx-0 sm:px-0"
+        >
+          {[['', 'All events'], ...EVENT_TYPES.map((t) => [t, EVENT_TYPE_LABELS[t]])].map(([value, text]) => (
             <button
               key={value}
               type="button"
               aria-pressed={type === value}
               onClick={() => reset(setType)(value)}
-              className={`shrink-0 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-semibold transition ${
-                type === value ? 'border-ink bg-ink text-white' : 'border-stone-300 bg-white text-stone-700 hover:border-stone-400'
+              className={`-mb-px flex w-24 shrink-0 flex-col items-center gap-1.5 border-b-2 px-1 pb-3 pt-1 text-center text-xs font-semibold leading-tight transition ${
+                type === value ? 'border-ink text-ink' : 'border-transparent text-stone-500 hover:text-ink'
               }`}
             >
+              <span className={`grid h-10 w-10 place-items-center rounded-full ${type === value ? 'bg-brand-600 text-white' : 'bg-white text-brand-700 ring-1 ring-stone-200'}`}>
+                <Icon name={value ? EVENT_TYPE_ICONS[value] : 'sparkles'} className="h-5 w-5" />
+              </span>
               {text}
             </button>
           ))}
         </div>
+        {tab === 'upcoming' && (
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0" role="group" aria-label="When">
+            {[['', 'Any day'], ['today', 'Today'], ['week', 'This week'], ['weekend', 'This weekend']].map(([value, text]) => (
+              <Chip key={value} on={within === value} onClick={() => reset(setWithin)(value)}>
+                {value === '' && <Icon name="clock" className="h-4 w-4" />}{text}
+              </Chip>
+            ))}
+            <span className="mx-1 w-px shrink-0 bg-stone-200" aria-hidden="true" />
+            <Chip on={online} onClick={() => reset(setOnline)(!online)}>
+              <Icon name="video" className="h-4 w-4" />Online only
+            </Chip>
+          </div>
+        )}
       </div>
       <ErrorNote error={events.error} />
       {events.isLoading ? (
@@ -101,8 +127,8 @@ export default function Events() {
       ) : (
         !events.error && (
           <Empty>
-            {search || type
-              ? 'No events match your search.'
+            {search || type || within || online
+              ? 'No events match. Try another day or type.'
               : tab === 'managed'
                 ? 'You have not created any events yet.'
                 : `No ${tab} events.`}
@@ -110,5 +136,20 @@ export default function Events() {
         )
       )}
     </>
+  )
+}
+
+function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onClick}
+      className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-semibold transition ${
+        on ? 'border-ink bg-ink text-white' : 'border-stone-300 bg-white text-stone-700 hover:border-stone-400'
+      }`}
+    >
+      {children}
+    </button>
   )
 }

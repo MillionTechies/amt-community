@@ -1,7 +1,7 @@
 from amt_auth.django.models import Organization
 from rest_framework import serializers
 
-from apps.accounts.serializers import OrganizationSerializer, PersonSerializer
+from apps.accounts.serializers import OrganizationSerializer, PersonSerializer, initials
 from apps.content import richtext
 from apps.hackathons.models import (
     Announcement,
@@ -47,18 +47,24 @@ class HackathonSerializer(serializers.ModelSerializer):
     can_manage = serializers.SerializerMethodField()
     is_judge = serializers.SerializerMethodField()
     my_team_id = serializers.SerializerMethodField()
+    participant_preview = serializers.SerializerMethodField()
 
     class Meta:
         model = Hackathon
         fields = [
-            "slug", "organization", "organization_id", "title", "tagline", "description", "theme",
+            "slug", "organization", "organization_id", "title", "tagline", "cover_image", "description", "theme",
             "rules", "eligibility", "prizes", "venue", "starts_at", "ends_at",
             "registration_deadline", "submission_deadline", "min_team_size", "max_team_size",
             "status", "cancelled_from", "challenges", "criteria", "team_count", "participant_count",
             "submission_count", "registration_open", "submissions_open", "results_published",
-            "can_manage", "is_judge", "my_team_id", "created_at",
+            "can_manage", "is_judge", "my_team_id", "participant_preview", "created_at",
         ]
         read_only_fields = ["status", "cancelled_from", "created_at"]
+
+    def get_participant_preview(self, hackathon) -> list[str]:
+        """Initials of the first few people taking part, for the faces on a card."""
+        # Prefetched by visible_hackathons; a just-created hackathon has nobody yet.
+        return [initials(m.profile.full_name) for m in getattr(hackathon, "preview_participants", [])]
 
     def validate_prizes(self, value):
         """A list of {title, value}; rows left completely empty are dropped."""

@@ -286,3 +286,26 @@ def test_calendar_invites(admin, bob, org):
 
     draft = create_event(admin, org, publish=False)
     assert bob.get(f"/api/events/{draft['slug']}/calendar.ics").status_code == 404
+
+
+def test_cover_image_and_who_is_going(admin, bob, carol, anonymous, org):
+    event = create_event(admin, org, cover_image="https://example.com/banner.png")
+    assert event["cover_image"] == "https://example.com/banner.png"
+    assert event["attendee_preview"] == []
+    for person in (bob, carol):
+        person.post(f"/api/events/{event['slug']}/register/")
+    listed = anonymous.get("/api/events/").json()["results"][0]
+    # Initials only, in sign-up order: names stay off the public list.
+    assert listed["attendee_preview"] == ["B", "C"]
+    assert listed["registered_count"] == 2
+
+
+def test_events_happening_today(admin, anonymous, org):
+    from apps.events.views import spans
+
+    start, end = spans()["today"]
+    soon = create_event(admin, org, title="Tonight", starts_at=start + (end - start) / 2, ends_at=end)
+    create_event(admin, org, title="Next month", starts_at=in_days(30), ends_at=in_days(30.1))
+    today = anonymous.get("/api/events/?within=today").json()["results"]
+    assert [e["slug"] for e in today] == [soon["slug"]]
+    assert len(anonymous.get("/api/events/?within=whenever").json()["results"]) == 2

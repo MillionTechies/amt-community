@@ -11,6 +11,7 @@ import {
   Badge, Button, Card, ErrorNote, Field, Input, LinkButton, Notice, Prose, Section, Select, Spinner,
   StatusBadge, Textarea, formatDateTime, formatRange,
 } from '../components/ui'
+import { Cover } from '../components/cards'
 import { RichText } from '../components/RichText'
 import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
@@ -24,19 +25,21 @@ function Announcements({ slug }: { slug: string }) {
     queryKey: ['hackathon', slug, 'announcements'],
     queryFn: () => api<Announcement[]>(`/hackathons/${slug}/announcements/`),
   })
-  if (!announcements.data?.length) return null
+  const list = announcements.data ?? []
   return (
-    <Section title="Announcements">
-      <ul className="space-y-4">
-        {announcements.data.map((a) => (
-          <li key={a.id} className="border-l-2 border-brand-500 pl-4">
-            <p className="font-semibold">{a.title}</p>
-            <p className="text-xs text-stone-500">{formatDateTime(a.created_at)}</p>
-            <RichText html={a.body} />
-          </li>
-        ))}
-      </ul>
-    </Section>
+    list.length > 0 && (
+      <Section title="Announcements">
+        <ul className="space-y-4">
+          {list.map((a) => (
+            <li key={a.id} className="border-l-2 border-brand-500 pl-4">
+              <p className="font-semibold">{a.title}</p>
+              <p className="text-xs text-stone-500">{formatDateTime(a.created_at)}</p>
+              <RichText html={a.body} />
+            </li>
+          ))}
+        </ul>
+      </Section>
+    )
   )
 }
 
@@ -57,6 +60,7 @@ export default function HackathonDetail() {
 
   return (
     <div className="space-y-6">
+      <Cover image={h.cover_image} kind="hackathon" title={h.title} className="-mx-4 -mt-8 rounded-none sm:mx-0 sm:mt-0 sm:aspect-[21/8] sm:rounded-2xl" />
       <div>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <StatusBadge status={h.status} />
