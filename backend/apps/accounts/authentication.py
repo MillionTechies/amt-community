@@ -1,13 +1,16 @@
 from amt_auth.django.authentication import KeycloakAuthentication
 
 from apps.accounts.models import Profile
+from apps.accounts.sync import sync_new_organizations
+from apps.notifications import emails
 
 
 class ProfileAuthentication(KeycloakAuthentication):
     """amt-auth's Keycloak authentication, plus a local Profile for the user.
 
     `request.user` stays amt-auth's `KeycloakUser`; the profile hangs off it as
-    `request.user.profile`. Name and email follow the token.
+    `request.user.profile`. Name and email follow the token. A new member gets a
+    welcome email, and organizations the mirror has not seen yet are synced.
     """
 
     def authenticate(self, request):
@@ -19,8 +22,11 @@ class ProfileAuthentication(KeycloakAuthentication):
         profile, created = Profile.objects.get_or_create(
             sub=claims.sub, defaults={"email": claims.email or "", "full_name": name}
         )
-        if not created and (profile.email, profile.full_name) != (claims.email or "", name):
+        if created:
+            emails.welcome(profile)
+        elif (profile.email, profile.full_name) != (claims.email or "", name):
             profile.email, profile.full_name = claims.email or "", name
             profile.save(update_fields=["email", "full_name", "updated_at"])
+        sync_new_organizations(claims)
         user.profile = profile
         return user, claims

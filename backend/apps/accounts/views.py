@@ -1,10 +1,6 @@
-from amt_auth.core.sync import sync_all
-from amt_auth.django import authentication as amt_authentication
 from amt_auth.django.models import Organization
 from amt_auth.django.permissions import IsPlatformAdmin
-from amt_auth.django.repository import DjangoMirrorRepository
 from amt_auth.exceptions import AdminAPIError
-from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -20,6 +16,7 @@ from apps.accounts.serializers import (
     ProfileSerializer,
     RoleAssignmentSerializer,
 )
+from apps.accounts.sync import locked_sync_all
 
 
 def find_profile_by_email(email: str) -> Profile:
@@ -109,14 +106,13 @@ class OrganizationSyncView(APIView):
 
     def post(self, request):
         try:
-            with transaction.atomic():
-                count = sync_all(
-                    amt_authentication.get_auth_service().admin, DjangoMirrorRepository()
-                )
+            count = locked_sync_all()
         except AdminAPIError as exc:
             error = APIException("Keycloak request failed.")
             error.status_code = 502
             raise error from exc
+        if count is None:
+            return Response({"detail": "A sync is already running."}, status=status.HTTP_409_CONFLICT)
         return Response({"organizations": count})
 
 

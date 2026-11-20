@@ -1,5 +1,6 @@
 """What Community emails, and to whom. Each function queues emails, then hands them to `deliver`.
 
+- welcome, the first time a new member signs in
 - registration confirmed (with the ticket QR code and a calendar invite), or waitlisted
 - moved off the waiting list
 - an announcement, when the organiser ticks "also email" (events and hackathons)
@@ -206,6 +207,26 @@ def _registration_email(registration, kind, subject, eyebrow, heading, paragraph
         calendar_note="The invite attached adds it to your calendar." if attending else "",
         **_event_block(event, registration),
     )
+
+
+# --- members -----------------------------------------------------------------------
+
+
+def welcome(profile) -> None:
+    """The first time a member reaches Community, right after they sign up."""
+    email = _queue(
+        "welcome", profile, "Welcome to A Million Techies Community",
+        key=f"welcome:{profile.sub}",
+        preheader="Find events and hackathons, and tell people who you are.",
+        eyebrow="Welcome", heading=f"Welcome, {_first_name(profile)}!",
+        paragraphs=[
+            "You're now part of the A Million Techies community.",
+            "Join events and hackathons, and fill in your profile so organisers and "
+            "teammates know who you are.",
+        ],
+        button_url=settings.COMMUNITY_URL, button_label="Explore Community",
+    )
+    deliver([email] if email else [])
 
 
 # --- registrations -----------------------------------------------------------------
