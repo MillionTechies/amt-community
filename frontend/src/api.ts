@@ -247,6 +247,8 @@ export interface Hackathon {
   min_team_size: number
   max_team_size: number
   status: HackathonStatus
+  /** Where a cancelled hackathon was, and so where restoring puts it back. */
+  cancelled_from: HackathonStatus | ''
   challenges: Challenge[]
   criteria: Criterion[]
   team_count: number
