@@ -28,7 +28,7 @@ cp .env.example .env
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py amt_sync      # copy organisations from Keycloak
 .venv/bin/python manage.py runserver
-# In a second terminal: sends reminders and retries failed emails
+# In a second terminal: sends reminders, retries failed emails, syncs organisations
 .venv/bin/python manage.py run_worker
 
 # 4. Web app on http://localhost:5173
@@ -83,20 +83,23 @@ Connect one with your provider's SMTP details (the password stays in Keycloak):
 ```bash
 docker compose exec -T -e SMTP_HOST=smtp.example.com -e SMTP_PORT=587 \
   -e SMTP_USER=... -e SMTP_PASSWORD=... -e SMTP_FROM=no-reply@amilliontechies.com \
-  keycloak bash /scripts/keycloak-email.sh
+  keycloak bash /opt/keycloak/amt-scripts/keycloak-email.sh
 ```
 
 Add `-e VERIFY_EMAIL=true` to also make new members confirm their email address.
 
-The sign-in and sign-up pages use the `amt` login theme in `keycloak/themes/amt/`, which
-extends Keycloak's own `keycloak.v2` theme with the Community layout, colours and wording.
+The sign-in and sign-up pages use the `amt` login theme, which extends Keycloak's own
+`keycloak.v2` theme with the Community layout, colours and wording. The theme and the
+realm scripts live in [amt_auth](https://github.com/MillionTechies/amt_auth) under
+`deploy/keycloak/`, built into the `ghcr.io/milliontechies/amt-keycloak` image that
+`docker-compose.yml` runs, the same image as production. To edit the theme, check out
+amt_auth next to this repo and uncomment the theme mount in `docker-compose.yml`;
 `start-dev` does not cache themes, so edits show on the next page load.
 
 A realm created before sign-up was added needs its settings once:
 
 ```bash
-docker compose up -d   # mounts the login theme
-docker compose exec -T keycloak bash /scripts/keycloak-realm-settings.sh
+docker compose exec -T keycloak bash /opt/keycloak/amt-scripts/keycloak-realm-settings.sh
 ```
 
 ### Continue with Google
@@ -112,7 +115,7 @@ Then give Keycloak the client's ID and secret (rerun with new values to change t
 
 ```bash
 docker compose exec -T -e GOOGLE_CLIENT_ID=... -e GOOGLE_CLIENT_SECRET=... \
-  keycloak bash /scripts/keycloak-google.sh
+  keycloak bash /opt/keycloak/amt-scripts/keycloak-google.sh
 ```
 
 "Continue with Google" then shows on the sign-in page and at the top of the sign-up page.
@@ -182,8 +185,15 @@ validates it and reads the member's organisations and groups from it.
 - **Participant**: any signed-in member.
 
 Community keeps a `Profile` row per member (keyed on the Keycloak user ID), created on
-their first API call. Organisations are read from amt-auth's mirror tables, which are
-filled by `manage.py amt_sync` or by Keycloak admin events posted to `/auth/webhook/`.
+their first API call; that first call also queues a welcome email. Organisations are read
+from amt-auth's mirror tables, kept in step with Keycloak three ways: when a member's
+token names an organisation the mirror has not seen, it is synced on that request;
+`run_worker` runs a full sync every 15 minutes (`--sync-interval`); and platform admins
+can press **Sync** under Organizations. Only one full sync runs at a time.
+
+In production, Keycloak runs at `https://auth.amilliontechies.com`; see `deploy/keycloak/`
+in amt_auth. Community's backend uses client `community-backend` and the web app
+`community-frontend`.
 
 Every event and hackathon belongs to one organisation. Drafts are visible only to the
 people who manage that organisation; `apps/accounts/access.py` holds the rules.

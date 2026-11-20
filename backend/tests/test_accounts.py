@@ -1,3 +1,16 @@
+import httpx
+import psycopg
+import pytest
+from amt_auth import OrgMembership, TokenClaims
+from amt_auth.django.authentication import KeycloakAuthentication, KeycloakUser
+from amt_auth.django.models import Organization
+from amt_auth.exceptions import AdminAPIError
+from django.core import mail
+from django.db import connection
+from django.utils import timezone
+
+from apps.accounts import sync
+from apps.accounts.authentication import ProfileAuthentication
 from tests.conftest import make_org, sign_in
 
 
@@ -75,3 +88,105 @@ def test_initials():
     assert initials("Alice Wanjiku Kamau") == "AK"
     assert initials("Bob") == "B"
     assert initials("") == "?"
+
+
+# --- signing in: welcome email and organizations new to the mirror ----------------------
+
+
+def _claims(sub="sub-erin", org_ids=()):
+    memberships = tuple(OrgMembership(id=i, alias=i, groups=()) for i in org_ids)
+    return TokenClaims(
+        sub=sub, email="erin@example.com", name="Erin Achieng", given_name="Erin",
+        family_name="Achieng", realm_roles=frozenset(), client_roles=frozenset(),
+        memberships=memberships, active_organization=memberships[0] if memberships else None,
+        raw={},
+    )
+
+
+@pytest.fixture
+def token(monkeypatch):
+    """Make amt-auth accept any request as carrying the claims set on `token.claims`."""
+
+    class Token:
+        claims = _claims()
+
+    monkeypatch.setattr(
+        KeycloakAuthentication, "authenticate", lambda self, request: (KeycloakUser(Token.claims), Token.claims)
+    )
+    return Token
+
+
+@pytest.fixture
+def keycloak(monkeypatch):
+    """A fake Keycloak for `sync_organization`: records calls, creates the organization."""
+    calls = []
+
+    def fake_sync(org_id, admin, repo):
+        calls.append(org_id)
+        if fake_sync.error:
+            raise fake_sync.error
+        Organization.objects.create(id=org_id, name=f"Org {org_id}", alias=org_id, synced_at=timezone.now())
+
+    fake_sync.error = None
+    fake_sync.calls = calls
+    monkeypatch.setattr(sync, "_admin", lambda: object())
+    monkeypatch.setattr(sync, "sync_organization", fake_sync)
+    return fake_sync
+
+
+def test_a_new_member_is_welcomed_once(token, keycloak):
+    ProfileAuthentication().authenticate(request=None)
+    ProfileAuthentication().authenticate(request=None)
+    welcomes = [m for m in mail.outbox if m.subject == "Welcome to A Million Techies Community"]
+    assert len(welcomes) == 1
+    assert welcomes[0].to == ["erin@example.com"]
+    assert "Welcome, Erin!" in welcomes[0].body
+
+
+def test_an_organization_new_to_the_mirror_is_synced_on_sign_in(token, keycloak):
+    make_org("known")
+    token.claims = _claims(org_ids=("org-known", "org-new"))
+    ProfileAuthentication().authenticate(request=None)
+    assert keycloak.calls == ["org-new"]
+    assert Organization.objects.get(id="org-new").name == "Org org-new"
+    # Now known: the next request does not call Keycloak.
+    ProfileAuthentication().authenticate(request=None)
+    assert keycloak.calls == ["org-new"]
+
+
+@pytest.mark.parametrize("error", [AdminAPIError(500, "boom"), httpx.ConnectError("down")])
+def test_signing_in_works_when_keycloak_cannot_be_reached(token, keycloak, error):
+    keycloak.error = error
+    token.claims = _claims(org_ids=("org-new",))
+    user, claims = ProfileAuthentication().authenticate(request=None)
+    assert user.profile.sub == "sub-erin"
+    assert not Organization.objects.filter(id="org-new").exists()
+
+
+@pytest.fixture
+def full_sync(monkeypatch):
+    monkeypatch.setattr(sync, "_admin", lambda: object())
+    monkeypatch.setattr(sync, "sync_all", lambda admin, repo: 3)
+
+
+def test_platform_admin_syncs_every_organization(full_sync):
+    root = sign_in("root", platform_admin=True)
+    response = root.post("/api/organizations/sync/")
+    assert response.status_code == 200
+    assert response.json() == {"organizations": 3}
+
+
+def test_only_one_full_sync_runs_at_a_time(full_sync):
+    root = sign_in("root", platform_admin=True)
+    db = connection.settings_dict
+    # Another process (the worker) holds the lock.
+    with psycopg.connect(
+        dbname=db["NAME"], user=db["USER"], password=db["PASSWORD"], host=db["HOST"], port=db["PORT"],
+        autocommit=True,
+    ) as other:
+        other.execute("SELECT pg_advisory_lock(%s)", [sync.FULL_SYNC_LOCK])
+        response = root.post("/api/organizations/sync/")
+        assert response.status_code == 409
+        assert response.json() == {"detail": "A sync is already running."}
+        other.execute("SELECT pg_advisory_unlock(%s)", [sync.FULL_SYNC_LOCK])
+    assert root.post("/api/organizations/sync/").status_code == 200
