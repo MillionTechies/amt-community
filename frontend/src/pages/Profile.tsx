@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from 'react-oidc-context'
+import { Link } from 'react-router-dom'
 
 import { ApiError, api } from '../api'
 import type { Me } from '../api'
 import { Badge, Button, Card, ErrorNote, Field, Input, Notice, PageHeader, Spinner, Textarea, label } from '../components/ui'
+import { Icon } from '../components/icons'
+import { useAccess } from '../console/shared'
 import { useAct, useMe } from '../hooks'
 
 export default function Profile() {
   const me = useMe()
+  const auth = useAuth()
+  const access = useAccess()
   const [form, setForm] = useState({ headline: '', bio: '', institution: '', skills: '', github_url: '', linkedin_url: '' })
   useEffect(() => {
     if (me)
@@ -73,6 +79,27 @@ export default function Profile() {
           <Button type="submit" disabled={save.isPending}>Save profile</Button>
         </form>
       </Card>
+      {/* On phones the header has no room for these, so they live here. */}
+      <div className="divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-200 bg-white md:hidden">
+        {access.any && (
+          <Link to="/manage" className="flex items-center gap-3 px-5 py-4 font-semibold">
+            <Icon name="gauge" className="h-5 w-5 text-brand-700" />
+            <span className="flex-1">Organiser console</span>
+            <Icon name="chevronRight" className="h-4 w-4 text-stone-400" />
+          </Link>
+        )}
+        {access.platform && (
+          <Link to="/platform" className="flex items-center gap-3 px-5 py-4 font-semibold">
+            <Icon name="shield" className="h-5 w-5 text-amber-700" />
+            <span className="flex-1">Platform admin</span>
+            <Icon name="chevronRight" className="h-4 w-4 text-stone-400" />
+          </Link>
+        )}
+        <button type="button" onClick={() => void auth.signoutRedirect()} className="flex w-full items-center gap-3 px-5 py-4 text-left font-semibold text-red-700">
+          <Icon name="logout" className="h-5 w-5" />
+          Sign out
+        </button>
+      </div>
     </div>
   )
 }

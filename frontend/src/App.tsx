@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from 'react-oidc-context'
 import { Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -9,6 +9,7 @@ import { JUST_SIGNED_IN } from './auth'
 import { LogoTile } from './components/brand'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Icon } from './components/icons'
+import { BottomNav } from './components/mobile'
 import { Button, Empty, Spinner } from './components/ui'
 import { useMe, useSignIn, useSignUp } from './hooks'
 import { useAccess } from './console/shared'
@@ -49,7 +50,6 @@ function Header() {
   const me = useMe()
   const signIn = useSignIn()
   const signUp = useSignUp()
-  const [open, setOpen] = useState(false)
   const link = ({ isActive }: { isActive: boolean }) =>
     `rounded-lg px-3 py-2 text-sm font-semibold ${isActive ? 'bg-brand-50 text-brand-800' : 'text-stone-700 hover:bg-stone-100'}`
   const access = useAccess()
@@ -58,7 +58,6 @@ function Header() {
       <NavLink to="/events" className={link}>Events</NavLink>
       <NavLink to="/hackathons" className={link}>Hackathons</NavLink>
       {auth.isAuthenticated && <NavLink to="/dashboard" className={link}>My activity</NavLink>}
-      {access.any && <NavLink to="/manage" className={({ isActive }) => `${link({ isActive })} sm:hidden`}>Organiser console</NavLink>}
     </>
   )
   return (
@@ -90,36 +89,22 @@ function Header() {
             </Link>
           )}
           {auth.isAuthenticated ? (
-            <>
+            <div className="hidden items-center gap-2 md:flex">
               <NavLink to="/profile" className={link}>
                 {me?.full_name || auth.user?.profile.name || 'Profile'}
               </NavLink>
               <Button variant="secondary" onClick={() => void auth.signoutRedirect()}>Sign out</Button>
-            </>
+            </div>
           ) : (
             <>
-              <Button variant="ghost" className="whitespace-nowrap px-3" onClick={signIn} disabled={auth.isLoading}>Sign in</Button>
+              <span className="hidden md:inline">
+                <Button variant="ghost" className="whitespace-nowrap px-3" onClick={signIn} disabled={auth.isLoading}>Sign in</Button>
+              </span>
               <Button onClick={signUp} disabled={auth.isLoading}>Join</Button>
             </>
           )}
-          <button
-            type="button"
-            className="rounded-lg p-2 text-stone-700 hover:bg-stone-100 md:hidden"
-            aria-label="Menu"
-            aria-expanded={open}
-            onClick={() => setOpen(!open)}
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 5h14M3 10h14M3 15h14" />
-            </svg>
-          </button>
         </div>
       </div>
-      {open && (
-        <nav className="flex flex-col gap-1 border-t border-stone-200 px-4 py-2 md:hidden" onClick={() => setOpen(false)}>
-          {links}
-        </nav>
-      )}
     </header>
   )
 }
@@ -155,7 +140,7 @@ function PublicLayout() {
   // The landing page lays out its own full-width sections.
   const isLanding = useLocation().pathname === '/'
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col pb-[calc(3.6rem+env(safe-area-inset-bottom))] md:pb-0">
       <Header />
       <main className={isLanding ? 'w-full flex-1' : 'mx-auto w-full max-w-6xl flex-1 px-4 py-8'}>
         <Outlet />
@@ -177,6 +162,7 @@ function PublicLayout() {
           </nav>
         </div>
       </footer>
+      <BottomNav />
     </div>
   )
 }

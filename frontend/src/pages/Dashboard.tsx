@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { api } from '../api'
 import type { CommunityEvent, Hackathon, Paginated } from '../api'
+import { DateBlock } from '../components/cards'
 import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
 import { Badge, LinkButton, Spinner, StatusBadge, formatDate, formatRange, label } from '../components/ui'
@@ -31,20 +32,6 @@ const toneStyle = {
 function greeting() {
   const hour = new Date().getHours()
   return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
-}
-
-function DateBlock({ iso, large = false }: { iso: string; large?: boolean }) {
-  const d = new Date(iso)
-  return (
-    <span
-      className={`shrink-0 rounded-lg border border-stone-200 bg-white text-center ${large ? 'w-16 py-2' : 'w-12 py-1'}`}
-    >
-      <span className="block font-mono text-[10px] font-semibold uppercase tracking-wider text-brand-700">
-        {d.toLocaleString('en-GB', { month: 'short' })}
-      </span>
-      <span className={`block font-bold leading-tight tabular-nums ${large ? 'text-2xl' : 'text-lg'}`}>{d.getDate()}</span>
-    </span>
-  )
 }
 
 function EmptyState({ icon, title, text, to, action }: { icon: IconName; title: string; text: string; to: string; action: string }) {
