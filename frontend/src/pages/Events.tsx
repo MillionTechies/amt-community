@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { api } from '../api'
 import type { CommunityEvent, Paginated } from '../api'
 import { EventCard, grid } from '../components/cards'
-import { Button, Empty, ErrorNote, Input, LinkButton, PageHeader, Select, Spinner, Tabs } from '../components/ui'
+import { Button, Empty, ErrorNote, Input, LinkButton, PageHeader, Spinner, Tabs } from '../components/ui'
 import { useMe } from '../hooks'
 
 export const EVENT_TYPES = ['workshop', 'outreach', 'conference', 'meetup', 'webinar', 'training', 'networking']
@@ -58,7 +58,7 @@ export default function Events() {
         current={tab}
         onChange={reset(setTab)}
       />
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+      <div className="mb-5 space-y-3">
         <Input
           type="search"
           placeholder="Search events"
@@ -66,10 +66,22 @@ export default function Events() {
           value={search}
           onChange={(e) => reset(setSearch)(e.target.value)}
         />
-        <Select aria-label="Event type" className="sm:w-56" value={type} onChange={(e) => reset(setType)(e.target.value)}>
-          <option value="">All types</option>
-          {EVENT_TYPES.map((t) => <option key={t} value={t}>{EVENT_TYPE_LABELS[t]}</option>)}
-        </Select>
+        {/* Swipe sideways on a phone. */}
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0" role="group" aria-label="Event type">
+          {[['', 'All'], ...EVENT_TYPES.map((t) => [t, EVENT_TYPE_LABELS[t]])].map(([value, text]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={type === value}
+              onClick={() => reset(setType)(value)}
+              className={`shrink-0 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-semibold transition ${
+                type === value ? 'border-ink bg-ink text-white' : 'border-stone-300 bg-white text-stone-700 hover:border-stone-400'
+              }`}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
       </div>
       <ErrorNote error={events.error} />
       {events.isLoading ? (

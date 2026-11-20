@@ -2,16 +2,19 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { useAuth } from 'react-oidc-context'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { ApiError, api } from '../api'
 import type { Announcement, Hackathon, JudgedSubmission, LeaderboardRow, MyTeam } from '../api'
 import { Leaderboard, ProjectLinks } from '../components/hackathon'
 import {
   Badge, Button, Card, ErrorNote, Field, Input, LinkButton, Notice, Prose, Section, Select, Spinner,
-  StatusBadge, Textarea, formatDateTime,
+  StatusBadge, Textarea, formatDateTime, formatRange,
 } from '../components/ui'
 import { RichText } from '../components/RichText'
+import { Icon } from '../components/icons'
+import type { IconName } from '../components/icons'
+import { ReadMore, StickyAction, useScrolledPast } from '../components/mobile'
 import { useAct, useSignIn } from '../hooks'
 
 /** News from the organisers, newest first. */
@@ -39,129 +42,171 @@ function Announcements({ slug }: { slug: string }) {
 export default function HackathonDetail() {
   const { slug } = useParams()
   const hackathon = useQuery({ queryKey: ['hackathon', slug], queryFn: () => api<Hackathon>(`/hackathons/${slug}/`) })
+  const [actionRef, scrolledPast] = useScrolledPast()
   if (hackathon.isLoading) return <Spinner />
   if (!hackathon.data) return <ErrorNote error={hackathon.error ?? 'Hackathon not found.'} />
   const h = hackathon.data
+  const teamSize =
+    h.min_team_size === h.max_team_size
+      ? `Teams of ${h.max_team_size}`
+      : `Teams of ${h.min_team_size} to ${h.max_team_size}`
+  const canJoin = !h.my_team_id && !h.is_judge && h.registration_open
+  // Taking part comes first on a phone while it matters; for a finished hackathon, the results do.
+  const involved = !!h.my_team_id || h.is_judge || h.status === 'published' || h.status === 'draft'
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <div className="space-y-6 lg:col-span-2">
-        <div>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <StatusBadge status={h.status} />
-            {h.theme && <Badge tone="blue">{h.theme}</Badge>}
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight">{h.title}</h1>
-          <p className="mt-1 text-stone-600">Hosted by {h.organization.name}</p>
-          {h.tagline && <p className="mt-3 text-lg text-stone-700">{h.tagline}</p>}
+    <div className="space-y-6">
+      <div>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <StatusBadge status={h.status} />
+          {h.theme && <Badge tone="blue">{h.theme}</Badge>}
         </div>
-        {h.status === 'cancelled' && <Notice tone="amber">This hackathon has been cancelled.</Notice>}
-        {h.status === 'judging' && <Notice tone="amber">Submissions are closed and the judges are scoring projects.</Notice>}
-        {h.results_published && <Results id={h.slug} />}
-        <Announcements slug={h.slug} />
-        {h.description && <Section title="About"><RichText html={h.description} /></Section>}
-        {!!h.challenges.length && (
-          <Section title="Challenges">
-            <ul className="space-y-4">
-              {h.challenges.map((c) => (
-                <li key={c.id}>
-                  <p className="font-semibold">{c.title}</p>
-                  {c.description && <Prose>{c.description}</Prose>}
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-        {h.rules && <Section title="Rules"><Prose>{h.rules}</Prose></Section>}
-        {h.eligibility && <Section title="Who can take part"><Prose>{h.eligibility}</Prose></Section>}
-        {!!h.prizes.length && (
-          <Section title="Prizes">
-            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {h.prizes.map((p, i) => (
-                <li
-                  key={i}
-                  className={`rounded-lg border p-4 ${i === 0 ? 'border-amber-300 bg-amber-50' : 'border-stone-200 bg-stone-50'}`}
-                >
-                  <p className={`font-mono text-xs font-semibold uppercase tracking-wider ${i === 0 ? 'text-amber-800' : 'text-stone-600'}`}>
-                    {p.title}
-                  </p>
-                  {p.value && <p className="mt-1 font-mono text-xl font-bold tabular-nums tracking-tight">{p.value}</p>}
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-        {!!h.criteria.length && (
-          <Section title="How projects are judged">
-            <ul className="divide-y divide-stone-200">
-              {h.criteria.map((c) => (
-                <li key={c.id} className="flex items-start justify-between gap-4 py-2">
-                  <div>
-                    <p className="font-semibold">{c.name}</p>
-                    {c.description && <p className="text-sm text-stone-600">{c.description}</p>}
-                  </div>
-                  <span className="shrink-0 text-sm text-stone-600">
-                    Out of {c.max_score}{c.weight > 1 && `, counts ${c.weight} times`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{h.title}</h1>
+        <p className="mt-1 text-stone-600">Hosted by {h.organization.name}</p>
+        <ul className="mt-4 space-y-2 text-sm">
+          <Fact icon="calendar">{formatRange(h.starts_at, h.ends_at)}</Fact>
+          <Fact icon="pin">{h.venue || 'Online'}</Fact>
+          <Fact icon="users">{teamSize}, {count(h.team_count, 'team')} so far</Fact>
+        </ul>
+        {h.tagline && <p className="mt-4 text-stone-700 sm:text-lg">{h.tagline}</p>}
+      </div>
+      {h.status === 'cancelled' && <Notice tone="amber">This hackathon has been cancelled.</Notice>}
+      {h.status === 'judging' && <Notice tone="amber">Submissions are closed and the judges are scoring projects.</Notice>}
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* First on a phone: taking part. */}
+        <aside className={`space-y-4 lg:order-none lg:col-start-3 lg:row-start-1 ${involved ? '' : 'order-last'}`}>
+          <div ref={actionRef} id="take-part" className="scroll-mt-20 space-y-4">
+            {h.is_judge ? (
+              <Card className="space-y-3">
+                <p className="text-lg font-bold">You are a judge</p>
+                <p className="text-sm text-stone-600">
+                  {h.status === 'judging' ? 'Scoring is open.' : h.status === 'published' ? 'Scoring opens when submissions close.' : 'Judging is over.'}
+                </p>
+                <LinkButton to={`/hackathons/${h.slug}/judge`}>Go to judging</LinkButton>
+              </Card>
+            ) : (
+              <TeamPanel hackathon={h} />
+            )}
+          </div>
+          <Card>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-stone-500">Key dates</p>
+            <ol className="space-y-3">
+              {[
+                ['Registration closes', h.registration_deadline],
+                ['Hacking starts', h.starts_at],
+                ['Submissions close', h.submission_deadline],
+                ['Ends', h.ends_at],
+              ].map(([text, iso]) => {
+                const passed = new Date(iso).getTime() < Date.now()
+                return (
+                  <li key={text} className="flex items-center gap-3">
+                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${passed ? 'bg-stone-300' : 'bg-brand-500'}`} />
+                    <span className={`flex-1 text-sm ${passed ? 'text-stone-400 line-through' : ''}`}>{text}</span>
+                    <span className={`text-right text-xs tabular-nums ${passed ? 'text-stone-400' : 'text-stone-600'}`}>{formatDateTime(iso)}</span>
+                  </li>
+                )
+              })}
+            </ol>
+            <p className="mt-4 border-t border-stone-100 pt-3 text-sm text-stone-600">
+              {count(h.participant_count, 'participant')} in {count(h.team_count, 'team')}, {count(h.submission_count, 'project')} submitted
+            </p>
+          </Card>
+          {h.can_manage && (
+            <Card className="space-y-3">
+              <p className="text-sm font-semibold">You manage this hackathon</p>
+              <div className="flex flex-wrap gap-2">
+                <LinkButton to={`/manage/hackathons/${h.slug}`}>Manage</LinkButton>
+                <LinkButton to={`/manage/hackathons/${h.slug}/edit`} variant="secondary">Edit details</LinkButton>
+              </div>
+            </Card>
+          )}
+        </aside>
+
+        <div className="space-y-6 lg:col-span-2 lg:col-start-1 lg:row-start-1">
+          {h.results_published && <Results id={h.slug} />}
+          <Announcements slug={h.slug} />
+          {h.description && <Section title="About"><ReadMore><RichText html={h.description} /></ReadMore></Section>}
+          {!!h.challenges.length && (
+            <Section title="Challenges">
+              <ul className="space-y-4">
+                {h.challenges.map((c) => (
+                  <li key={c.id}>
+                    <p className="font-semibold">{c.title}</p>
+                    {c.description && <Prose>{c.description}</Prose>}
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+          {h.rules && <Section title="Rules"><Prose>{h.rules}</Prose></Section>}
+          {h.eligibility && <Section title="Who can take part"><Prose>{h.eligibility}</Prose></Section>}
+          {!!h.prizes.length && (
+            <Section title="Prizes">
+              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {h.prizes.map((p, i) => (
+                  <li
+                    key={i}
+                    className={`rounded-lg border p-4 ${i === 0 ? 'border-amber-300 bg-amber-50' : 'border-stone-200 bg-stone-50'}`}
+                  >
+                    <p className={`font-mono text-xs font-semibold uppercase tracking-wider ${i === 0 ? 'text-amber-800' : 'text-stone-600'}`}>
+                      {p.title}
+                    </p>
+                    {p.value && <p className="mt-1 font-mono text-xl font-bold tabular-nums tracking-tight">{p.value}</p>}
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+          {!!h.criteria.length && (
+            <Section title="How projects are judged">
+              <ul className="divide-y divide-stone-200">
+                {h.criteria.map((c) => (
+                  <li key={c.id} className="flex items-start justify-between gap-4 py-2">
+                    <div>
+                      <p className="font-semibold">{c.name}</p>
+                      {c.description && <p className="text-sm text-stone-600">{c.description}</p>}
+                    </div>
+                    <span className="shrink-0 text-sm text-stone-600">
+                      Out of {c.max_score}{c.weight > 1 && `, counts ${c.weight} times`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+          <Link to="/hackathons" className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:underline">
+            <Icon name="arrowLeft" className="h-4 w-4" />All hackathons
+          </Link>
+        </div>
       </div>
 
-      <aside className="space-y-4">
-        <Card className="space-y-3">
-          <Detail label="Starts">{formatDateTime(h.starts_at)}</Detail>
-          <Detail label="Ends">{formatDateTime(h.ends_at)}</Detail>
-          <Detail label="Register by">{formatDateTime(h.registration_deadline)}</Detail>
-          <Detail label="Submit by">{formatDateTime(h.submission_deadline)}</Detail>
-          <Detail label="Where">{h.venue || 'Online'}</Detail>
-          <Detail label="Team size">
-            {h.min_team_size === h.max_team_size
-              ? `${h.max_team_size} ${h.max_team_size === 1 ? 'person' : 'people'}`
-              : `${h.min_team_size} to ${h.max_team_size} people`}
-          </Detail>
-          <Detail label="So far">
-            {count(h.participant_count, 'participant')} in {count(h.team_count, 'team')},{' '}
-            {count(h.submission_count, 'project')} submitted
-          </Detail>
-        </Card>
-        {h.is_judge ? (
-          <Card className="space-y-3">
-            <p className="text-sm font-semibold">You are a judge</p>
-            <p className="text-sm text-stone-600">
-              {h.status === 'judging' ? 'Scoring is open.' : h.status === 'published' ? 'Scoring opens when submissions close.' : 'Judging is over.'}
-            </p>
-            <LinkButton to={`/hackathons/${h.slug}/judge`}>Go to judging</LinkButton>
-          </Card>
-        ) : (
-          <TeamPanel hackathon={h} />
-        )}
-        {h.can_manage && (
-          <Card className="space-y-3">
-            <p className="text-sm font-semibold">You manage this hackathon</p>
-            <div className="flex flex-wrap gap-2">
-              <LinkButton to={`/manage/hackathons/${h.slug}`}>Manage</LinkButton>
-              <LinkButton to={`/manage/hackathons/${h.slug}/edit`} variant="secondary">Edit details</LinkButton>
-            </div>
-          </Card>
-        )}
-      </aside>
+      {canJoin && (
+        <StickyAction show={scrolledPast}>
+          <Button className="w-full py-3" onClick={() => document.getElementById('take-part')?.scrollIntoView({ behavior: 'smooth' })}>
+            Take part
+          </Button>
+        </StickyAction>
+      )}
+      {h.is_judge && h.status === 'judging' && (
+        <StickyAction show={scrolledPast}>
+          <LinkButton to={`/hackathons/${h.slug}/judge`}>Go to judging</LinkButton>
+        </StickyAction>
+      )}
     </div>
+  )
+}
+
+function Fact({ icon, children }: { icon: IconName; children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-2.5">
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700"><Icon name={icon} className="h-4 w-4" /></span>
+      <span className="pt-1">{children}</span>
+    </li>
   )
 }
 
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`
-
-function Detail({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <div className="text-xs font-semibold uppercase tracking-wide text-stone-500">{label}</div>
-      <div className="text-sm">{children}</div>
-    </div>
-  )
-}
 
 function Results({ id }: { id: string }) {
   const board = useQuery({

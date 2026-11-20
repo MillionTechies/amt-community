@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { useAuth } from 'react-oidc-context'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -11,8 +12,12 @@ import {
   Textarea, formatDateTime, formatRange, label,
 } from '../components/ui'
 import { AddToCalendar } from '../components/AddToCalendar'
+import { eventPlace } from '../components/cards'
+import { Icon } from '../components/icons'
+import type { IconName } from '../components/icons'
+import { ReadMore, StickyAction, TicketSheet, useScrolledPast } from '../components/mobile'
 import { RichText } from '../components/RichText'
-import { useAct, useSignIn } from '../hooks'
+import { useAct, useMe, useSignIn } from '../hooks'
 
 export default function EventDetail() {
   const { slug } = useParams()
@@ -35,171 +40,254 @@ export default function EventDetail() {
     navigate(`/certificates/${data.certificate_code}`)
   })
 
+  const [actionRef, scrolledPast] = useScrolledPast()
+  const [ticketOpen, setTicketOpen] = useState(false)
+  const me = useMe()
+
   if (event.isLoading) return <Spinner />
   if (!event.data) return <ErrorNote error={event.error ?? 'Event not found.'} />
   const e = event.data
   const mine = e.my_registration && e.my_registration.status !== 'cancelled' ? e.my_registration : null
+  const live = e.status === 'published'
+  const upcoming = new Date(e.ends_at).getTime() > Date.now()
+  const hasTicket = !!mine && mine.status === 'registered' && !mine.checked_in_at && live
+  const places =
+    e.capacity === null
+      ? `${e.registered_count} going`
+      : e.spots_left === 0
+        ? `Full, ${e.registered_count} going`
+        : `${e.spots_left} of ${e.capacity} places left`
+  const registerButton = auth.isAuthenticated ? (
+    <Button className="w-full py-3" disabled={register.isPending} onClick={() => register.mutate()}>
+      {register.isPending ? 'Registering…' : e.spots_left === 0 ? 'Join waiting list' : 'Register, it is free'}
+    </Button>
+  ) : (
+    <Button className="w-full py-3" onClick={signIn}>Sign in to register</Button>
+  )
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <div className="space-y-6 lg:col-span-2">
-        <div>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <Badge tone="blue">{label(e.event_type)}</Badge>
-            <Badge>{label(e.delivery_mode)}</Badge>
-            {e.status !== 'published' && <StatusBadge status={e.status} />}
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight">{e.title}</h1>
-          <p className="mt-1 text-stone-600">Hosted by {e.organization.name}</p>
-          {e.summary && <p className="mt-3 text-lg text-stone-700">{e.summary}</p>}
+    <div className="space-y-6">
+      <div>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Badge tone="blue">{label(e.event_type)}</Badge>
+          <Badge>{label(e.delivery_mode)}</Badge>
+          {e.status !== 'published' && <StatusBadge status={e.status} />}
         </div>
-        {e.status === 'cancelled' && <Notice tone="amber">This event has been cancelled.</Notice>}
-        {e.description && <Section title="About this event"><RichText html={e.description} /></Section>}
-        {e.eligibility && <Section title="Who can attend"><Prose>{e.eligibility}</Prose></Section>}
-        {!!announcements.data?.length && (
-          <Section title="Announcements">
-            <ul className="space-y-4">
-              {announcements.data.map((a) => (
-                <li key={a.id}>
-                  <p className="font-semibold">{a.title}</p>
-                  <p className="text-xs text-stone-500">{formatDateTime(a.created_at)}</p>
-                  <RichText html={a.body} />
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-        {!!resources.data?.length && (
-          <Section title="Resources">
-            <ul className="space-y-3">
-              {resources.data.map((r) => (
-                <li key={r.id}>
-                  <a className="font-semibold text-brand-700 hover:underline" href={r.url} target="_blank" rel="noreferrer">
-                    {r.title}
-                  </a>
-                  {r.description && <p className="text-sm text-stone-600">{r.description}</p>}
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-        {mine?.checked_in_at && <FeedbackForm eventId={e.slug} done={mine.has_feedback} />}
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{e.title}</h1>
+        <p className="mt-1 text-stone-600">Hosted by {e.organization.name}</p>
+        <ul className="mt-4 space-y-2 text-sm">
+          <Fact icon="clock">{formatRange(e.starts_at, e.ends_at)}</Fact>
+          <Fact icon="pin">{eventPlace(e)}</Fact>
+          <Fact icon="users">{places}</Fact>
+        </ul>
+        {e.summary && <p className="mt-4 text-stone-700 sm:text-lg">{e.summary}</p>}
+      </div>
+      {e.status === 'cancelled' && <Notice tone="amber">This event has been cancelled.</Notice>}
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* First on a phone: what the visitor came to do. */}
+        <aside className="space-y-4 lg:col-start-3 lg:row-start-1">
+          <div ref={actionRef}>
+            <Card className="space-y-4">
+              {register.isSuccess && mine && (
+                <div className="-mx-5 -mt-5 rounded-t-xl bg-brand-600 px-5 py-4 text-white">
+                  <p className="flex items-center gap-2 text-lg font-bold"><Icon name="check" className="h-6 w-6" />
+                    {mine.status === 'waitlisted' ? 'You are on the list' : 'You are in!'}
+                  </p>
+                  <p className="text-sm text-brand-50">
+                    {mine.status === 'waitlisted'
+                      ? 'We will email you as soon as a place opens up.'
+                      : 'We have emailed your ticket. See you there.'}
+                  </p>
+                </div>
+              )}
+              {mine ? (
+                <>
+                  {mine.checked_in_at ? (
+                    <Status icon="check" tone="green" title="You attended" text="Thanks for coming." />
+                  ) : mine.status === 'waitlisted' ? (
+                    <Status icon="clock" tone="amber" title="On the waiting list" text="You get a place automatically if someone cancels." />
+                  ) : (
+                    !register.isSuccess && <Status icon="check" tone="green" title="You're going" text={live && upcoming ? 'Your ticket is ready below.' : 'You registered for this event.'} />
+                  )}
+                  {hasTicket && (
+                    <button
+                      type="button"
+                      onClick={() => setTicketOpen(true)}
+                      className="flex w-full items-center gap-4 rounded-xl border border-stone-200 bg-stone-50 p-3 text-left transition hover:border-brand-500"
+                    >
+                      <span className="rounded-lg bg-white p-1.5"><QRCodeSVG value={mine.ticket_code} size={72} /></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold">Show ticket</span>
+                        <span className="block text-sm text-stone-600">Tap to open it full screen for the door.</span>
+                        <span className="block font-mono text-xs text-stone-500">Order #{mine.order_number}</span>
+                      </span>
+                      <Icon name="chevronRight" className="h-5 w-5 text-stone-400" />
+                    </button>
+                  )}
+                  {hasTicket && e.delivery_mode !== 'online' && (
+                    <a
+                      href={`${import.meta.env.VITE_API_URL}/api/tickets/${mine.ticket_code}/ticket.pdf`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 font-mono text-xs font-semibold uppercase tracking-wider text-brand-700 hover:underline"
+                    >
+                      <Icon name="ticket" className="h-4 w-4" />Download ticket (PDF)
+                    </a>
+                  )}
+                  {mine.certificate_available && (
+                    <Button className="w-full" onClick={() => certificate.mutate()} disabled={certificate.isPending}>
+                      View certificate
+                    </Button>
+                  )}
+                </>
+              ) : e.registration_open ? (
+                <div className="space-y-2">
+                  {registerButton}
+                  {e.registration_deadline && (
+                    <p className="text-center text-xs text-stone-500">Registration closes {formatDateTime(e.registration_deadline)}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-stone-600">{upcoming ? 'Registration is closed.' : 'This event has ended.'}</p>
+              )}
+
+              {e.delivery_mode !== 'in_person' && (
+                <div className="border-t border-stone-200 pt-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-stone-500">Online</p>
+                  {e.online_url ? (
+                    <a
+                      className="btn-prompt inline-flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-3 py-2.5 font-mono text-xs font-semibold uppercase tracking-wider text-white hover:bg-stone-800"
+                      href={e.online_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Join {e.meeting_provider ? `on ${e.meeting_provider.name}` : 'the meeting'}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-stone-600">
+                      {e.meeting_provider ? `On ${e.meeting_provider.name}. ` : ''}The link appears here once you register.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {e.status !== 'draft' && e.status !== 'cancelled' && upcoming && <AddToCalendar event={e} />}
+              <ErrorNote error={register.error ?? cancel.error ?? certificate.error} />
+              {mine && !mine.checked_in_at && live && (
+                <button
+                  type="button"
+                  disabled={cancel.isPending}
+                  onClick={() => window.confirm('Cancel your registration? Your place goes to the next person waiting.') && cancel.mutate()}
+                  className="w-full pt-1 text-center text-sm font-semibold text-stone-500 hover:text-red-700"
+                >
+                  Can't make it? Cancel registration
+                </button>
+              )}
+            </Card>
+          </div>
+          {e.can_manage && (
+            <Card className="space-y-3">
+              <p className="text-sm font-semibold">You organise this event</p>
+              <div className="flex flex-wrap gap-2">
+                <LinkButton to={`/manage/events/${e.slug}`}>Manage</LinkButton>
+                <LinkButton to={`/manage/events/${e.slug}/edit`} variant="secondary">Edit details</LinkButton>
+              </div>
+            </Card>
+          )}
+        </aside>
+
+        <div className="space-y-6 lg:col-span-2 lg:col-start-1 lg:row-start-1">
+          {!!announcements.data?.length && (
+            <Section title="Announcements">
+              <ul className="space-y-4">
+                {announcements.data.map((a) => (
+                  <li key={a.id} className="border-l-2 border-brand-500 pl-4">
+                    <p className="font-semibold">{a.title}</p>
+                    <p className="text-xs text-stone-500">{formatDateTime(a.created_at)}</p>
+                    <RichText html={a.body} />
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+          {mine?.checked_in_at && <FeedbackForm eventId={e.slug} done={mine.has_feedback} />}
+          {e.description && (
+            <Section title="About this event">
+              <ReadMore><RichText html={e.description} /></ReadMore>
+            </Section>
+          )}
+          {e.eligibility && <Section title="Who can attend"><Prose>{e.eligibility}</Prose></Section>}
+          {!!resources.data?.length && (
+            <Section title="Resources">
+              <ul className="space-y-3">
+                {resources.data.map((r) => (
+                  <li key={r.id}>
+                    <a className="font-semibold text-brand-700 hover:underline" href={r.url} target="_blank" rel="noreferrer">
+                      {r.title}
+                    </a>
+                    {r.description && <p className="text-sm text-stone-600">{r.description}</p>}
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+          <Link to="/events" className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:underline">
+            <Icon name="arrowLeft" className="h-4 w-4" />All events
+          </Link>
+        </div>
       </div>
 
-      <aside className="space-y-4">
-        <Card className="space-y-3">
-          <Detail label="When">{formatRange(e.starts_at, e.ends_at)}</Detail>
-          {e.venue && <Detail label="Where">{e.venue}</Detail>}
-          {e.delivery_mode !== 'in_person' && (
-            <Detail label="Online">
-              {e.online_url ? (
-                <span className="block space-y-2">
-                  <a
-                    className="btn-prompt inline-flex items-center gap-2 rounded-lg bg-ink px-3 py-2 font-mono text-xs font-semibold uppercase tracking-wider text-white hover:bg-stone-800"
-                    href={e.online_url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Join {e.meeting_provider ? `on ${e.meeting_provider.name}` : 'the meeting'}
-                  </a>
-                  <span className="block break-all text-xs text-stone-500">{e.online_url}</span>
-                </span>
-              ) : (
-                <span className="text-stone-600">
-                  {e.meeting_provider ? `On ${e.meeting_provider.name}. ` : ''}The link appears here once you register.
-                </span>
-              )}
-            </Detail>
-          )}
-          {e.registration_deadline && <Detail label="Register by">{formatDateTime(e.registration_deadline)}</Detail>}
-          <Detail label="Places">
-            {e.capacity === null
-              ? `${e.registered_count} registered, no limit`
-              : `${e.registered_count} of ${e.capacity} taken`}
-          </Detail>
-
-          {e.status !== 'draft' && e.status !== 'cancelled' && new Date(e.ends_at).getTime() > Date.now() && <AddToCalendar event={e} />}
-          <div className="space-y-3 border-t border-stone-200 pt-4">
-            {mine ? (
-              <>
-                {mine.checked_in_at ? (
-                  <Notice>You attended this event.</Notice>
-                ) : mine.status === 'waitlisted' ? (
-                  <Notice tone="amber">You are on the waiting list. You get a place if someone cancels.</Notice>
-                ) : (
-                  <Notice>You are registered.</Notice>
-                )}
-                {mine.status === 'registered' && !mine.checked_in_at && e.status === 'published' && (
-                  <div className="text-center">
-                    <div className="inline-block rounded-xl border border-stone-200 bg-white p-3">
-                      <QRCodeSVG value={mine.ticket_code} size={176} />
-                    </div>
-                    <p className="mt-2 text-sm text-stone-600">Your ticket. Show this code at the door.</p>
-                    <p className="font-mono text-xs text-stone-500">Order #{mine.order_number}</p>
-                    {e.delivery_mode !== 'online' && (
-                      <a
-                        href={`${import.meta.env.VITE_API_URL}/api/tickets/${mine.ticket_code}/ticket.pdf`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-2 inline-block font-mono text-xs font-semibold uppercase tracking-wider text-brand-700 hover:underline"
-                      >
-                        Download ticket (PDF)
-                      </a>
-                    )}
-                  </div>
-                )}
-                {mine.certificate_available && (
-                  <Button className="w-full" onClick={() => certificate.mutate()} disabled={certificate.isPending}>
-                    View certificate
-                  </Button>
-                )}
-                {!mine.checked_in_at && e.status === 'published' && (
-                  <Button
-                    variant="danger"
-                    className="w-full"
-                    disabled={cancel.isPending}
-                    onClick={() => window.confirm('Cancel your registration?') && cancel.mutate()}
-                  >
-                    Cancel registration
-                  </Button>
-                )}
-              </>
-            ) : e.registration_open ? (
-              auth.isAuthenticated ? (
-                <Button className="w-full" disabled={register.isPending} onClick={() => register.mutate()}>
-                  {e.spots_left === 0 ? 'Join waiting list' : 'Register'}
-                </Button>
-              ) : (
-                <Button className="w-full" onClick={signIn}>Sign in to register</Button>
-              )
-            ) : (
-              <p className="text-sm text-stone-600">Registration is closed.</p>
-            )}
-            <ErrorNote error={register.error ?? cancel.error ?? certificate.error} />
-          </div>
-        </Card>
-        {e.can_manage && (
-          <Card className="space-y-3">
-            <p className="text-sm font-semibold">You organise this event</p>
-            <div className="flex flex-wrap gap-2">
-              <LinkButton to={`/manage/events/${e.slug}`}>Manage</LinkButton>
-              <LinkButton to={`/manage/events/${e.slug}/edit`} variant="secondary">Edit details</LinkButton>
+      {!mine && e.registration_open && (
+        <StickyAction show={scrolledPast}>
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">{e.title}</p>
+              <p className="truncate text-xs text-stone-500">{places}</p>
             </div>
-          </Card>
-        )}
-        <Link to="/events" className="block text-sm font-semibold text-brand-700 hover:underline">
-          Back to all events
-        </Link>
-      </aside>
+            <div className="w-44 shrink-0">{registerButton}</div>
+          </div>
+        </StickyAction>
+      )}
+      {hasTicket && (
+        <StickyAction show={scrolledPast}>
+          <Button className="w-full py-3" onClick={() => setTicketOpen(true)}>
+            <Icon name="ticket" className="h-4 w-4" />Show ticket
+          </Button>
+        </StickyAction>
+      )}
+      {ticketOpen && mine && (
+        <TicketSheet
+          code={mine.ticket_code}
+          title={e.title}
+          when={formatRange(e.starts_at, e.ends_at)}
+          name={me?.full_name || auth.user?.profile.name || ''}
+          order={mine.order_number}
+          onClose={() => setTicketOpen(false)}
+        />
+      )}
     </div>
   )
 }
 
-function Detail({ label: text, children }: { label: string; children: React.ReactNode }) {
+function Fact({ icon, children }: { icon: IconName; children: ReactNode }) {
   return (
-    <div>
-      <div className="text-xs font-semibold uppercase tracking-wide text-stone-500">{text}</div>
-      <div className="text-sm">{children}</div>
+    <li className="flex items-start gap-2.5">
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700"><Icon name={icon} className="h-4 w-4" /></span>
+      <span className="pt-1">{children}</span>
+    </li>
+  )
+}
+
+function Status({ icon, tone, title, text }: { icon: IconName; tone: 'green' | 'amber'; title: string; text: string }) {
+  const style = tone === 'green' ? 'bg-brand-50 text-brand-700' : 'bg-amber-50 text-amber-700'
+  return (
+    <div className="flex items-start gap-3">
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${style}`}><Icon name={icon} className="h-5 w-5" /></span>
+      <div>
+        <p className="text-lg font-bold leading-tight">{title}</p>
+        <p className="text-sm text-stone-600">{text}</p>
+      </div>
     </div>
   )
 }
