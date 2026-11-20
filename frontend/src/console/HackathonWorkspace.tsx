@@ -5,11 +5,13 @@ import type { FormEvent } from 'react'
 import { Link, Outlet, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 
 import { api } from '../api'
-import type { Hackathon, Judge, LeaderboardRow, Team } from '../api'
+import type { Announcement, Hackathon, Judge, LeaderboardRow, Team } from '../api'
 import { Leaderboard } from '../components/hackathon'
 import { DataTable, downloadCsv } from '../components/DataTable'
 import type { Col } from '../components/DataTable'
 import { Icon } from '../components/icons'
+import { RichText } from '../components/RichText'
+import { RichTextEditor } from '../components/RichTextEditor'
 import {
   Badge, Button, Empty, ErrorNote, Field, Input, Notice, Spinner, StatusBadge, formatDate, formatDateTime,
 } from '../components/ui'
@@ -466,5 +468,73 @@ export function HackathonLeaderboard() {
       </p>
       <Leaderboard rows={board.data} />
     </Panel>
+  )
+}
+
+// --- announcements ---------------------------------------------------------------
+
+export function HackathonAnnouncements() {
+  const h = useHackathon()
+  const path = `/hackathons/${h.slug}/announcements/`
+  const announcements = useQuery({ queryKey: ['hackathon', h.slug, 'announcements'], queryFn: () => api<Announcement[]>(path) })
+  const [note, setNote] = useState({ title: '', body: '', notify: true })
+  const post = useAct(() => api<Announcement & { emailed_to?: number }>(path, { method: 'POST', body: note }))
+  const remove = useAct((id: number) => api(`${path}${id}/`, { method: 'DELETE' }))
+  const submit = (ev: FormEvent) => {
+    ev.preventDefault()
+    post.mutate(undefined, { onSuccess: () => setNote({ title: '', body: '', notify: note.notify }) })
+  }
+  const list = announcements.data ?? []
+  return (
+    <div className="grid gap-6 lg:grid-cols-5">
+      <div className="lg:col-span-2">
+        <Panel title="New announcement">
+          <p className="mb-4 text-sm text-stone-600">Shown on the hackathon page. Use it for schedule changes, reminders and results news.</p>
+          <form className="space-y-3" onSubmit={submit}>
+            <Field label="Title">
+              <Input required maxLength={200} value={note.title} onChange={(ev) => setNote({ ...note, title: ev.target.value })} />
+            </Field>
+            <Field label="Message" group>
+              <RichTextEditor value={note.body} onChange={(body) => setNote((n) => ({ ...n, body }))} placeholder="What do teams and judges need to know?" minHeight="8rem" />
+            </Field>
+            <ErrorNote error={post.error} />
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={note.notify} onChange={(ev) => setNote({ ...note, notify: ev.target.checked })} />
+              Also email every team member and judge
+            </label>
+            {post.data?.emailed_to !== undefined && (
+              <Notice>Posted and emailed to {post.data.emailed_to} {post.data.emailed_to === 1 ? 'person' : 'people'}.</Notice>
+            )}
+            <Button type="submit" disabled={post.isPending || !note.body}>Post announcement</Button>
+          </form>
+        </Panel>
+      </div>
+      <div className="lg:col-span-3">
+        <Panel title={`Posted${list.length ? ` (${list.length})` : ''}`} flush>
+          {announcements.isLoading ? (
+            <Spinner />
+          ) : list.length ? (
+            <ul className="divide-y divide-stone-100">
+              {list.map((a) => (
+                <li key={a.id} className="flex items-start justify-between gap-3 px-5 py-4">
+                  <div className="min-w-0">
+                    <p className="font-semibold">{a.title}</p>
+                    <p className="mb-1 text-xs text-stone-500">{formatDateTime(a.created_at)}</p>
+                    <RichText html={a.body} className="text-sm" />
+                  </div>
+                  <Button variant="ghost" onClick={() => window.confirm('Remove this announcement?') && remove.mutate(a.id)}>Remove</Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="flex flex-col items-center px-5 py-10 text-center">
+              <span className="mb-3 grid h-11 w-11 place-items-center rounded-full bg-stone-100 text-stone-500"><Icon name="megaphone" /></span>
+              <p className="font-semibold">No announcements yet</p>
+              <p className="text-sm text-stone-600">Post a welcome note so teams know what happens next.</p>
+            </div>
+          )}
+        </Panel>
+      </div>
+    </div>
   )
 }

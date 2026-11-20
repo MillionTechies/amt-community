@@ -4,6 +4,7 @@ from rest_framework import serializers
 from apps.accounts.serializers import OrganizationSerializer, PersonSerializer
 from apps.content import richtext
 from apps.hackathons.models import (
+    Announcement,
     Challenge,
     Criterion,
     Evaluation,
@@ -225,3 +226,16 @@ class EvaluationSerializer(serializers.ModelSerializer):
 
 class TransitionSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=Hackathon.Status.choices)
+
+
+class AnnouncementSerializer(serializers.ModelSerializer):
+    # Write-only: also email every team member and judge. The reply says how many were emailed.
+    notify = serializers.BooleanField(write_only=True, required=False, default=False)
+    emailed_to = serializers.IntegerField(read_only=True, required=False)
+
+    class Meta:
+        model = Announcement
+        fields = ["id", "title", "body", "created_at", "notify", "emailed_to"]
+
+    def validate_body(self, value):
+        return richtext.clean(value)

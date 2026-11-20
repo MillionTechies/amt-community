@@ -26,6 +26,7 @@ const HACKATHON_SECTIONS: { to: string; label: string; icon: IconName }[] = [
   { to: '', label: 'Overview', icon: 'gauge' },
   { to: 'setup', label: 'Challenges and criteria', icon: 'target' },
   { to: 'teams', label: 'Teams', icon: 'users' },
+  { to: 'announcements', label: 'Announcements', icon: 'megaphone' },
   { to: 'judges', label: 'Judges', icon: 'gavel' },
   { to: 'leaderboard', label: 'Leaderboard', icon: 'podium' },
   { to: 'edit', label: 'Details', icon: 'pencil' },

@@ -191,3 +191,19 @@ class Score(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["evaluation", "criterion"], name="unique_score")
         ]
+
+
+class Announcement(models.Model):
+    """News for a hackathon's teams and judges, shown on its page and optionally emailed."""
+
+    hackathon = models.ForeignKey(Hackathon, on_delete=models.CASCADE, related_name="announcements")
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    created_by = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return self.title
