@@ -228,6 +228,11 @@ export interface Criterion {
   weight: number
 }
 
+export interface Prize {
+  title: string
+  value: string
+}
+
 export interface Hackathon {
   /** The public address, e.g. "react-workshop-nairobi-k3x9qa". */
   slug: string
@@ -238,7 +243,7 @@ export interface Hackathon {
   theme: string
   rules: string
   eligibility: string
-  prizes: string
+  prizes: Prize[]
   venue: string
   starts_at: string
   ends_at: string

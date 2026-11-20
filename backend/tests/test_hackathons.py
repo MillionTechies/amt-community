@@ -280,3 +280,29 @@ def test_only_managers_restore_a_hackathon(admin, bob, org):
     move(admin, hackathon["slug"], "cancelled")
     url = f"/api/hackathons/{hackathon['slug']}/transition/"
     assert bob.post(url, {"status": "published"}, format="json").status_code == 403
+
+
+def test_prizes_are_a_list_of_titles_and_values(admin, org):
+    hackathon = create_hackathon(
+        admin, org, publish=False,
+        prizes=[
+            {"title": " Winner ", "value": "KES 60,000"},
+            {"title": "", "value": ""},
+            {"title": "Runner-up", "value": "KES 30,000"},
+        ],
+    )
+    assert hackathon["prizes"] == [
+        {"title": "Winner", "value": "KES 60,000"},
+        {"title": "Runner-up", "value": "KES 30,000"},
+    ]
+    url = f"/api/hackathons/{hackathon['slug']}/"
+    updated = admin.patch(url, {"prizes": [{"title": "Best design", "value": "Laptop"}]}, format="json")
+    assert updated.json()["prizes"] == [{"title": "Best design", "value": "Laptop"}]
+
+
+def test_a_prize_needs_a_title(admin, org):
+    response = admin.post(
+        "/api/hackathons/", hackathon_data(org, prizes=[{"title": "", "value": "KES 10,000"}]), format="json"
+    )
+    assert response.status_code == 400
+    assert "prizes" in response.json()

@@ -4,11 +4,12 @@ import type { FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { ApiError, api } from '../api'
-import type { Hackathon } from '../api'
+import type { Hackathon, Prize } from '../api'
 import {
   Button, Card, Empty, ErrorNote, Field, Input, PageHeader, Select, Spinner, Textarea,
   fromLocalInput, toLocalInput,
 } from '../components/ui'
+import { Icon } from '../components/icons'
 import { RichTextEditor } from '../components/RichTextEditor'
 import { useAct, useMe } from '../hooks'
 
@@ -20,7 +21,6 @@ const blank = {
   description: '',
   rules: '',
   eligibility: '',
-  prizes: '',
   venue: '',
   starts_at: '',
   ends_at: '',
@@ -29,6 +29,58 @@ const blank = {
   min_team_size: '1',
   max_team_size: '4',
 }
+const emptyPrize = (): Prize => ({ title: '', value: '' })
+
+/** Prize rows: a title (Winner, Runner-up, Best design) and what it is worth. */
+function PrizeList({ prizes, onChange, error }: { prizes: Prize[]; onChange: (prizes: Prize[]) => void; error?: string }) {
+  const update = (i: number, field: keyof Prize, value: string) =>
+    onChange(prizes.map((p, j) => (j === i ? { ...p, [field]: value } : p)))
+  return (
+    <div role="group" aria-label="Prizes">
+      <span className="mb-1.5 block font-mono text-xs font-semibold uppercase tracking-wider text-stone-700">Prizes</span>
+      <div className="space-y-2">
+        {prizes.map((p, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <span className="w-6 shrink-0 text-center font-mono text-xs font-semibold text-stone-500">{i + 1}</span>
+            <Input
+              aria-label={`Prize ${i + 1} title`}
+              placeholder={i === 0 ? 'Winner' : i === 1 ? 'Runner-up' : 'Title'}
+              maxLength={100}
+              value={p.title}
+              onChange={(e) => update(i, 'title', e.target.value)}
+            />
+            <Input
+              aria-label={`Prize ${i + 1} value`}
+              placeholder={i === 0 ? 'KES 60,000' : 'Value'}
+              maxLength={100}
+              className="sm:max-w-48"
+              value={p.value}
+              onChange={(e) => update(i, 'value', e.target.value)}
+            />
+            <button
+              type="button"
+              aria-label={`Remove prize ${i + 1}`}
+              className="shrink-0 rounded-lg p-2 text-stone-500 hover:bg-red-50 hover:text-red-700"
+              onClick={() => onChange(prizes.filter((_, j) => j !== i))}
+            >
+              <Icon name="close" className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <Button variant="ghost" className="mt-2 px-2" onClick={() => onChange([...prizes, emptyPrize()])}>
+        <Icon name="plus" className="h-4 w-4" />
+        Add prize
+      </Button>
+      {error ? (
+        <p role="alert" className="mt-1 text-xs text-red-700">{error}</p>
+      ) : (
+        <p className="mt-1 text-xs text-stone-500">List them in order, top prize first. Leave the list empty if there are no prizes.</p>
+      )}
+    </div>
+  )
+}
+
 const dates = ['starts_at', 'ends_at', 'registration_deadline', 'submission_deadline'] as const
 
 /** Create a hackathon, or edit one when the URL carries its id. */
@@ -43,6 +95,7 @@ export default function HackathonForm() {
     enabled: !!slug,
   })
   const [form, setForm] = useState(blank)
+  const [prizes, setPrizes] = useState<Prize[]>([emptyPrize()])
   const set = (field: keyof typeof blank) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [field]: e.target.value }))
 
@@ -57,7 +110,6 @@ export default function HackathonForm() {
       description: h.description,
       rules: h.rules,
       eligibility: h.eligibility,
-      prizes: h.prizes,
       venue: h.venue,
       starts_at: toLocalInput(h.starts_at),
       ends_at: toLocalInput(h.ends_at),
@@ -66,6 +118,7 @@ export default function HackathonForm() {
       min_team_size: String(h.min_team_size),
       max_team_size: String(h.max_team_size),
     })
+    setPrizes(h.prizes.length ? h.prizes : [emptyPrize()])
   }, [existing.data])
 
   const organizationId = form.organization_id || organizations[0]?.id || ''
@@ -74,6 +127,7 @@ export default function HackathonForm() {
       method: slug ? 'PATCH' : 'POST',
       body: {
         ...form,
+        prizes,
         organization_id: organizationId,
         ...Object.fromEntries(dates.map((d) => [d, fromLocalInput(form[d])])),
         min_team_size: Number(form.min_team_size),
@@ -118,7 +172,7 @@ export default function HackathonForm() {
         </Field>
         <Field label="Rules"><Textarea value={form.rules} onChange={set('rules')} /></Field>
         <Field label="Who can take part"><Textarea rows={2} value={form.eligibility} onChange={set('eligibility')} /></Field>
-        <Field label="Prizes"><Textarea rows={2} value={form.prizes} onChange={set('prizes')} /></Field>
+        <PrizeList prizes={prizes} onChange={setPrizes} error={errors.prizes} />
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="Starts" error={errors.starts_at}>
             <Input type="datetime-local" required value={form.starts_at} onChange={set('starts_at')} />

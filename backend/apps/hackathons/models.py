@@ -30,7 +30,8 @@ class Hackathon(models.Model):
     theme = models.CharField(max_length=200, blank=True)
     rules = models.TextField(blank=True)
     eligibility = models.TextField(blank=True)
-    prizes = models.TextField(blank=True)
+    # In award order: [{"title": "Winner", "value": "KES 60,000"}, ...]
+    prizes = models.JSONField(default=list, blank=True)
     venue = models.CharField(max_length=255, blank=True)  # blank: online
     starts_at = models.DateTimeField()
     ends_at = models.DateTimeField()

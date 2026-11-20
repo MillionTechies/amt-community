@@ -51,7 +51,23 @@ export default function HackathonDetail() {
         )}
         {h.rules && <Section title="Rules"><Prose>{h.rules}</Prose></Section>}
         {h.eligibility && <Section title="Who can take part"><Prose>{h.eligibility}</Prose></Section>}
-        {h.prizes && <Section title="Prizes"><Prose>{h.prizes}</Prose></Section>}
+        {!!h.prizes.length && (
+          <Section title="Prizes">
+            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {h.prizes.map((p, i) => (
+                <li
+                  key={i}
+                  className={`rounded-lg border p-4 ${i === 0 ? 'border-amber-300 bg-amber-50' : 'border-stone-200 bg-stone-50'}`}
+                >
+                  <p className={`font-mono text-xs font-semibold uppercase tracking-wider ${i === 0 ? 'text-amber-800' : 'text-stone-600'}`}>
+                    {p.title}
+                  </p>
+                  {p.value && <p className="mt-1 font-mono text-xl font-bold tabular-nums tracking-tight">{p.value}</p>}
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
         {!!h.criteria.length && (
           <Section title="How projects are judged">
             <ul className="divide-y divide-stone-200">

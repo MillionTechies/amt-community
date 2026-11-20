@@ -14,6 +14,8 @@ from apps.hackathons.models import (
     TeamMember,
 )
 
+MAX_PRIZES = 20
+
 
 class ChallengeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -56,6 +58,27 @@ class HackathonSerializer(serializers.ModelSerializer):
             "can_manage", "is_judge", "my_team_id", "created_at",
         ]
         read_only_fields = ["status", "cancelled_from", "created_at"]
+
+    def validate_prizes(self, value):
+        """A list of {title, value}; rows left completely empty are dropped."""
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Send prizes as a list.")
+        prizes = []
+        for row in value:
+            if not isinstance(row, dict):
+                raise serializers.ValidationError("Each prize needs a title and a value.")
+            title = str(row.get("title") or "").strip()
+            amount = str(row.get("value") or "").strip()
+            if not title and not amount:
+                continue
+            if not title:
+                raise serializers.ValidationError("Give every prize a title, such as Winner.")
+            if len(title) > 100 or len(amount) > 100:
+                raise serializers.ValidationError("Keep prize titles and values under 100 characters.")
+            prizes.append({"title": title, "value": amount})
+        if len(prizes) > MAX_PRIZES:
+            raise serializers.ValidationError(f"A hackathon can list at most {MAX_PRIZES} prizes.")
+        return prizes
 
     def validate_description(self, value):
         return richtext.clean(value)
