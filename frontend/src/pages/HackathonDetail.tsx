@@ -15,6 +15,7 @@ import { RichText } from '../components/RichText'
 import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
 import { ReadMore, StickyAction, useScrolledPast } from '../components/mobile'
+import { useConfirm, useToast } from '../components/feedback'
 import { useAct, useSignIn } from '../hooks'
 
 /** News from the organisers, newest first. */
@@ -257,6 +258,8 @@ function TeamPanel({ hackathon: h }: { hackathon: Hackathon }) {
   const leave = useAct(() => api(`/hackathons/${h.slug}/my-team/leave/`, { method: 'POST' }))
   const remove = useAct((member: number) => api(`/hackathons/${h.slug}/my-team/members/${member}/`, { method: 'DELETE' }))
   const [copied, setCopied] = useState(false)
+  const confirm = useConfirm()
+  const toast = useToast()
 
   if (h.my_team_id) {
     if (!team.data) return <Card><Spinner /></Card>
@@ -274,7 +277,15 @@ function TeamPanel({ hackathon: h }: { hackathon: Hackathon }) {
               <li key={m.id} className="flex items-center justify-between gap-2 text-sm">
                 <span>{m.person.name} {m.is_leader && <Badge tone="green">Leader</Badge>}</span>
                 {me?.is_leader && !m.is_leader && canChange && (
-                  <Button variant="ghost" onClick={() => window.confirm(`Remove ${m.person.name} from the team?`) && remove.mutate(m.id)}>Remove</Button>
+                  <Button
+                    variant="ghost"
+                    onClick={async () => {
+                      if (await confirm({ tone: 'danger', title: `Remove ${m.person.name}?`, message: 'They leave your team and can join another one.', confirmLabel: 'Remove' }))
+                        remove.mutate(m.id, { onSuccess: () => toast({ title: `${m.person.name} removed from the team` }) })
+                    }}
+                  >
+                    Remove
+                  </Button>
                 )}
               </li>
             ))}
@@ -302,7 +313,14 @@ function TeamPanel({ hackathon: h }: { hackathon: Hackathon }) {
             <Button
               variant="danger"
               className="w-full"
-              onClick={() => window.confirm(t.members.length === 1 ? 'Leave? Your team and its submission will be deleted.' : 'Leave this team?') && leave.mutate()}
+              onClick={async () => {
+                const alone = t.members.length === 1
+                const ok = await confirm({
+                  tone: 'danger', title: alone ? 'Leave and delete your team?' : `Leave ${t.name}?`, confirmLabel: 'Leave team', cancelLabel: 'Stay',
+                  message: alone ? 'You are the only member, so the team and its submission are deleted.' : 'Your teammates keep the team and its submission.',
+                })
+                if (ok) leave.mutate(undefined, { onSuccess: () => toast({ tone: 'info', title: 'You left the team' }) })
+              }}
             >
               Leave team
             </Button>
@@ -332,7 +350,14 @@ function TeamPanel({ hackathon: h }: { hackathon: Hackathon }) {
   }
   const submit = (action: typeof create) => (e: FormEvent) => {
     e.preventDefault()
-    action.mutate()
+    action.mutate(undefined, {
+      onSuccess: () =>
+        toast(
+          action === create
+            ? { title: `${name} is ready`, message: h.max_team_size > 1 ? 'Share the invite link with your teammates.' : 'You are taking part.' }
+            : { title: 'You joined the team', message: 'Welcome aboard. Good luck!' },
+        ),
+    })
   }
   return (
     <Card className="space-y-5">

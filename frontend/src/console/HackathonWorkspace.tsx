@@ -15,6 +15,8 @@ import { RichTextEditor } from '../components/RichTextEditor'
 import {
   Badge, Button, Empty, ErrorNote, Field, Input, Notice, Spinner, StatusBadge, formatDate, formatDateTime,
 } from '../components/ui'
+import { useConfirm, useToast } from '../components/feedback'
+import type { ConfirmOptions, ToastOptions } from '../components/feedback'
 import { useAct } from '../hooks'
 import { ConsoleHeader, Kpi, Meter, Panel, relative } from './shared'
 
@@ -31,16 +33,50 @@ export default function HackathonWorkspace() {
   const hackathon = useQuery({ queryKey: ['hackathon', slug], queryFn: () => api<Hackathon>(`/hackathons/${slug}/`) })
   const move = useAct((status: string) => api(`/hackathons/${slug}/transition/`, { method: 'POST', body: { status } }))
   const remove = useAct(() => api(`/hackathons/${slug}/`, { method: 'DELETE' }))
+  const confirm = useConfirm()
+  const toast = useToast()
 
   if (hackathon.isLoading) return <Spinner />
   if (!hackathon.data) return <ErrorNote error={hackathon.error ?? 'Hackathon not found.'} />
   const h = hackathon.data
   if (!h.can_manage) return <Empty>You do not manage this hackathon.</Empty>
-  const confirmMove = (status: string, question: string) => () => window.confirm(question) && move.mutate(status)
-  const cancel = (
-    <Button variant="danger" onClick={confirmMove('cancelled', 'Cancel this hackathon? Teams can no longer join or submit. You can restore it later.')}>Cancel</Button>
-  )
+  const failed = (title: string) => (error: Error) => toast({ tone: 'error', title, message: error.message })
+  /** Ask first (when `ask` is given), move the hackathon on, then say what happened. */
+  const moveTo = (status: string, done: ToastOptions, ask?: ConfirmOptions) => async () => {
+    if (ask && !(await confirm(ask))) return
+    move.mutate(status, { onSuccess: () => toast(done), onError: failed('Could not update the hackathon') })
+  }
   const restoreTo = h.cancelled_from || 'published'
+  const cancel = (
+    <Button
+      variant="danger"
+      disabled={move.isPending}
+      onClick={moveTo(
+        'cancelled',
+        { tone: 'info', title: 'Hackathon cancelled', message: 'You can restore it at any time.' },
+        {
+          tone: 'danger', title: 'Cancel this hackathon?', confirmLabel: 'Yes, cancel it', cancelLabel: 'Keep it',
+          message: 'Teams can no longer join or submit. Nothing is deleted, and you can restore it later.',
+        },
+      )}
+    >
+      Cancel
+    </Button>
+  )
+  const deleteDraft = async () => {
+    const ok = await confirm({
+      tone: 'danger', title: 'Delete this draft?', confirmLabel: 'Delete draft',
+      message: <>“{h.title}” and its challenges and criteria are removed for good.</>,
+    })
+    if (!ok) return
+    remove.mutate(undefined, {
+      onSuccess: () => {
+        toast({ title: 'Draft deleted' })
+        navigate('/manage/hackathons')
+      },
+      onError: failed('Could not delete the draft'),
+    })
+  }
 
   return (
     <>
@@ -60,20 +96,51 @@ export default function HackathonWorkspace() {
             </a>
             {h.status === 'draft' && (
               <>
-                <Button variant="danger" onClick={() => window.confirm('Delete this draft?') && remove.mutate(undefined, { onSuccess: () => navigate('/manage/hackathons') })}>Delete</Button>
-                <Button disabled={move.isPending} onClick={() => move.mutate('published')}>Publish</Button>
+                <Button variant="danger" disabled={remove.isPending} onClick={() => void deleteDraft()}>Delete</Button>
+                <Button
+                  disabled={move.isPending}
+                  onClick={moveTo(
+                    'published',
+                    { title: 'Hackathon published', message: 'It is live, and teams can start signing up.' },
+                    {
+                      title: 'Publish this hackathon?', confirmLabel: 'Publish', icon: 'megaphone',
+                      message: 'Everyone can see it and form teams. Check the dates, challenges and criteria first.',
+                    },
+                  )}
+                >
+                  Publish
+                </Button>
               </>
             )}
             {h.status === 'published' && (
               <>
                 {cancel}
-                <Button onClick={confirmMove('judging', 'Start judging? Submissions close, and teams and criteria can no longer change.')}>Start judging</Button>
+                <Button
+                  disabled={move.isPending}
+                  onClick={moveTo(
+                    'judging',
+                    { title: 'Judging has started', message: 'Judges can now score every project.' },
+                    {
+                      tone: 'warning', title: 'Start judging?', confirmLabel: 'Start judging', icon: 'gavel',
+                      message: 'Submissions close, and teams and criteria can no longer change.',
+                    },
+                  )}
+                >
+                  Start judging
+                </Button>
               </>
             )}
             {h.status === 'cancelled' && (
               <Button
                 disabled={move.isPending}
-                onClick={confirmMove(restoreTo, `Restore this hackathon? It goes back to ${restoreTo === 'judging' ? 'judging' : 'open'}, as it was before it was cancelled.`)}
+                onClick={moveTo(
+                  restoreTo,
+                  { title: 'Hackathon restored', message: `It is ${restoreTo === 'judging' ? 'back in judging' : 'open again'}.` },
+                  {
+                    title: 'Restore this hackathon?', confirmLabel: 'Restore', icon: 'refresh',
+                    message: `It goes back to ${restoreTo === 'judging' ? 'judging' : 'open'}, just as it was before it was cancelled.`,
+                  },
+                )}
               >
                 Restore
               </Button>
@@ -81,14 +148,25 @@ export default function HackathonWorkspace() {
             {h.status === 'judging' && (
               <>
                 {cancel}
-                <Button onClick={confirmMove('completed', 'Publish the results? The leaderboard and all projects become public, and scores are final.')}>Publish results</Button>
+                <Button
+                  disabled={move.isPending}
+                  onClick={moveTo(
+                    'completed',
+                    { title: 'Results published', message: 'The leaderboard and projects are now public.' },
+                    {
+                      tone: 'warning', title: 'Publish the results?', confirmLabel: 'Publish results', icon: 'podium',
+                      message: 'The leaderboard and every project become public, and the scores are final.',
+                    },
+                  )}
+                >
+                  Publish results
+                </Button>
               </>
             )}
           </>
         }
       />
       <div className="mb-4 space-y-3 empty:hidden">
-        <ErrorNote error={move.error ?? remove.error} />
         {h.status === 'draft' && <Notice tone="amber">This is a draft. Only managers can see it until you publish.</Notice>}
       </div>
       <Outlet context={{ hackathon: h } satisfies Ctx} />
@@ -254,10 +332,24 @@ export function HackathonSetup() {
     }),
   )
   const remove = useAct((path: string) => api(`/hackathons/${h.slug}/${path}/`, { method: 'DELETE' }))
+  const confirm = useConfirm()
+  const toast = useToast()
+  const removeItem = async (path: string, kind: string, name: string) => {
+    if (!(await confirm({ tone: 'danger', title: `Remove this ${kind}?`, message: <>“{name}” is removed from the hackathon.</>, confirmLabel: 'Remove' }))) return
+    remove.mutate(path, {
+      onSuccess: () => toast({ title: `${kind[0].toUpperCase()}${kind.slice(1)} removed` }),
+      onError: (error) => toast({ tone: 'error', title: `Could not remove the ${kind}`, message: error.message }),
+    })
+  }
   const criteriaLocked = h.status !== 'draft' && h.status !== 'published'
   const submit = (action: typeof addChallenge, reset: () => void) => (e: FormEvent) => {
     e.preventDefault()
-    action.mutate(undefined, { onSuccess: reset })
+    action.mutate(undefined, {
+      onSuccess: () => {
+        reset()
+        toast({ title: action === addChallenge ? 'Challenge added' : 'Criterion added' })
+      },
+    })
   }
   const totalWeight = h.criteria.reduce((s, c) => s + c.weight, 0)
   return (
@@ -271,7 +363,7 @@ export function HackathonSetup() {
                 <p className="font-semibold">{c.title}</p>
                 {c.description && <p className="text-sm text-stone-600">{c.description}</p>}
               </div>
-              <Button variant="ghost" onClick={() => remove.mutate(`challenges/${c.id}`)}>Remove</Button>
+              <Button variant="ghost" onClick={() => void removeItem(`challenges/${c.id}`, 'challenge', c.title)}>Remove</Button>
             </li>
           ))}
         </ul>
@@ -294,7 +386,7 @@ export function HackathonSetup() {
                 </div>
                 <p className="text-sm text-stone-600">Out of {c.max_score}, weight {c.weight}{c.description && `. ${c.description}`}</p>
               </div>
-              {!criteriaLocked && <Button variant="ghost" onClick={() => remove.mutate(`criteria/${c.id}`)}>Remove</Button>}
+              {!criteriaLocked && <Button variant="ghost" onClick={() => void removeItem(`criteria/${c.id}`, 'criterion', c.name)}>Remove</Button>}
             </li>
           ))}
         </ul>
@@ -382,6 +474,19 @@ export function HackathonJudges() {
   const [email, setEmail] = useState('')
   const add = useAct(() => api(`/hackathons/${h.slug}/judges/`, { method: 'POST', body: { email } }))
   const remove = useAct((judge: number) => api(`/hackathons/${h.slug}/judges/${judge}/`, { method: 'DELETE' }))
+  const confirm = useConfirm()
+  const toast = useToast()
+  const removeJudge = async (j: Judge) => {
+    const ok = await confirm({
+      tone: 'danger', title: `Remove ${j.person.name}?`, confirmLabel: 'Remove judge',
+      message: j.evaluations ? `They have scored ${j.evaluations} ${j.evaluations === 1 ? 'project' : 'projects'}. Those scores are deleted too.` : 'They have not scored anything yet.',
+    })
+    if (!ok) return
+    remove.mutate(j.id, {
+      onSuccess: () => toast({ title: 'Judge removed', message: `${j.person.name} can no longer score projects.` }),
+      onError: (error) => toast({ tone: 'error', title: 'Could not remove the judge', message: error.message }),
+    })
+  }
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="lg:col-span-2">
@@ -419,7 +524,7 @@ export function HackathonJudges() {
                   align: 'right',
                   priority: 3,
                   cell: (j: Judge) => (
-                    <Button variant="ghost" onClick={() => window.confirm(`Remove ${j.person.name}? Their scores are deleted too.`) && remove.mutate(j.id)}>Remove</Button>
+                    <Button variant="ghost" onClick={() => void removeJudge(j)}>Remove</Button>
                   ),
                 },
               ]}
@@ -438,13 +543,18 @@ export function HackathonJudges() {
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault()
-            add.mutate(undefined, { onSuccess: () => setEmail('') })
+            add.mutate(undefined, {
+              onSuccess: () => {
+                toast({ title: 'Judge added', message: `${email} can now score projects.` })
+                setEmail('')
+              },
+            })
           }}
         >
           <Field label="Email" hint="They must have signed in to Community at least once.">
             <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           </Field>
-          <ErrorNote error={add.error ?? remove.error} />
+          <ErrorNote error={add.error} />
           <Button type="submit" disabled={add.isPending}><Icon name="plus" className="h-4 w-4" />Add judge</Button>
         </form>
       </Panel>
@@ -480,9 +590,24 @@ export function HackathonAnnouncements() {
   const [note, setNote] = useState({ title: '', body: '', notify: true })
   const post = useAct(() => api<Announcement & { emailed_to?: number }>(path, { method: 'POST', body: note }))
   const remove = useAct((id: number) => api(`${path}${id}/`, { method: 'DELETE' }))
+  const confirm = useConfirm()
+  const toast = useToast()
   const submit = (ev: FormEvent) => {
     ev.preventDefault()
-    post.mutate(undefined, { onSuccess: () => setNote({ title: '', body: '', notify: note.notify }) })
+    post.mutate(undefined, {
+      onSuccess: (posted) => {
+        setNote({ title: '', body: '', notify: note.notify })
+        const sent = posted.emailed_to
+        toast({
+          title: 'Announcement posted',
+          message: sent === undefined ? 'It is on the hackathon page.' : `It is on the hackathon page and was emailed to ${sent} ${sent === 1 ? 'person' : 'people'}.`,
+        })
+      },
+    })
+  }
+  const removeAnnouncement = async (a: Announcement) => {
+    if (!(await confirm({ tone: 'danger', title: 'Remove this announcement?', message: <>“{a.title}” disappears from the hackathon page. Emails already sent stay sent.</>, confirmLabel: 'Remove' }))) return
+    remove.mutate(a.id, { onSuccess: () => toast({ title: 'Announcement removed' }) })
   }
   const list = announcements.data ?? []
   return (
@@ -502,9 +627,6 @@ export function HackathonAnnouncements() {
               <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={note.notify} onChange={(ev) => setNote({ ...note, notify: ev.target.checked })} />
               Also email every team member and judge
             </label>
-            {post.data?.emailed_to !== undefined && (
-              <Notice>Posted and emailed to {post.data.emailed_to} {post.data.emailed_to === 1 ? 'person' : 'people'}.</Notice>
-            )}
             <Button type="submit" disabled={post.isPending || !note.body}>Post announcement</Button>
           </form>
         </Panel>
@@ -522,7 +644,7 @@ export function HackathonAnnouncements() {
                     <p className="mb-1 text-xs text-stone-500">{formatDateTime(a.created_at)}</p>
                     <RichText html={a.body} className="text-sm" />
                   </div>
-                  <Button variant="ghost" onClick={() => window.confirm('Remove this announcement?') && remove.mutate(a.id)}>Remove</Button>
+                  <Button variant="ghost" onClick={() => void removeAnnouncement(a)}>Remove</Button>
                 </li>
               ))}
             </ul>

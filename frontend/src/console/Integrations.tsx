@@ -6,6 +6,7 @@ import { api } from '../api'
 import type { Integration } from '../api'
 import { Icon } from '../components/icons'
 import { Badge, Button, ErrorNote, Notice, Spinner } from '../components/ui'
+import { useConfirm, useToast } from '../components/feedback'
 import { useAct } from '../hooks'
 import { ConsoleHeader } from './shared'
 
@@ -30,6 +31,12 @@ export default function Integrations() {
     window.location.assign(authorize_url)
   })
   const disconnect = useAct((i: Integration) => api(`/integrations/${i.id}/${i.app ? `?app=${encodeURIComponent(i.app)}` : ''}`, { method: 'DELETE' }))
+  const confirm = useConfirm()
+  const toast = useToast()
+  const disconnectApp = async (i: Integration) => {
+    if (!(await confirm({ tone: 'danger', title: `Disconnect ${i.name}?`, message: 'Events already in your calendar stay there. New events are no longer added.', confirmLabel: 'Disconnect' }))) return
+    disconnect.mutate(i, { onSuccess: () => toast({ title: `${i.name} disconnected` }) })
+  }
   const connected = integrations.data?.find((i) => i.id === params.get('connected'))
   const failed = integrations.data?.find((i) => i.id === params.get('error'))
 
@@ -66,7 +73,7 @@ export default function Integrations() {
                 {i.connected ? (
                   <div className="space-y-2">
                     <p className="truncate font-mono text-xs text-stone-500">{i.account_email || 'Connected'}</p>
-                    <Button variant="secondary" className="w-full" disabled={disconnect.isPending} onClick={() => window.confirm(`Disconnect ${i.name}? Events already in your calendar stay there.`) && disconnect.mutate(i)}>
+                    <Button variant="secondary" className="w-full" disabled={disconnect.isPending} onClick={() => void disconnectApp(i)}>
                       Disconnect
                     </Button>
                   </div>

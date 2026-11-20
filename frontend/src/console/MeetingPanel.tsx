@@ -6,6 +6,7 @@ import { api } from '../api'
 import type { CommunityEvent, EventLink } from '../api'
 import { Icon } from '../components/icons'
 import { Button, ErrorNote, Spinner } from '../components/ui'
+import { useConfirm, useToast } from '../components/feedback'
 import { useAct } from '../hooks'
 import { useIntegrations } from './Integrations'
 import { Panel } from './shared'
@@ -18,6 +19,8 @@ export function MeetingPanel({ event: e }: { event: CommunityEvent }) {
     api<EventLink>(`/events/${e.slug}/links/`, { method: 'POST', body }),
   )
   const remove = useAct((id: number) => api(`/events/${e.slug}/links/${id}/`, { method: 'DELETE' }))
+  const confirm = useConfirm()
+  const toast = useToast()
   if (!integrations.data || !links.data) return <Panel title="Meeting and calendars"><Spinner /></Panel>
 
   const open = e.status !== 'cancelled' && e.status !== 'completed'
@@ -25,8 +28,21 @@ export function MeetingPanel({ event: e }: { event: CommunityEvent }) {
   const meetingMakers = usable.filter((i) => i.meeting_name)
   const calendars = usable.filter((i) => i.has_calendar)
   const already = new Set(links.data.filter((l) => l.mine).map((l) => l.provider))
-  const replaceWarning = (name: string) =>
-    !e.online_url || window.confirm(`Replace the current meeting link with a new ${name} meeting? Registered people are emailed the new link.`)
+  const createMeeting = async (provider: string, name: string) => {
+    if (
+      e.online_url &&
+      !(await confirm({
+        tone: 'warning', title: `Replace the meeting link?`, confirmLabel: `Create ${name} meeting`, icon: 'refresh',
+        message: 'The current link stops being shown. Everyone registered is emailed the new one.',
+      }))
+    )
+      return
+    add.mutate({ provider, meeting: true }, { onSuccess: () => toast({ title: `${name} meeting created`, message: 'The link is on the event page for everyone registered.' }) })
+  }
+  const removeLink = async (l: EventLink) => {
+    if (!(await confirm({ tone: 'danger', title: `Remove it from ${l.provider_name}?`, message: 'The event is deleted from that calendar.', confirmLabel: 'Remove' }))) return
+    remove.mutate(l.id, { onSuccess: () => toast({ title: `Removed from ${l.provider_name}` }) })
+  }
 
   return (
     <Panel title="Meeting and calendars">
@@ -54,7 +70,7 @@ export function MeetingPanel({ event: e }: { event: CommunityEvent }) {
                     variant="secondary"
                     className="px-3 py-1.5"
                     disabled={add.isPending}
-                    onClick={() => replaceWarning(i.meeting_name) && add.mutate({ provider: i.id, meeting: true })}
+                    onClick={() => void createMeeting(i.id, i.meeting_name)}
                   >
                     <Icon name="plus" className="h-3.5 w-3.5" />{i.meeting_name}
                   </Button>
@@ -93,7 +109,7 @@ export function MeetingPanel({ event: e }: { event: CommunityEvent }) {
                   <span className="block truncate text-xs text-stone-500">{l.account_email} · kept in sync</span>
                 </span>
                 {l.mine && (
-                  <Button variant="ghost" className="px-2 py-1" disabled={remove.isPending} onClick={() => window.confirm(`Remove it from ${l.provider_name}?`) && remove.mutate(l.id)}>
+                  <Button variant="ghost" className="px-2 py-1" disabled={remove.isPending} onClick={() => void removeLink(l)}>
                     Remove
                   </Button>
                 )}

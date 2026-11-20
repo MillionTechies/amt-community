@@ -16,6 +16,8 @@ import {
   Badge, Button, Empty, ErrorNote, Field, Input, LinkButton, Notice, Spinner, StatusBadge,
   formatDateTime, formatRange, label,
 } from '../components/ui'
+import { useConfirm, useToast } from '../components/feedback'
+import type { ConfirmOptions, ToastOptions } from '../components/feedback'
 import { useAct } from '../hooks'
 import { EVENT_TYPE_LABELS } from '../pages/Events'
 import { DailyBars } from './charts'
@@ -31,12 +33,32 @@ export default function EventWorkspace() {
   const event = useQuery({ queryKey: ['event', slug], queryFn: () => api<CommunityEvent>(`/events/${slug}/`) })
   const move = useAct((status: string) => api(`/events/${slug}/transition/`, { method: 'POST', body: { status } }))
   const remove = useAct(() => api(`/events/${slug}/`, { method: 'DELETE' }))
+  const confirm = useConfirm()
+  const toast = useToast()
 
   if (event.isLoading) return <Spinner />
   if (!event.data) return <ErrorNote error={event.error ?? 'Event not found.'} />
   const e = event.data
   if (!e.can_manage) return <Empty>You do not organise this event.</Empty>
-  const confirmMove = (status: string, question: string) => () => window.confirm(question) && move.mutate(status)
+  const failed = (title: string) => (error: Error) => toast({ tone: 'error', title, message: error.message })
+  const moveTo = (status: string, done: ToastOptions, ask?: ConfirmOptions) => async () => {
+    if (ask && !(await confirm(ask))) return
+    move.mutate(status, { onSuccess: () => toast(done), onError: failed('Could not update the event') })
+  }
+  const deleteDraft = async () => {
+    const ok = await confirm({
+      tone: 'danger', title: 'Delete this draft?', confirmLabel: 'Delete draft',
+      message: <>“{e.title}” is removed for good.</>,
+    })
+    if (!ok) return
+    remove.mutate(undefined, {
+      onSuccess: () => {
+        toast({ title: 'Draft deleted' })
+        navigate('/manage/events')
+      },
+      onError: failed('Could not delete the draft'),
+    })
+  }
 
   return (
     <>
@@ -56,21 +78,51 @@ export default function EventWorkspace() {
             </a>
             {e.status === 'draft' && (
               <>
-                <Button variant="danger" onClick={() => window.confirm('Delete this draft?') && remove.mutate(undefined, { onSuccess: () => navigate('/manage/events') })}>Delete</Button>
-                <Button disabled={move.isPending} onClick={() => move.mutate('published')}>Publish</Button>
+                <Button variant="danger" disabled={remove.isPending} onClick={() => void deleteDraft()}>Delete</Button>
+                <Button
+                  disabled={move.isPending}
+                  onClick={moveTo(
+                    'published',
+                    { title: 'Event published', message: 'Registration is open.' },
+                    { title: 'Publish this event?', confirmLabel: 'Publish', icon: 'megaphone', message: 'Everyone can see it and register. Check the date, place and capacity first.' },
+                  )}
+                >
+                  Publish
+                </Button>
               </>
             )}
             {e.status === 'published' && (
               <>
-                <Button variant="danger" onClick={confirmMove('cancelled', 'Cancel this event? This cannot be undone.')}>Cancel event</Button>
-                <Button onClick={confirmMove('completed', 'Mark this event as completed? Attendees can then get their certificates.')}>Mark completed</Button>
+                <Button
+                  variant="danger"
+                  disabled={move.isPending}
+                  onClick={moveTo(
+                    'cancelled',
+                    { tone: 'info', title: 'Event cancelled', message: 'Everyone registered has been emailed.' },
+                    {
+                      tone: 'danger', title: 'Cancel this event?', confirmLabel: 'Yes, cancel it', cancelLabel: 'Keep it',
+                      message: 'Everyone registered is emailed and the event is removed from their calendars. This cannot be undone.',
+                    },
+                  )}
+                >
+                  Cancel event
+                </Button>
+                <Button
+                  disabled={move.isPending}
+                  onClick={moveTo(
+                    'completed',
+                    { title: 'Event completed', message: 'Attendees can now download their certificates.' },
+                    { title: 'Mark this event as completed?', confirmLabel: 'Mark completed', icon: 'check', message: 'Attendees who checked in can then get their certificates.' },
+                  )}
+                >
+                  Mark completed
+                </Button>
               </>
             )}
           </>
         }
       />
       <div className="mb-4 space-y-3 empty:hidden">
-        <ErrorNote error={move.error ?? remove.error} />
         {e.status === 'draft' && <Notice tone="amber">This is a draft. Only organisers can see it until you publish.</Notice>}
       </div>
       <Outlet context={{ event: e } satisfies Ctx} />
@@ -404,6 +456,12 @@ export function EventContent() {
   const post = useAct(() => api<Announcement & { emailed_to?: number }>(`/events/${id}/announcements/`, { method: 'POST', body: note }))
   const add = useAct(() => api(`/events/${id}/resources/`, { method: 'POST', body: link }))
   const remove = useAct((path: string) => api(`/events/${id}/${path}/`, { method: 'DELETE' }))
+  const confirm = useConfirm()
+  const toast = useToast()
+  const removeAnnouncement = async (a: Announcement) => {
+    if (!(await confirm({ tone: 'danger', title: 'Remove this announcement?', message: <>“{a.title}” disappears from the event page. Emails already sent stay sent.</>, confirmLabel: 'Remove' }))) return
+    remove.mutate(`announcements/${a.id}`, { onSuccess: () => toast({ title: 'Announcement removed' }) })
+  }
   const submit = (action: { mutate: (v: undefined, o: { onSuccess: () => void }) => void }, reset: () => void) => (ev: FormEvent) => {
     ev.preventDefault()
     action.mutate(undefined, { onSuccess: reset })
@@ -412,7 +470,10 @@ export function EventContent() {
     <div className="grid gap-6 lg:grid-cols-2">
       <Panel title="Announcements">
         <p className="mb-4 text-sm text-stone-600">Shown on the event page to everyone registered.</p>
-        <form className="space-y-3" onSubmit={submit(post, () => setNote({ title: '', body: '', notify: note.notify }))}>
+        <form className="space-y-3" onSubmit={submit(post, () => {
+          setNote({ title: '', body: '', notify: note.notify })
+          toast({ title: 'Announcement posted', message: note.notify ? 'It is on the event page and was emailed to everyone registered.' : 'It is on the event page.' })
+        })}>
           <Field label="Title"><Input required value={note.title} onChange={(ev) => setNote({ ...note, title: ev.target.value })} /></Field>
           <Field label="Message" group>
             <RichTextEditor value={note.body} onChange={(body) => setNote((n) => ({ ...n, body }))} placeholder="What do attendees need to know?" minHeight="8rem" />
@@ -422,7 +483,6 @@ export function EventContent() {
             <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={note.notify} onChange={(ev) => setNote({ ...note, notify: ev.target.checked })} />
             Also email everyone registered
           </label>
-          {post.data?.emailed_to !== undefined && <Notice>Posted and emailed to {post.data.emailed_to} {post.data.emailed_to === 1 ? 'person' : 'people'}.</Notice>}
           <Button type="submit" disabled={post.isPending || !note.body}>Post announcement</Button>
         </form>
         <ul className="mt-5 divide-y divide-stone-100 border-t border-stone-200">
@@ -433,14 +493,17 @@ export function EventContent() {
                 <RichText html={a.body} className="text-sm" />
                 <p className="mt-1 text-xs text-stone-500">{formatDateTime(a.created_at)}</p>
               </div>
-              <Button variant="ghost" onClick={() => window.confirm('Remove this announcement?') && remove.mutate(`announcements/${a.id}`)}>Remove</Button>
+              <Button variant="ghost" onClick={() => void removeAnnouncement(a)}>Remove</Button>
             </li>
           ))}
         </ul>
       </Panel>
       <Panel title="Resources">
         <p className="mb-4 text-sm text-stone-600">Slides, recordings and repositories for attendees.</p>
-        <form className="space-y-3" onSubmit={submit(add, () => setLink({ title: '', url: '', description: '' }))}>
+        <form className="space-y-3" onSubmit={submit(add, () => {
+          setLink({ title: '', url: '', description: '' })
+          toast({ title: 'Resource added', message: 'Attendees can find it on the event page.' })
+        })}>
           <Field label="Title"><Input required value={link.title} onChange={(ev) => setLink({ ...link, title: ev.target.value })} /></Field>
           <Field label="Link"><Input type="url" required placeholder="https://" value={link.url} onChange={(ev) => setLink({ ...link, url: ev.target.value })} /></Field>
           <ErrorNote error={add.error} />
@@ -450,7 +513,7 @@ export function EventContent() {
           {resources.data?.map((r) => (
             <li key={r.id} className="flex items-center justify-between gap-2 py-3">
               <a className="font-semibold text-brand-700 hover:underline" href={r.url} target="_blank" rel="noreferrer">{r.title}</a>
-              <Button variant="ghost" onClick={() => remove.mutate(`resources/${r.id}`)}>Remove</Button>
+              <Button variant="ghost" onClick={() => remove.mutate(`resources/${r.id}`, { onSuccess: () => toast({ title: 'Resource removed' }) })}>Remove</Button>
             </li>
           ))}
         </ul>

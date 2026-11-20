@@ -87,6 +87,42 @@ textarea {
   }
 }
 
+/* --- dialogs and toasts (components/feedback.tsx) --------------------------- */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.97);
+  }
+}
+.fade-in {
+  animation: fade-in 0.18s ease-out both;
+}
+.dialog-in {
+  animation: dialog-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.toast-in {
+  animation: toast-in 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fade-in,
+  .dialog-in,
+  .toast-in {
+    animation: none;
+  }
+}
+
 /* --- landing page ---------------------------------------------------------- */
 
 @keyframes rise {
