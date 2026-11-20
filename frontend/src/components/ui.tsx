@@ -1,5 +1,5 @@
 /** Small building blocks shared by every page. */
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
+import type { ComponentProps, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
 import { Link } from 'react-router-dom'
 
 const cx = (...parts: (string | false | undefined | null)[]) => parts.filter(Boolean).join(' ')
@@ -19,7 +19,7 @@ export function Button({
   variant = 'primary',
   className,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+}: ComponentProps<'button'> & { variant?: Variant }) {
   return <button type="button" {...props} className={cx(buttonBase, variants[variant], className)} />
 }
 
@@ -192,7 +192,7 @@ export function Field({
   )
 }
 
-export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
+export function Input(props: ComponentProps<'input'>) {
   return <input {...props} className={cx(inputStyle, props.className)} />
 }
 

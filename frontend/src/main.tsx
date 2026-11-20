@@ -7,6 +7,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { ApiError } from './api'
 import { oidcConfig } from './auth'
+import { FeedbackProvider } from './components/feedback'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -25,7 +26,9 @@ createRoot(document.getElementById('root')!).render(
     <AuthProvider {...oidcConfig}>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
-          <App />
+          <FeedbackProvider>
+            <App />
+          </FeedbackProvider>
         </BrowserRouter>
       </QueryClientProvider>
     </AuthProvider>

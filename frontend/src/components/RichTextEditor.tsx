@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { uploadImage } from '../api'
+import { usePrompt, useToast } from './feedback'
 import { asHtml } from './RichText'
 
 const SIZES = [
@@ -87,23 +88,31 @@ function Toolbar({ editor, onImage, uploading }: { editor: Editor; onImage: () =
     }),
   })
   const chain = () => editor.chain().focus()
+  const prompt = usePrompt()
+  const toast = useToast()
   const select = 'h-8 rounded-md border border-stone-300 bg-white px-2 font-mono text-xs'
 
   const setBlock = (value: string) => {
     if (value === 'p') chain().setParagraph().run()
     else chain().setHeading({ level: Number(value[1]) as 2 | 3 | 4 }).run()
   }
-  const setLink = () => {
+  const setLink = async () => {
     const current = editor.getAttributes('link').href as string | undefined
-    const url = window.prompt('Link address', current ?? 'https://')
+    const url = await prompt({
+      title: current ? 'Edit link' : 'Add a link', label: 'Link address', icon: 'external',
+      initial: current ?? 'https://', confirmLabel: 'Save link', message: current ? 'Clear the address to remove the link.' : undefined,
+    })
     if (url === null) return
     if (!url || url === 'https://') chain().extendMarkRange('link').unsetLink().run()
     else chain().extendMarkRange('link').setLink({ href: url, target: '_blank' }).run()
   }
-  const addVideo = () => {
-    const url = window.prompt('YouTube video address (for example https://youtu.be/…)')
+  const addVideo = async () => {
+    const url = await prompt({
+      title: 'Add a YouTube video', label: 'Video address', type: 'url', placeholder: 'https://youtu.be/…', confirmLabel: 'Add video',
+    })
     if (!url) return
-    if (!chain().setYoutubeVideo({ src: url }).run()) window.alert('That does not look like a YouTube video address.')
+    if (!chain().setYoutubeVideo({ src: url }).run())
+      toast({ tone: 'error', title: 'That is not a YouTube address', message: 'Copy the link from the Share button on YouTube.' })
   }
 
   return (

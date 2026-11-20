@@ -7,6 +7,7 @@ import type { RoleAssignment } from '../api'
 import { DataTable } from '../components/DataTable'
 import { Icon } from '../components/icons'
 import { Badge, Button, Empty, ErrorNote, Field, Input, Select, Spinner, label } from '../components/ui'
+import { useConfirm, useToast } from '../components/feedback'
 import { useAct } from '../hooks'
 import { ConsoleHeader, FilterChips, Panel, useAccess } from './shared'
 
@@ -30,6 +31,16 @@ export function Team() {
   const [show, setShow] = useState<'all' | 'event_organiser' | 'hackathon_manager'>('all')
   const grant = useAct(() => api(`/organizations/${organizationId}/roles/`, { method: 'POST', body: { email, role } }))
   const revoke = useAct((id: number) => api(`/organizations/${organizationId}/roles/${id}/`, { method: 'DELETE' }))
+  const confirm = useConfirm()
+  const toast = useToast()
+  const removeRole = async (r: RoleAssignment) => {
+    const role = label(r.role).toLowerCase()
+    if (!(await confirm({ tone: 'danger', title: `Remove ${r.person.name}?`, message: `They will no longer be ${/^[aeiou]/.test(role) ? 'an' : 'a'} ${role} here.`, confirmLabel: 'Remove' }))) return
+    revoke.mutate(r.id, {
+      onSuccess: () => toast({ title: 'Role removed', message: `${r.person.name} is no longer ${/^[aeiou]/.test(role) ? 'an' : 'a'} ${role}.` }),
+      onError: (error) => toast({ tone: 'error', title: 'Could not remove the role', message: error.message }),
+    })
+  }
 
   if (!me) return <Spinner />
   if (!organizations.length) return <Empty>You do not administer an organisation.</Empty>
@@ -95,7 +106,7 @@ export function Team() {
                     align: 'right',
                     priority: 3,
                     cell: (r: RoleAssignment) => (
-                      <Button variant="ghost" onClick={() => window.confirm(`Remove ${r.person.name} as ${label(r.role).toLowerCase()}?`) && revoke.mutate(r.id)}>Remove</Button>
+                      <Button variant="ghost" onClick={() => void removeRole(r)}>Remove</Button>
                     ),
                   },
                 ]}

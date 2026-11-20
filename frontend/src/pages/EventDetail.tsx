@@ -17,6 +17,7 @@ import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
 import { ReadMore, StickyAction, TicketSheet, useScrolledPast } from '../components/mobile'
 import { RichText } from '../components/RichText'
+import { useConfirm, useToast } from '../components/feedback'
 import { useAct, useMe, useSignIn } from '../hooks'
 
 export default function EventDetail() {
@@ -42,6 +43,8 @@ export default function EventDetail() {
 
   const [actionRef, scrolledPast] = useScrolledPast()
   const [ticketOpen, setTicketOpen] = useState(false)
+  const confirm = useConfirm()
+  const toast = useToast()
   const me = useMe()
 
   if (event.isLoading) return <Spinner />
@@ -178,7 +181,13 @@ export default function EventDetail() {
                 <button
                   type="button"
                   disabled={cancel.isPending}
-                  onClick={() => window.confirm('Cancel your registration? Your place goes to the next person waiting.') && cancel.mutate()}
+                  onClick={async () => {
+                    const ok = await confirm({
+                      tone: 'danger', title: "Can't make it?", confirmLabel: 'Cancel my place', cancelLabel: 'Keep my place',
+                      message: 'Your place goes to the next person waiting. You can register again later if there is room.',
+                    })
+                    if (ok) cancel.mutate(undefined, { onSuccess: () => toast({ tone: 'info', title: 'Registration cancelled', message: 'Thanks for letting us know.' }) })
+                  }}
                   className="w-full pt-1 text-center text-sm font-semibold text-stone-500 hover:text-red-700"
                 >
                   Can't make it? Cancel registration
