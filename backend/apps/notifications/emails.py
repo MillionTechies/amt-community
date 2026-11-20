@@ -2,7 +2,7 @@
 
 - registration confirmed (with the ticket QR code and a calendar invite), or waitlisted
 - moved off the waiting list
-- an announcement, when the organiser ticks "also email"
+- an announcement, when the organiser ticks "also email" (events and hackathons)
 - the date, time, place or link changed (with the updated invite)
 - the event was cancelled (with an invite that removes it from calendars)
 - reminders a day and an hour before (queued by the worker)
@@ -265,6 +265,29 @@ def announcement(announcement) -> int:
             button_url=calendar.event_url(event), button_label="View event",
         )
         for r in _attendees(event)
+    ]
+    ids = [i for i in ids if i]
+    deliver(ids)
+    return len(ids)
+
+
+def hackathon_announcement(announcement) -> int:
+    """Email a hackathon announcement to everyone on a team and every judge."""
+    hackathon = announcement.hackathon
+    url = f"{settings.COMMUNITY_URL}/hackathons/{hackathon.slug}"
+    people = {m.profile_id: m.profile for m in hackathon.participants.select_related("profile")}
+    people.update({j.profile_id: j.profile for j in hackathon.judges.select_related("profile")})
+    ids = [
+        _queue(
+            "hackathon_announcement", profile, f"{hackathon.title}: {announcement.title}",
+            key=f"hackathon-announcement:{announcement.id}:{profile_id}",
+            preheader=to_text(announcement.body)[:140],
+            eyebrow=f"Announcement · {hackathon.title}", heading=announcement.title,
+            body_html=announcement.body, body_text=to_text(announcement.body),
+            org_name=hackathon.organization.name, page_url=url,
+            button_url=url, button_label="View hackathon",
+        )
+        for profile_id, profile in people.items()
     ]
     ids = [i for i in ids if i]
     deliver(ids)

@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from apps.accounts import access
 from apps.accounts.views import find_profile_by_email
 from apps.hackathons.models import (
+    Announcement,
     Challenge,
     Criterion,
     Evaluation,
@@ -22,6 +23,7 @@ from apps.hackathons.models import (
 from apps.hackathons.scoring import leaderboard
 from apps.hackathons.serializers import (
     AddJudgeSerializer,
+    AnnouncementSerializer,
     ChallengeSerializer,
     CreateTeamSerializer,
     CriterionSerializer,
@@ -35,6 +37,7 @@ from apps.hackathons.serializers import (
     TeamSerializer,
     TransitionSerializer,
 )
+from apps.notifications import emails
 
 ROLE = access.Role.HACKATHON_MANAGER
 Status = Hackathon.Status
@@ -456,3 +459,33 @@ class CriterionViewSet(HackathonChildViewSet):
 
     def locked(self, hackathon) -> bool:
         return hackathon.status not in (Status.DRAFT, Status.PUBLISHED)
+
+
+class AnnouncementViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Anyone who can see the hackathon reads its announcements; its managers post and remove them."""
+
+    serializer_class = AnnouncementSerializer
+    pagination_class = None
+
+    def _hackathon(self):
+        return get_object_or_404(visible_hackathons(self.request), slug=self.kwargs["hackathon_slug"])
+
+    def get_queryset(self):
+        return Announcement.objects.filter(hackathon=self._hackathon())
+
+    def perform_create(self, serializer):
+        hackathon = self._hackathon()
+        access.require_manage(self.request, hackathon.organization_id, ROLE)
+        notify = serializer.validated_data.pop("notify", False)
+        announcement = serializer.save(hackathon=hackathon, created_by=access.profile_of(self.request))
+        if notify:
+            announcement.emailed_to = emails.hackathon_announcement(announcement)
+
+    def perform_destroy(self, announcement):
+        access.require_manage(self.request, announcement.hackathon.organization_id, ROLE)
+        announcement.delete()

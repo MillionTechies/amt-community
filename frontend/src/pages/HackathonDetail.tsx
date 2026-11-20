@@ -5,7 +5,7 @@ import { useAuth } from 'react-oidc-context'
 import { useParams, useSearchParams } from 'react-router-dom'
 
 import { ApiError, api } from '../api'
-import type { Hackathon, JudgedSubmission, LeaderboardRow, MyTeam } from '../api'
+import type { Announcement, Hackathon, JudgedSubmission, LeaderboardRow, MyTeam } from '../api'
 import { Leaderboard, ProjectLinks } from '../components/hackathon'
 import {
   Badge, Button, Card, ErrorNote, Field, Input, LinkButton, Notice, Prose, Section, Select, Spinner,
@@ -13,6 +13,28 @@ import {
 } from '../components/ui'
 import { RichText } from '../components/RichText'
 import { useAct, useSignIn } from '../hooks'
+
+/** News from the organisers, newest first. */
+function Announcements({ slug }: { slug: string }) {
+  const announcements = useQuery({
+    queryKey: ['hackathon', slug, 'announcements'],
+    queryFn: () => api<Announcement[]>(`/hackathons/${slug}/announcements/`),
+  })
+  if (!announcements.data?.length) return null
+  return (
+    <Section title="Announcements">
+      <ul className="space-y-4">
+        {announcements.data.map((a) => (
+          <li key={a.id} className="border-l-2 border-brand-500 pl-4">
+            <p className="font-semibold">{a.title}</p>
+            <p className="text-xs text-stone-500">{formatDateTime(a.created_at)}</p>
+            <RichText html={a.body} />
+          </li>
+        ))}
+      </ul>
+    </Section>
+  )
+}
 
 export default function HackathonDetail() {
   const { slug } = useParams()
@@ -36,6 +58,7 @@ export default function HackathonDetail() {
         {h.status === 'cancelled' && <Notice tone="amber">This hackathon has been cancelled.</Notice>}
         {h.status === 'judging' && <Notice tone="amber">Submissions are closed and the judges are scoring projects.</Notice>}
         {h.results_published && <Results id={h.slug} />}
+        <Announcements slug={h.slug} />
         {h.description && <Section title="About"><RichText html={h.description} /></Section>}
         {!!h.challenges.length && (
           <Section title="Challenges">

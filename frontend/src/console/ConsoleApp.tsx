@@ -6,7 +6,7 @@ import EventForm from '../pages/EventForm'
 import HackathonForm from '../pages/HackathonForm'
 import EventWorkspace, { EventCheckIn, EventContent, EventFeedback, EventOverview, EventRegistrations } from './EventWorkspace'
 import HackathonWorkspace, {
-  HackathonJudges, HackathonLeaderboard, HackathonOverview, HackathonSetup, HackathonTeams,
+  HackathonAnnouncements, HackathonJudges, HackathonLeaderboard, HackathonOverview, HackathonSetup, HackathonTeams,
 } from './HackathonWorkspace'
 import Configuration from './Configuration'
 import Integrations from './Integrations'
@@ -36,6 +36,7 @@ export default function ConsoleApp() {
         <Route index element={<HackathonOverview />} />
         <Route path="setup" element={<HackathonSetup />} />
         <Route path="teams" element={<HackathonTeams />} />
+        <Route path="announcements" element={<HackathonAnnouncements />} />
         <Route path="judges" element={<HackathonJudges />} />
         <Route path="leaderboard" element={<HackathonLeaderboard />} />
         <Route path="edit" element={<HackathonForm />} />

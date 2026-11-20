@@ -306,3 +306,27 @@ def test_a_prize_needs_a_title(admin, org):
     )
     assert response.status_code == 400
     assert "prizes" in response.json()
+
+
+def test_hackathon_announcements(admin, bob, carol, anonymous, org):
+    from django.core import mail
+
+    hackathon = create_hackathon(admin, org)
+    url = f"/api/hackathons/{hackathon['slug']}/"
+    bob.post(f"{url}teams/", {"name": "Byte Me"}, format="json")
+    assert admin.post(f"{url}judges/", {"email": "carol@example.com"}, format="json").status_code == 200
+    mail.outbox.clear()
+
+    note = {"title": "Kick-off moved", "body": "<p>Now at <b>10:00</b></p>"}
+    assert bob.post(f"{url}announcements/", note, format="json").status_code == 403
+    quiet = admin.post(f"{url}announcements/", note, format="json")
+    assert quiet.status_code == 201 and mail.outbox == []
+
+    loud = admin.post(f"{url}announcements/", {**note, "notify": True}, format="json")
+    assert loud.json()["emailed_to"] == 2
+    assert sorted(m.to[0] for m in mail.outbox) == ["bob@example.com", "carol@example.com"]
+
+    listed = anonymous.get(f"{url}announcements/").json()
+    assert [a["title"] for a in listed] == ["Kick-off moved", "Kick-off moved"]
+    assert bob.delete(f"{url}announcements/{quiet.json()['id']}/").status_code == 403
+    assert admin.delete(f"{url}announcements/{quiet.json()['id']}/").status_code == 204
