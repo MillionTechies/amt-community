@@ -78,8 +78,8 @@ export function ReadMore({ children, height = 288 }: { children: ReactNode; heig
   const [long, setLong] = useState(false)
   const [open, setOpen] = useState(false)
   useLayoutEffect(() => {
-    const el = inner.current
-    if (!el) return
+    // React attaches `inner` before layout effects run.
+    const el = inner.current as HTMLDivElement
     const check = () => setLong(el.scrollHeight > height + 80)
     check()
     if (typeof ResizeObserver === 'undefined') return

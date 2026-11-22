@@ -89,17 +89,15 @@ describe('DataTable', () => {
   })
 })
 
-// Known bug (DataTable.tsx, `slots`): a column drawn with `cell` sorts and searches on the
-// rendered element instead of its `value`. These pass once that is fixed; drop `.fails` then.
 describe('a column drawn with React', () => {
   const drawn: Col<Person>[] = [{ title: 'Name', value: (p) => p.name, cell: (p) => <b>{p.name}</b> }]
 
-  it.fails('sorts by its value', () => {
+  it('sorts by its value', () => {
     render(<DataTable rows={people} columns={drawn} order={[0, 'asc']} />)
     expect(bodyRows().map((r) => r.textContent)).toEqual(['Amina', 'Otieno', 'Wanjiru'])
   })
 
-  it.fails('searches on its value', () => {
+  it('searches on its value', () => {
     render(<DataTable rows={people} columns={drawn} />)
     search(screen.getByRole('searchbox'), 'Otieno')
     expect(bodyRows().map((r) => r.textContent)).toEqual(['Otieno'])
