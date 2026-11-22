@@ -149,6 +149,14 @@ every change comes with its tests. Migrations, `config/asgi.py`, `config/wsgi.py
 
 The backend tests sign members in with made-up token claims, so they do not need Keycloak.
 
+## Production
+
+Community runs at https://community.amilliontechies.com with its API at
+https://api.community.amilliontechies.com, on the same server and behind the same Caddy
+as the identity server. Merging a release into `main` deploys it automatically.
+[`deploy/README.md`](deploy/README.md) covers the first deploy, automatic deploys,
+backups and restores.
+
 ## How identity and access work
 
 Keycloak owns sign-in, users, organisations and organisation groups. The web app signs in

@@ -10,3 +10,6 @@ dist/
 backend/media/
 .coverage
 coverage/
+staticfiles/
+deploy/.env
+deploy/backups/

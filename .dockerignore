@@ -1,0 +1,17 @@
+# Build context is the repo root (deploy/docker-compose.yml); keep it small and secret-free.
+.git
+.github
+.idea
+.claude
+**/.env
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.coverage
+**/coverage
+backend/media
+backend/staticfiles
+frontend/dist
+deploy/.env
+deploy/backups

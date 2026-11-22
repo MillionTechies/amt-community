@@ -1,0 +1,29 @@
+# Add to the server's Caddyfile (next to the identity server's sites), then reload Caddy.
+# Cloudflare DNS for both hostnames is DNS only (grey cloud), so Caddy obtains the
+# certificates itself.
+#
+#   community.amilliontechies.com      the web app
+#   api.community.amilliontechies.com  the API, plus uploaded images under /media/
+#
+# Caddy runs in Docker on PROXY_NETWORK, where the services are amt-community-web and
+# amt-community-api.
+community.amilliontechies.com {
+	reverse_proxy amt-community-web:80
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+}
+
+api.community.amilliontechies.com {
+	# Uploaded images live on a volume the web container serves read-only.
+	handle /media/* {
+		reverse_proxy amt-community-web:80
+	}
+	handle {
+		reverse_proxy amt-community-api:8000
+	}
+	request_body {
+		max_size 20MB
+	}
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+}
