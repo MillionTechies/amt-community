@@ -7,6 +7,7 @@ from amt_auth import GroupRef, OrgMembership, TokenClaims
 from amt_auth.django.authentication import KeycloakUser
 from amt_auth.django.models import Organization
 from django.utils import timezone
+from model_bakery import baker
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Profile
@@ -24,9 +25,7 @@ def _db(db, settings):
 
 
 def make_org(alias: str) -> Organization:
-    return Organization.objects.create(
-        id=f"org-{alias}", name=alias.upper(), alias=alias, synced_at=timezone.now()
-    )
+    return baker.make(Organization, id=f"org-{alias}", name=alias.upper(), alias=alias, synced_at=timezone.now())
 
 
 def sign_in(name: str, *, admin_of=(), member_of=(), platform_admin=False) -> APIClient:

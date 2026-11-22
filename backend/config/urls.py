@@ -10,7 +10,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     # amt-auth: Keycloak webhook, organization creation and invitations.
     path("auth/", include("amt_auth.django.urls")),
-    path("api/stats/", community_stats),
+    path("api/stats/", community_stats, name="stats"),
     path("api/", include("apps.accounts.urls")),
     # Calendar files first, so the events router never sees "calendar.ics".
     path("api/", include("apps.integrations.urls")),
