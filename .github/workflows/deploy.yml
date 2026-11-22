@@ -1,0 +1,75 @@
+name: Deploy Community
+
+# Deploys community.amilliontechies.com whenever a release is merged into main, or on
+# demand from the Actions tab (Run workflow).
+#
+# It connects to the server over SSH with a key that can only run deploy/deploy.sh (a
+# forced command in the server's authorized_keys), so the deploy logic lives in
+# deploy.sh and this file just starts it. A failure turns the run red and GitHub emails
+# whoever merged. The deploy.sh output is in the log.
+#
+# Setup (deploy/README.md, "Automatic deploys"):
+#   secrets    DEPLOY_SSH_KEY       private key of the forced-command key
+#              DEPLOY_KNOWN_HOSTS   ssh-keyscan -t ed25519 <server ip>
+#   variables  DEPLOY_HOST          server IP or hostname
+#              DEPLOY_USER          SSH user that owns the checkout (e.g. dev)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a second release waits for the first deploy to finish.
+concurrency:
+  group: deploy-community-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Run deploy.sh on the server
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+        run: |
+          for name in SSH_KEY KNOWN_HOSTS DEPLOY_HOST DEPLOY_USER; do
+            [ -n "${!name}" ] || { echo "::error::$name is not set. See deploy/README.md, Automatic deploys."; exit 1; }
+          done
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The server ignores the command and runs deploy.sh.
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 "$DEPLOY_USER@$DEPLOY_HOST" deploy
+
+      - name: Check the public sites
+        run: |
+          site=https://community.amilliontechies.com
+          api=https://api.community.amilliontechies.com
+          failed=0
+          check() {
+            code="$(curl -s -o /dev/null -w '%{http_code}' "$2")"
+            if [ "$code" = 200 ]; then echo "$1: $2 answered 200"; else echo "::error::$1: $2 answered $code, expected 200"; failed=1; fi
+          }
+          check "web app" "$site/"
+          check "app route" "$site/events"
+          check "API" "$api/api/stats/"
+          check "API docs" "$api/api/docs/"
+          # Sign-in must come back to the site: Keycloak shows the form only for a
+          # registered redirect URI, otherwise "Invalid parameter: redirect_uri".
+          code="$(curl -s -o /dev/null -w '%{http_code}' --get \
+            https://auth.amilliontechies.com/realms/amilliontechies/protocol/openid-connect/auth \
+            --data-urlencode client_id=community-frontend --data-urlencode response_type=code \
+            --data-urlencode scope=openid --data-urlencode "redirect_uri=$site/" \
+            --data-urlencode code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM \
+            --data-urlencode code_challenge_method=S256)"
+          if [ "$code" = 200 ]; then echo "sign-in: works from $site"; else echo "::error::sign-in from $site answered $code"; failed=1; fi
+          exit "$failed"
