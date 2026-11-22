@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from apps.accounts import sync
 from apps.accounts.authentication import ProfileAuthentication
+from apps.accounts.models import RoleAssignment
 from tests.conftest import make_org, sign_in
 
 
@@ -190,3 +191,50 @@ def test_only_one_full_sync_runs_at_a_time(full_sync):
         assert response.json() == {"detail": "A sync is already running."}
         other.execute("SELECT pg_advisory_unlock(%s)", [sync.FULL_SYNC_LOCK])
     assert root.post("/api/organizations/sync/").status_code == 200
+
+
+def test_a_failed_full_sync_reports_a_bad_gateway(monkeypatch):
+    def fail(admin, repo):
+        raise AdminAPIError(500, "boom")
+
+    monkeypatch.setattr(sync, "_admin", lambda: object())
+    monkeypatch.setattr(sync, "sync_all", fail)
+    root = sign_in("root", platform_admin=True)
+    response = root.post("/api/organizations/sync/")
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Keycloak request failed."
+
+
+def test_sync_talks_to_amt_auths_keycloak_admin(monkeypatch):
+    admin_api = object()
+
+    class Service:
+        admin = admin_api
+
+    monkeypatch.setattr(sync.amt_authentication, "get_auth_service", lambda: Service())
+    assert sync._admin() is admin_api
+
+
+def test_name_and_email_follow_the_token(token, keycloak):
+    ProfileAuthentication().authenticate(request=None)
+    token.claims = TokenClaims(
+        sub="sub-erin", email="erin@new.example", name="", given_name="Erin", family_name="Otieno",
+        realm_roles=frozenset(), client_roles=frozenset(), memberships=(), active_organization=None,
+        raw={},
+    )
+    user, _ = ProfileAuthentication().authenticate(request=None)
+    user.profile.refresh_from_db()
+    assert (user.profile.email, user.profile.full_name) == ("erin@new.example", "Erin Otieno")
+    assert str(user.profile) == "Erin Otieno"
+
+
+def test_skills_must_be_a_list_of_words(bob):
+    response = bob.patch("/api/me/", {"skills": "Python"}, format="json")
+    assert response.status_code == 400
+    assert bob.patch("/api/me/", {"skills": ["Python", 3]}, format="json").status_code == 400
+
+
+def test_role_assignment_reads_as_a_sentence(admin, bob, org):
+    admin.post(f"/api/organizations/{org.id}/roles/", {"email": "bob@example.com", "role": "hackathon_manager"}, format="json")
+    assignment = RoleAssignment.objects.get()
+    assert str(assignment) == "Bob is Hackathon manager at JKUAT"

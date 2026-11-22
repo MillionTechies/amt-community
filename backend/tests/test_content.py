@@ -71,3 +71,24 @@ def test_uploads_must_be_images(admin, settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path
     fake = SimpleUploadedFile("x.png", b"not an image", content_type="image/png")
     assert admin.post("/api/uploads/", {"file": fake}, format="multipart").status_code == 400
+
+
+def test_an_upload_needs_a_file(admin):
+    response = admin.post("/api/uploads/", {}, format="multipart")
+    assert response.status_code == 400
+    assert response.json() == {"file": "Choose an image to upload."}
+
+
+def test_uploads_are_limited_to_5_mb(admin, monkeypatch):
+    monkeypatch.setattr("apps.content.views.MAX_BYTES", 10)
+    response = admin.post("/api/uploads/", {"file": image()}, format="multipart")
+    assert response.status_code == 400
+    assert response.json() == {"file": "Images can be up to 5 MB."}
+
+
+def test_uploads_must_be_a_web_image_format(admin, settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path
+    response = admin.post("/api/uploads/", {"file": image("photo.bmp", "BMP")}, format="multipart")
+    assert response.status_code == 400
+    assert response.json() == {"file": "Use a JPEG, PNG, WebP or GIF image."}
+    assert not list(tmp_path.iterdir())

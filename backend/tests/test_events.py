@@ -309,3 +309,139 @@ def test_events_happening_today(admin, anonymous, org):
     today = anonymous.get("/api/events/?within=today").json()["results"]
     assert [e["slug"] for e in today] == [soon["slug"]]
     assert len(anonymous.get("/api/events/?within=whenever").json()["results"]) == 2
+
+
+def slugs(response):
+    return [e["slug"] for e in response.json()["results"]]
+
+
+def test_upcoming_and_past_events(admin, anonymous, org):
+    later = create_event(admin, org, title="Later")
+    earlier = create_event(admin, org, title="Earlier")
+    over = create_event(admin, org, title="Over")
+    long_over = create_event(admin, org, title="Long over")
+    Event.objects.filter(slug=over["slug"]).update(starts_at=timezone.now() - timedelta(days=2), ends_at=timezone.now() - timedelta(days=1))
+    Event.objects.filter(slug=long_over["slug"]).update(starts_at=timezone.now() - timedelta(days=9), ends_at=timezone.now() - timedelta(days=8))
+    Event.objects.filter(slug=earlier["slug"]).update(starts_at=timezone.now() + timedelta(days=1))
+    assert slugs(anonymous.get("/api/events/?when=upcoming")) == [earlier["slug"], later["slug"]]
+    # Most recent first.
+    assert slugs(anonymous.get("/api/events/?when=past")) == [over["slug"], long_over["slug"]]
+
+
+def test_platform_admins_see_and_manage_every_event(admin, org, other_org):
+    draft = create_event(admin, org, publish=False)
+    elsewhere = create_event(sign_in("uma", admin_of=[other_org]), other_org)
+    root = sign_in("root", platform_admin=True)
+    listed = root.get("/api/events/?scope=managed").json()["results"]
+    assert {e["slug"] for e in listed} == {draft["slug"], elsewhere["slug"]}
+    assert all(e["can_manage"] for e in listed)
+    assert slugs(sign_in("dan").get("/api/events/")) == [elsewhere["slug"]]
+
+
+def test_event_details_are_checked(admin, org, other_org):
+    response = admin.post("/api/events/", event_data(org, organization_id="org-missing"), format="json")
+    assert response.status_code == 400 and response.json() == {"organization_id": ["Unknown organisation."]}
+
+    response = admin.post(
+        "/api/events/", event_data(org, registration_deadline=in_days(8)), format="json"
+    )
+    assert response.status_code == 400
+    assert response.json() == {"registration_deadline": ["Registration must close before the event ends."]}
+
+    event = create_event(admin, org)
+    url = f"/api/events/{event['slug']}/"
+    assert admin.patch(url, {"organization_id": org.id, "title": "Same place"}, format="json").status_code == 200
+    root = sign_in("root", platform_admin=True)
+    moved = root.patch(url, {"organization_id": other_org.id}, format="json")
+    assert moved.status_code == 400
+    assert moved.json() == {"organization_id": ["An event cannot move to another organisation."]}
+    assert Event.objects.get(slug=event["slug"]).organization_id == org.id
+    assert str(Event.objects.get(slug=event["slug"])) == "Same place"
+
+
+def test_cancelling_a_registration_you_do_not_have(admin, bob, org):
+    event = create_event(admin, org)
+    url = f"/api/events/{event['slug']}/register/"
+    assert bob.delete(url).json() == ["You are not registered for this event."]
+    bob.post(url)
+    bob.delete(url)
+    assert bob.delete(url).status_code == 400
+
+
+def test_leaving_the_waiting_list_promotes_nobody(admin, bob, carol, org):
+    event = create_event(admin, org, capacity=1)
+    url = f"/api/events/{event['slug']}/register/"
+    bob.post(url)
+    carol.post(url)
+    dan = sign_in("dan")
+    dan.post(url)
+    assert carol.delete(url).status_code == 200
+    statuses = dict(Registration.objects.values_list("profile__full_name", "status"))
+    assert statuses == {"Bob": "registered", "Carol": "cancelled", "Dan": "waitlisted"}
+
+
+def test_no_promotion_once_registration_has_closed(admin, bob, carol, org):
+    event = create_event(admin, org, capacity=1)
+    url = f"/api/events/{event['slug']}/register/"
+    bob.post(url)
+    carol.post(url)
+    Event.objects.filter(slug=event["slug"]).update(registration_deadline=timezone.now() - timedelta(minutes=1))
+    bob.delete(url)
+    assert Registration.objects.get(profile=carol.profile).status == Registration.Status.WAITLISTED
+
+
+def test_organisers_list_registrations(admin, bob, carol, org):
+    event = create_event(admin, org)
+    bob.post(f"/api/events/{event['slug']}/register/")
+    url = f"/api/events/{event['slug']}/registrations/"
+    listed = admin.get(url).json()
+    assert [(r["email"], r["status"], r["person"]["name"]) for r in listed] == [("bob@example.com", "registered", "Bob")]
+    assert carol.get(url).status_code == 403
+    registration = Registration.objects.get()
+    assert str(registration) == "Bob at Intro to APIs"
+
+
+def test_check_in_needs_a_ticket_and_a_live_event(admin, bob, org):
+    event = create_event(admin, org)
+    url = f"/api/events/{event['slug']}/"
+    ticket = bob.post(f"{url}register/").json()["my_registration"]["ticket_code"]
+    empty = admin.post(f"{url}check-in/", {}, format="json")
+    assert empty.status_code == 400 and empty.json() == {"non_field_errors": ["Send a ticket code or a registration."]}
+
+    Event.objects.filter(slug=event["slug"]).update(status=Event.Status.CANCELLED)
+    closed = admin.post(f"{url}check-in/", {"ticket_code": ticket}, format="json")
+    assert closed.status_code == 400 and closed.json() == ["Check-in is only open for published events."]
+    assert Registration.objects.get().checked_in_at is None
+
+
+def test_a_check_in_can_be_undone(admin, bob, org):
+    event = create_event(admin, org)
+    url = f"/api/events/{event['slug']}/"
+    bob.post(f"{url}register/")
+    registration = Registration.objects.get()
+    admin.post(f"{url}check-in/", {"registration": registration.id}, format="json")
+    assert Registration.objects.get().checked_in_at is not None
+
+    undone = admin.delete(f"{url}check-in/?registration={registration.id}")
+    assert undone.status_code == 200 and undone.json()["checked_in_at"] is None
+    registration.refresh_from_db()
+    assert registration.checked_in_at is None and registration.checked_in_by is None
+    assert admin.delete(f"{url}check-in/?registration=999999").status_code == 404
+    assert bob.delete(f"{url}check-in/?registration={registration.id}").status_code == 403
+
+
+def test_certificates_are_not_verified_before_they_are_earned(admin, bob, anonymous, org):
+    event = create_event(admin, org)
+    bob.post(f"/api/events/{event['slug']}/register/")
+    code = Registration.objects.get().certificate_code
+    assert anonymous.get(f"/api/certificates/{code}/").status_code == 404
+
+
+def test_slugs_never_repeat(admin, org, monkeypatch):
+    from apps import slugs as slug_module
+
+    codes = iter("aaaaaa" "aaaaaa" "bbbbbb")
+    monkeypatch.setattr(slug_module.secrets, "choice", lambda alphabet: next(codes))
+    first = create_event(admin, org, title="Same", publish=False)
+    second = create_event(admin, org, title="Same", publish=False)
+    assert (first["slug"], second["slug"]) == ("same-aaaaaa", "same-bbbbbb")

@@ -109,3 +109,57 @@ def test_smtp_and_storage_follow_the_page(root, settings, tmp_path):
     save(root, "platform", {"storage.bucket": "amt-media", "storage.access_key_id": "k", "storage.secret_access_key": "s"})
     assert type(storage.current()).__name__ == "S3Storage"
     config.forget()
+
+
+def test_unknown_organisation_is_not_found(root):
+    assert root.get("/api/configuration/org-missing/").status_code == 404
+
+
+def test_bad_values_are_refused_and_nothing_is_saved(root):
+    assert save(root, "platform", ["email.host"]).status_code == 400
+    response = save(root, "platform", {
+        "no.such.key": "x",
+        "email.host": ["a", "list"],
+        "email.from_address": "not-an-address",
+        "storage.endpoint_url": "s3.example.com",
+        "email.use_ssl": False,
+    })
+    assert response.status_code == 400
+    errors = response.json()
+    assert set(errors) == {"no.such.key", "email.host", "email.from_address", "storage.endpoint_url"}
+    assert errors["email.host"] == "Use text."
+    assert errors["email.from_address"] == "Use an email address."
+    assert errors["storage.endpoint_url"] == "Use a full address starting with https://."
+    assert not Setting.objects.exists()
+
+
+def test_good_email_url_and_boolean_values_are_saved(root):
+    response = save(root, "platform", {
+        "email.from_address": "events@example.com",
+        "storage.endpoint_url": "https://s3.example.com",
+        "email.use_ssl": False,
+    })
+    assert response.status_code == 200
+    assert config.get("email.from_address") == "events@example.com"
+    assert config.get("storage.endpoint_url") == "https://s3.example.com"
+    stored = Setting.objects.get(key="email.use_ssl")
+    assert stored.value == "false"
+    assert str(stored) == "email.use_ssl (platform)"
+
+
+def test_a_failed_test_email_shows_the_mail_servers_words(root, monkeypatch):
+    def refuse(self):
+        raise ConnectionRefusedError("Connection refused")
+
+    monkeypatch.setattr("django.core.mail.EmailMultiAlternatives.send", refuse)
+    response = root.post("/api/configuration/platform/test-email/", {"to": "me@example.com"}, format="json")
+    assert response.status_code == 400
+    assert response.json() == {"to": "Could not send: Connection refused"}
+
+
+def test_settings_no_longer_known_are_ignored(org):
+    Setting.objects.create(key="retired.setting", value="old")
+    Setting.objects.create(organization=org, key="email.from_name", value="JKUAT")
+    config.forget()
+    assert config._stored() == {(org.id, "email.from_name"): "JKUAT"}
+    assert str(Setting.objects.get(key="email.from_name")) == f"email.from_name ({org.id})"
