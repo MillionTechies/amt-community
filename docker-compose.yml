@@ -1,4 +1,5 @@
-# Local development services. The Django API and the Vite frontend run on the host.
+# Local development services. The Django API and the Vite frontend run on the host, and
+# sign-in goes to the shared identity server, https://auth.amilliontechies.com.
 services:
   db:
     image: postgres:16
@@ -15,24 +16,6 @@ services:
       interval: 5s
       retries: 10
 
-  # The same image as auth.amilliontechies.com: Keycloak with the `amt` login theme and
-  # the realm scripts (/opt/keycloak/amt-scripts). Built in MillionTechies/amt_auth.
-  keycloak:
-    image: ghcr.io/milliontechies/amt-keycloak:26.8.2-1
-    command: start-dev
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
-      KC_DB: dev-file # the image is built for PostgreSQL; dev mode keeps Keycloak's own file database
-    ports:
-      - "8080:8080"
-    volumes:
-      - keycloak-data:/opt/keycloak/data
-      - ./scripts:/scripts:ro
-      # Editing the login theme? Mount amt_auth's copy over the built-in one; start-dev
-      # reloads edits on the next page load:
-      # - ../Authentication/deploy/keycloak/themes/amt:/opt/keycloak/themes/amt:ro
-
   # Catches every email the API sends in development. Read them at http://localhost:8025.
   mailpit:
     image: axllent/mailpit:v1.27
@@ -42,4 +25,3 @@ services:
 
 volumes:
   db-data:
-  keycloak-data:
