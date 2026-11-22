@@ -119,13 +119,17 @@ describe('the app', () => {
     expect(await screen.findByText('Platform page')).toBeInTheDocument()
   })
 
-  it('shows what went wrong on a broken page', () => {
+  it('shows what went wrong on a broken page, keeping the header to move on', async () => {
     signIn()
     mockFetch({ 'GET /me/': me() })
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    showApp('/profile')
+    const { user } = showApp('/profile')
     expect(screen.getByRole('heading', { name: 'Something went wrong on this page' })).toBeInTheDocument()
     expect(screen.getByText('Profile broke')).toBeInTheDocument()
+
+    await user.click(header().getByRole('link', { name: 'Events' }))
+    expect(await screen.findByText('Events page')).toBeInTheDocument()
+    expect(screen.queryByText('Profile broke')).not.toBeInTheDocument()
     error.mockRestore()
   })
 })
