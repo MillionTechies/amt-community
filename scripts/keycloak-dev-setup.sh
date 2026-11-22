@@ -92,6 +92,8 @@ done
 # Sign-up and login theme. Last, because its password policy would reject
 # the short sample passwords above.
 bash /opt/keycloak/amt-scripts/keycloak-realm-settings.sh
+# The admin console's sign-in (master realm) uses the same theme.
+kc update realms/master -s loginTheme=amt
 
 echo
 echo "Realm '$REALM' is ready. Sign in as alice / alice (admin), bob / bob or carol / carol."
