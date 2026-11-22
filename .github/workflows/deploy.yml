@@ -56,7 +56,7 @@ jobs:
           api=https://api.community.amilliontechies.com
           failed=0
           check() {
-            code="$(curl -s -o /dev/null -w '%{http_code}' "$2")"
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$2" || true)"
             if [ "$code" = 200 ]; then echo "$1: $2 answered 200"; else echo "::error::$1: $2 answered $code, expected 200"; failed=1; fi
           }
           check "web app" "$site/"
@@ -65,11 +65,11 @@ jobs:
           check "API docs" "$api/api/docs/"
           # Sign-in must come back to the site: Keycloak shows the form only for a
           # registered redirect URI, otherwise "Invalid parameter: redirect_uri".
-          code="$(curl -s -o /dev/null -w '%{http_code}' --get \
+          code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 --get \
             https://auth.amilliontechies.com/realms/amilliontechies/protocol/openid-connect/auth \
             --data-urlencode client_id=community-frontend --data-urlencode response_type=code \
             --data-urlencode scope=openid --data-urlencode "redirect_uri=$site/" \
             --data-urlencode code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM \
-            --data-urlencode code_challenge_method=S256)"
+            --data-urlencode code_challenge_method=S256 || true)"
           if [ "$code" = 200 ]; then echo "sign-in: works from $site"; else echo "::error::sign-in from $site answered $code"; failed=1; fi
           exit "$failed"
