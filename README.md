@@ -164,9 +164,26 @@ Tokens are stored encrypted (`INTEGRATIONS_ENCRYPTION_KEY`, or a key derived fro
 ## Tests
 
 ```bash
-cd backend && .venv/bin/pytest     # needs the database container running
-cd frontend && npm run build       # type-check and build
+cd backend && .venv/bin/pytest --cov     # needs the database container running
+cd frontend && npm run test:coverage     # Vitest; `npm test` watches while you work
+cd frontend && npm run lint && npm run build
 ```
+
+Both suites must cover 100% of the code (lines and branches). CI fails below that, so
+every change comes with its tests. Migrations, `config/asgi.py`, `config/wsgi.py` and
+`src/main.tsx` are left out of the count.
+
+## Branches and releases
+
+- `develop` is where work comes together. Branch off it (`feat/…`, `fix/…`, `chore/…`)
+  and open the pull request against it.
+- `main` is what is released. Only `release/…` branches merge into it; CI refuses any
+  other pull request into `main`. After a release is merged, merge `main` back into
+  `develop`.
+- A branch is deleted once its pull request is merged. `main`, `develop` and `release/…`
+  branches are kept.
+- CI (`.github/workflows/ci.yml`) runs the branch rule, the backend tests and the
+  frontend lint, build and tests on every pull request into `develop` or `main`.
 
 The backend tests sign members in with made-up token claims, so they do not need Keycloak.
 
