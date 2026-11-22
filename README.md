@@ -8,45 +8,46 @@ organisations, scoped roles), Events and Hackathons.
 | --- | --- | --- |
 | API | Django 5.2, Django REST Framework, PostgreSQL 16 | `backend/` |
 | Web app | React 19, Vite, TypeScript, Tailwind | `frontend/` |
-| Identity | Keycloak 26.8 through [`amt-auth`](https://pypi.org/project/amt-auth/) | `docker-compose.yml` |
+| Identity | Keycloak 26.8 at `auth.amilliontechies.com`, through [`amt-auth`](https://pypi.org/project/amt-auth/) | [amt_auth](https://github.com/MillionTechies/amt_auth) |
 
 ## Run it locally
 
 You need Docker, Python 3.12 and Node 22.
 
 ```bash
-# 1. PostgreSQL (port 5433), Keycloak (port 8080) and Mailpit (inbox on port 8025)
+# 1. PostgreSQL (port 5433) and Mailpit (inbox on port 8025)
 docker compose up -d
 
-# 2. Create the dev realm, clients and sample users. Once, after Keycloak is up.
-docker compose exec -T keycloak bash /scripts/keycloak-dev-setup.sh
-
-# 3. API on http://localhost:8000
+# 2. API on http://localhost:8000
 cd backend
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-cp .env.example .env
+cp .env.example .env                     # then fill in AMT_CLIENT_SECRET
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py amt_sync      # copy organisations from Keycloak
 .venv/bin/python manage.py runserver
 # In a second terminal: sends reminders, retries failed emails, syncs organisations
 .venv/bin/python manage.py run_worker
 
-# 4. Web app on http://localhost:5173
+# 3. Web app on http://localhost:5173
 cd frontend
 npm install
 cp .env.example .env
 npm run dev
 ```
 
-Sample users (the password is the username):
+There is no local Keycloak. Sign-in goes to the shared identity server,
+`https://auth.amilliontechies.com`, so you sign in locally with your real A Million
+Techies account, and you see the real organisations. The identity server accepts sign-ins
+from `http://localhost:5173` (that is why Vite refuses any other port). Ask the platform
+admin for:
 
-| User | Who they are |
-| --- | --- |
-| `alice` | Platform admin, and admin of the JKUAT organisation |
-| `bob` | A member with no organisation |
-| `carol` | A member with no organisation |
+- `AMT_CLIENT_SECRET`, the `community-backend` secret, for `backend/.env`. Never commit it
+  or paste it into chat.
+- The `admin` role or an organisation's `/admins` group, if you need the console.
 
-Keycloak's own admin console is at http://localhost:8080 (`admin` / `admin`).
+Your local database is your own: events, registrations and profiles you create locally
+stay on your machine. Users, passwords and organisations are the real ones, so changes to
+organisations (creating one, inviting a member) happen on the identity server for real.
 
 ### Configuration
 
@@ -73,55 +74,16 @@ SendGrid, Mailgun, Amazon SES).
 
 ### Sign-up and the login theme
 
-Anyone can create an account from the **Join** button and sets a password on the sign-up
-form.
+Anyone can create an account from the **Join** button. Email verification is on: the
+member gives their name and email, follows the link in the email, and sets their password
+then. "Forgot password?" emails a reset link.
 
-"Forgot password?" is on, but it emails a reset link, so **reset emails only arrive once a
-mail server is connected**. Until then Keycloak says an email is on its way and none comes.
-Connect one with your provider's SMTP details (the password stays in Keycloak):
+Sign-in and sign-up pages, the `amt` login theme, sign-in options (password, passkeys;
+Google is not set up yet) and Keycloak's email settings all belong to the identity server.
+They live in [amt_auth](https://github.com/MillionTechies/amt_auth) under
+`deploy/keycloak/`; change them there. Its README also covers adding a URL the web app
+may sign in from, such as a staging site.
 
-```bash
-docker compose exec -T -e SMTP_HOST=smtp.example.com -e SMTP_PORT=587 \
-  -e SMTP_USER=... -e SMTP_PASSWORD=... -e SMTP_FROM=no-reply@amilliontechies.com \
-  keycloak bash /opt/keycloak/amt-scripts/keycloak-email.sh
-```
-
-Add `-e VERIFY_EMAIL=true` to also make new members confirm their email address.
-
-The sign-in and sign-up pages use the `amt` login theme, which extends Keycloak's own
-`keycloak.v2` theme with the Community layout, colours and wording. The theme and the
-realm scripts live in [amt_auth](https://github.com/MillionTechies/amt_auth) under
-`deploy/keycloak/`, built into the `ghcr.io/milliontechies/amt-keycloak` image that
-`docker-compose.yml` runs, the same image as production. To edit the theme, check out
-amt_auth next to this repo and uncomment the theme mount in `docker-compose.yml`;
-`start-dev` does not cache themes, so edits show on the next page load.
-
-A realm created before sign-up was added needs its settings once:
-
-```bash
-docker compose exec -T keycloak bash /opt/keycloak/amt-scripts/keycloak-realm-settings.sh
-```
-
-### Continue with Google
-
-Optional. In Google Cloud Console, open APIs & Services > Credentials, create an
-**OAuth client ID** of type **Web application**, and add this authorised redirect URI:
-
-```
-http://localhost:8080/realms/amilliontechies/broker/google/endpoint
-```
-
-Then give Keycloak the client's ID and secret (rerun with new values to change them):
-
-```bash
-docker compose exec -T -e GOOGLE_CLIENT_ID=... -e GOOGLE_CLIENT_SECRET=... \
-  keycloak bash /opt/keycloak/amt-scripts/keycloak-google.sh
-```
-
-"Continue with Google" then shows on the sign-in page and at the top of the sign-up page.
-Google has already verified the address, so members who join this way skip the
-verification email. If someone signs in with Google using the email of an existing account,
-Keycloak asks them to confirm it is theirs before linking the two.
 API docs are at http://localhost:8000/api/docs/.
 
 ### Google, Microsoft and Zoom (connected accounts)
@@ -228,5 +190,4 @@ frontend/src/
   auth.ts            Keycloak (OIDC) settings
   pages/             one file per screen
   components/        shared UI
-scripts/keycloak-dev-setup.sh   dev realm setup, adapted from amt_auth
 ```
