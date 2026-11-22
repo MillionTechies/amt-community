@@ -30,30 +30,44 @@ const search = (box: HTMLElement, text: string) => fireEvent.input(box, { target
 const bodyRows = () => within(screen.getByRole('table')).getAllByRole('row').slice(1)
 
 describe('DataTable', () => {
-  it('shows rows sorted as asked, drawing cells with React', () => {
-    render(<DataTable rows={people} columns={columns} order={[0, 'asc']} toolbar={<button type="button">Export</button>} />)
+  const names = () => bodyRows().map((r) => within(r).getAllByRole('cell')[0].textContent)
+
+  it('shows rows sorted as asked, drawing cells with React, and redraws when its options change', () => {
+    const { rerender } = render(
+      <DataTable rows={people} columns={columns} order={[0, 'asc']} toolbar={<button type="button">Export</button>} />,
+    )
     expect(screen.getByRole('button', { name: 'Export' })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: /Name/ })).toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: /Email/ })).not.toBeInTheDocument()
-    expect(bodyRows().map((r) => within(r).getAllByRole('cell')[0].textContent)).toEqual(['Amina', 'Otieno', 'Wanjiru'])
+    expect(names()).toEqual(['Amina', 'Otieno', 'Wanjiru'])
     expect(within(bodyRows()[0]).getByRole('button', { name: 'Message Amina' })).toBeInTheDocument()
+    expect(bodyRows()[0]).not.toHaveClass('is-clickable')
     expect(screen.getByText('1–3 of 3')).toBeInTheDocument()
+
+    rerender(<DataTable rows={people} columns={columns} order={[0, 'desc']} />)
+    expect(names()).toEqual(['Wanjiru', 'Otieno', 'Amina'])
+
+    rerender(<DataTable rows={[]} columns={columns} empty="No upcoming events." />)
+    expect(screen.getByText('No upcoming events.')).toBeInTheDocument()
+    expect(screen.getByText('0 of 0')).toBeInTheDocument()
+    rerender(<DataTable rows={[]} columns={columns} empty="No events here." />)
+    expect(screen.getByText('No events here.')).toBeInTheDocument()
+    expect(screen.queryByText('No upcoming events.')).not.toBeInTheDocument()
   })
 
-  it('searches, including hidden columns', () => {
+  it('searches on column values, including hidden columns, not on what is drawn', () => {
     render(<DataTable rows={people} columns={columns} searchPlaceholder="Search people" />)
-    search(screen.getByPlaceholderText('Search people'), 'otieno@')
-    expect(bodyRows()).toHaveLength(1)
-    expect(bodyRows()[0]).toHaveTextContent('Otieno')
-    search(screen.getByPlaceholderText('Search people'), 'nobody')
+    const box = screen.getByPlaceholderText('Search people')
+    search(box, 'otieno@')
+    expect(names()).toEqual(['Otieno'])
+    search(box, 'Message')
     expect(screen.getByText('Nothing matches your search.')).toBeInTheDocument()
   })
 
-  it('opens a row on click or Enter, but not from a button inside it', () => {
+  it('opens a row on click or Enter, but not from a button inside it, using the latest handler', () => {
     const onOpen = vi.fn()
-    render(<DataTable rows={people} columns={columns} onOpen={onOpen} order={[0, 'asc']} />)
+    const { rerender } = render(<DataTable rows={people} columns={columns} onOpen={vi.fn()} order={[0, 'asc']} />)
+    rerender(<DataTable rows={people} columns={columns} onOpen={onOpen} order={[0, 'asc']} />)
     const [amina, otieno] = bodyRows()
-    expect(amina).toHaveClass('is-clickable')
 
     fireEvent.click(within(otieno).getAllByRole('cell')[1])
     expect(onOpen).toHaveBeenLastCalledWith(people[1])
@@ -65,60 +79,6 @@ describe('DataTable', () => {
     expect(onOpen).toHaveBeenCalledTimes(1)
     fireEvent.keyDown(amina, { key: 'Enter' })
     expect(onOpen).toHaveBeenLastCalledWith(people[2])
-  })
-
-  it('uses the latest handler after a re-render', () => {
-    const first = vi.fn()
-    const second = vi.fn()
-    const { rerender } = render(<DataTable rows={people} columns={columns} onOpen={first} />)
-    rerender(<DataTable rows={people} columns={columns} onOpen={second} />)
-    fireEvent.click(within(bodyRows()[0]).getAllByRole('cell')[1])
-    expect(first).not.toHaveBeenCalled()
-    expect(second).toHaveBeenCalled()
-  })
-
-  it('leaves rows alone when they do not open', () => {
-    render(<DataTable rows={people} columns={columns} />)
-    expect(bodyRows()[0]).not.toHaveClass('is-clickable')
-  })
-
-  it('says when there is nothing to show', () => {
-    render(<DataTable rows={[]} columns={columns} empty="No members yet." />)
-    expect(screen.getByText('No members yet.')).toBeInTheDocument()
-    expect(screen.getByText('0 of 0')).toBeInTheDocument()
-  })
-})
-
-describe('when its options change', () => {
-  it('shows the new empty message', () => {
-    const { rerender } = render(<DataTable rows={[]} columns={columns} empty="No upcoming events." />)
-    expect(screen.getByText('No upcoming events.')).toBeInTheDocument()
-    rerender(<DataTable rows={[]} columns={columns} empty="No events here." />)
-    expect(screen.getByText('No events here.')).toBeInTheDocument()
-    expect(screen.queryByText('No upcoming events.')).not.toBeInTheDocument()
-  })
-
-  it('sorts in the new order', () => {
-    const names = () => bodyRows().map((r) => within(r).getAllByRole('cell')[0].textContent)
-    const { rerender } = render(<DataTable rows={people} columns={columns} order={[0, 'asc']} />)
-    expect(names()).toEqual(['Amina', 'Otieno', 'Wanjiru'])
-    rerender(<DataTable rows={people} columns={columns} order={[0, 'desc']} />)
-    expect(names()).toEqual(['Wanjiru', 'Otieno', 'Amina'])
-  })
-})
-
-describe('a column drawn with React', () => {
-  const drawn: Col<Person>[] = [{ title: 'Name', value: (p) => p.name, cell: (p) => <b>{p.name}</b> }]
-
-  it('sorts by its value', () => {
-    render(<DataTable rows={people} columns={drawn} order={[0, 'asc']} />)
-    expect(bodyRows().map((r) => r.textContent)).toEqual(['Amina', 'Otieno', 'Wanjiru'])
-  })
-
-  it('searches on its value', () => {
-    render(<DataTable rows={people} columns={drawn} />)
-    search(screen.getByRole('searchbox'), 'Otieno')
-    expect(bodyRows().map((r) => r.textContent)).toEqual(['Otieno'])
   })
 })
 

@@ -62,3 +62,23 @@ export interface EmailRow {
   sent_at: string | null
   event: string
 }
+
+export interface ApplicationRow {
+  id: number
+  name: string
+  kind: string
+  kind_label: string
+  website: string
+  location: string
+  about: string
+  plans: string
+  contact_phone: string
+  status: 'pending' | 'approved' | 'declined'
+  review_note: string
+  applicant: { sub: string; name: string; email: string; institution: string }
+  reviewed_by: string
+  reviewed_at: string | null
+  created_at: string
+  organization_id: string
+  suggested_alias: string
+}

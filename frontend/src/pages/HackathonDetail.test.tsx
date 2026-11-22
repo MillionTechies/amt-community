@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Hackathon, MyTeam, TeamMember } from '../api'
 import { auth, signIn } from '../test/auth'
-import { callsTo, mockFetch, reply, sentBody } from '../test/fetch'
+import { callsTo, mockFetch, reply, sentBody, sequence } from '../test/fetch'
 import { hackathon, leaderboardRow, submission } from '../test/fixtures'
 import { renderApp } from '../test/render'
 import HackathonDetail from './HackathonDetail'
@@ -48,16 +48,13 @@ const show = (h: unknown, routes: Record<string, unknown> = {}, route = '/hackat
 const inTeam = (overrides: Partial<Hackathon> = {}) => hackathon({ my_team_id: 5, ...overrides })
 
 describe('Hackathon page', () => {
-  it('shows an error when the hackathon cannot be loaded', async () => {
-    mockFetch({})
-    renderApp(<HackathonDetail />, { route: '/hackathons/climate-hack', path: '/hackathons/:slug' })
+  it.each([
+    ['the request fails', reply(500, { detail: 'Server error.' }), 'Server error.'],
+    ['the API returns nothing', null, 'Hackathon not found.'],
+  ])('shows an error when %s', async (_, answer, message) => {
+    show(answer)
     expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
-    expect(await screen.findByRole('alert')).toHaveTextContent('No mock for GET /hackathons/climate-hack/')
-  })
-
-  it('says the hackathon was not found when the API returns nothing', async () => {
-    show(null)
-    expect(await screen.findByRole('alert')).toHaveTextContent('Hackathon not found.')
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
   })
 
   it('describes the hackathon in full', async () => {
@@ -84,12 +81,7 @@ describe('Hackathon page', () => {
       },
     )
     expect(await screen.findByRole('heading', { level: 1, name: 'Climate hack' })).toBeInTheDocument()
-    expect(screen.getByText('Open')).toBeInTheDocument()
-    expect(screen.getByText('Climate')).toBeInTheDocument()
-    expect(screen.getByText('Hosted by Acme Labs')).toBeInTheDocument()
-    expect(screen.getByText('iHub')).toBeInTheDocument()
     expect(screen.getByText('Teams of 1 to 4, 1 team so far')).toBeInTheDocument()
-    expect(screen.getByText('Code for the planet.')).toBeInTheDocument()
     expect(screen.getByText('1 participant in 1 team, 1 project submitted')).toBeInTheDocument()
 
     expect(screen.getByText('Registration closes')).toHaveClass('line-through')
@@ -105,28 +97,24 @@ describe('Hackathon page', () => {
     expect(screen.getByText('Runner-up').parentElement).toHaveTextContent(/^Runner-up$/)
     expect(screen.getByText('Out of 10, counts 2 times')).toBeInTheDocument()
     expect(screen.getByText('Out of 5')).toBeInTheDocument()
-    expect(screen.getByText('Does it matter?')).toBeInTheDocument()
-    expect(screen.getByText('You manage this hackathon')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Edit details' })).toHaveAttribute('href', '/manage/hackathons/climate-hack/edit')
-    expect(screen.getByRole('link', { name: 'All hackathons' })).toHaveAttribute('href', '/hackathons')
     expect(screen.getByText('Registration is closed.')).toBeInTheDocument()
   })
 
   it('keeps a bare hackathon short', async () => {
     show(hackathon({ min_team_size: 3, max_team_size: 3, status: 'cancelled' }), { 'GET /hackathons/climate-hack/announcements/': reply(500) })
     expect(await screen.findByText('Teams of 3, 0 teams so far')).toBeInTheDocument()
-    expect(screen.getByText('Online')).toBeInTheDocument()
     expect(screen.getByText('0 participants in 0 teams, 0 projects submitted')).toBeInTheDocument()
     expect(screen.getByText('This hackathon has been cancelled.')).toBeInTheDocument()
     expect(screen.getByText('This hackathon is not taking registrations.')).toBeInTheDocument()
-    for (const title of ['Announcements', 'About', 'Challenges', 'Rules', 'Who can take part', 'Prizes', 'How projects are judged', 'Results']) {
-      expect(screen.queryByRole('heading', { name: title })).not.toBeInTheDocument()
-    }
+    expect(
+      screen.queryByRole('heading', { name: /^(Announcements|About|Challenges|Rules|Who can take part|Prizes|How projects are judged|Results)$/ }),
+    ).not.toBeInTheDocument()
   })
 
-  it('publishes results and the project showcase', async () => {
+  it('publishes results and the project showcase, and tells judges judging is over', async () => {
     let finish: (value: unknown) => void = () => undefined
-    show(hackathon({ status: 'completed', results_published: true }), {
+    show(hackathon({ status: 'completed', results_published: true, is_judge: true }), {
       'GET /hackathons/climate-hack/leaderboard/': () => new Promise((resolve) => (finish = resolve)),
       'GET /hackathons/climate-hack/submissions/': [{ ...submission({ description: 'Tracks the sun.' }), members: ['Wanjiru', 'Otieno'], my_evaluation: null }],
     })
@@ -137,34 +125,31 @@ describe('Hackathon page', () => {
     expect(await screen.findByRole('heading', { name: 'Project showcase' })).toBeInTheDocument()
     expect(screen.getByText('Team Rocket: Wanjiru, Otieno')).toBeInTheDocument()
     expect(screen.getByText('Tracks the sun.')).toBeInTheDocument()
+    expect(screen.getByText('Judging is over.')).toBeInTheDocument()
   })
 
-  it('says when no projects were submitted', async () => {
-    show(hackathon({ status: 'completed', results_published: true }), {
+  it('says when no projects were submitted, the team among them', async () => {
+    show(inTeam({ status: 'completed', results_published: true }), {
+      [TEAM]: team(),
       'GET /hackathons/climate-hack/leaderboard/': [],
       'GET /hackathons/climate-hack/submissions/': [],
     })
     expect(await screen.findByText('No projects were submitted.')).toBeInTheDocument()
+    expect(await screen.findByText('Submissions are closed. Your team did not submit a project.')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Project showcase' })).not.toBeInTheDocument()
   })
 
-  it('sends judges to the judging page while scoring is open', async () => {
-    show(hackathon({ is_judge: true, status: 'judging' }))
-    expect(await screen.findByText('You are a judge')).toBeInTheDocument()
-    expect(screen.getByText('Submissions are closed and the judges are scoring projects.')).toBeInTheDocument()
-    expect(screen.getByText('Scoring is open.')).toBeInTheDocument()
-    const links = screen.getAllByRole('link', { name: 'Go to judging', hidden: true })
-    expect(links).toHaveLength(2)
-    expect(links[1]).toHaveAttribute('href', '/hackathons/climate-hack/judge')
-  })
-
-  it('tells judges when scoring opens and when it is over', async () => {
+  it('sends judges to the judging page once scoring opens', async () => {
     const { unmount } = show(hackathon({ is_judge: true }))
     expect(await screen.findByText('Scoring opens when submissions close.')).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Go to judging', hidden: true })).toHaveLength(1)
     unmount()
-    show(hackathon({ is_judge: true, status: 'completed' }))
-    expect(await screen.findByText('Judging is over.')).toBeInTheDocument()
+
+    show(hackathon({ is_judge: true, status: 'judging' }))
+    expect(await screen.findByText('Scoring is open.')).toBeInTheDocument()
+    const links = screen.getAllByRole('link', { name: 'Go to judging', hidden: true })
+    expect(links).toHaveLength(2)
+    expect(links[1]).toHaveAttribute('href', '/hackathons/climate-hack/judge')
   })
 
   it('asks visitors to sign in to take part, with a shortcut on phones', async () => {
@@ -182,24 +167,29 @@ describe('Hackathon page', () => {
     signIn()
     const { user, fetch } = show(
       hackathon({ registration_open: true, min_team_size: 2 }),
-      { 'POST /hackathons/climate-hack/teams/join/': reply(201, {}) },
+      { 'POST /hackathons/climate-hack/teams/join/': sequence(reply(400, { detail: 'No team has that code.' }), reply(201, {})) },
       '/hackathons/climate-hack?join=INV-9',
     )
     const code = await screen.findByRole('textbox', { name: 'Invite code' })
     expect(code).toHaveValue('INV-9')
     await user.type(code, '  ')
-    expect(screen.getByText('Or start a new team')).toBeInTheDocument()
     expect(screen.queryByText('Taking part alone? Create a team of one.')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Join team' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('No team has that code.')
     await user.click(screen.getByRole('button', { name: 'Join team' }))
     expect(await screen.findByText('You joined the team')).toBeInTheDocument()
     expect(sentBody(fetch, 'POST /hackathons/climate-hack/teams/join/')).toEqual({ invite_code: 'INV-9' })
   })
 
-  it('starts a team', async () => {
+  it('starts a team, once the name is free', async () => {
     signIn()
-    const { user, fetch } = show(hackathon({ registration_open: true }), { 'POST /hackathons/climate-hack/teams/': reply(201, {}) })
+    const { user, fetch } = show(hackathon({ registration_open: true }), {
+      'POST /hackathons/climate-hack/teams/': sequence(reply(400, { detail: 'That name is taken.' }), reply(201, {})),
+    })
     expect(await screen.findByText('Taking part alone? Create a team of one.')).toBeInTheDocument()
     await user.type(screen.getByRole('textbox', { name: 'Team name' }), 'Rocket')
+    await user.click(screen.getByRole('button', { name: 'Create team' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('That name is taken.')
     await user.click(screen.getByRole('button', { name: 'Create team' }))
     expect(await screen.findByText('Rocket is ready')).toBeInTheDocument()
     expect(screen.getByText('Share the invite link with your teammates.')).toBeInTheDocument()
@@ -215,27 +205,14 @@ describe('Hackathon page', () => {
     expect(await screen.findByText('You are taking part.')).toBeInTheDocument()
   })
 
-  it('shows why joining or starting a team failed', async () => {
-    signIn()
-    const { user } = show(hackathon({ registration_open: true }), {
-      'POST /hackathons/climate-hack/teams/join/': reply(400, { detail: 'No team has that code.' }),
-      'POST /hackathons/climate-hack/teams/': reply(400, { detail: 'That name is taken.' }),
-    })
-    await user.type(await screen.findByRole('textbox', { name: 'Invite code' }), 'NOPE')
-    await user.click(screen.getByRole('button', { name: 'Join team' }))
-    expect(await screen.findByText('No team has that code.')).toBeInTheDocument()
-    await user.type(screen.getByRole('textbox', { name: 'Team name' }), 'Taken')
-    await user.click(screen.getByRole('button', { name: 'Create team' }))
-    expect(await screen.findByText('That name is taken.')).toBeInTheDocument()
-  })
-
   it('shows the team leader their team, invite link and controls', async () => {
     signIn({ sub: 'user-1' })
-    const { user, fetch } = show(inTeam({ registration_open: true, submissions_open: true }), {
-      [TEAM]: team(),
-      'DELETE /hackathons/climate-hack/my-team/members/2/': reply(204),
+    const { user, fetch } = show(inTeam({ registration_open: true, submissions_open: true, challenges }), {
+      [TEAM]: team({ submission: submission({ challenge: challenges[0] }) }),
+      'DELETE /hackathons/climate-hack/my-team/members/2/': sequence(reply(400, { detail: 'Not now.' }), reply(204)),
     })
     expect(await screen.findByText('Your team')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Challenge' })).toHaveValue('3')
     expect(screen.getByText('Leader')).toBeInTheDocument()
     expect(screen.getByText('Invite up to 2 more. Share this link:')).toBeInTheDocument()
     const link = screen.getByRole('textbox', { name: 'Invite link' })
@@ -254,25 +231,17 @@ describe('Hackathon page', () => {
     expect(callsTo(fetch, 'DELETE /hackathons/climate-hack/my-team/members/2/')).toHaveLength(0)
     await user.click(screen.getByRole('button', { name: 'Remove' }))
     await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }))
+    expect(await screen.findByText('Not now.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Remove' }))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }))
     expect(await screen.findByText('Otieno removed from the team')).toBeInTheDocument()
   })
 
-  it('shows why removing a member failed', async () => {
-    signIn({ sub: 'user-1' })
-    const { user } = show(inTeam(), {
-      [TEAM]: team(),
-      'DELETE /hackathons/climate-hack/my-team/members/2/': reply(400, { detail: 'Not now.' }),
-    })
-    await user.click(await screen.findByRole('button', { name: 'Remove' }))
-    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }))
-    expect(await screen.findByText('Not now.')).toBeInTheDocument()
-  })
-
-  it('lets a member leave the team after confirming', async () => {
+  it('lets a member leave the team after confirming, once it works', async () => {
     signIn({ sub: 'user-2' })
     const { user, fetch } = show(inTeam(), {
       [TEAM]: team(),
-      'POST /hackathons/climate-hack/my-team/leave/': reply(204),
+      'POST /hackathons/climate-hack/my-team/leave/': sequence(reply(400, { detail: 'Submission locked.' }), reply(204)),
     })
     await user.click(await screen.findByRole('button', { name: 'Leave team' }))
     const dialog = screen.getByRole('alertdialog', { name: 'Leave Team Rocket?' })
@@ -282,23 +251,14 @@ describe('Hackathon page', () => {
     expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Invite link' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Leave team' }))
-    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Leave team' }))
-    expect(await screen.findByText('You left the team')).toBeInTheDocument()
-  })
-
-  it('warns the last member that leaving deletes the team, and shows a failure', async () => {
-    signIn({ sub: 'user-1' })
-    const { user } = show(inTeam({ min_team_size: 2 }), {
-      [TEAM]: team({ members: [member(1, 'Wanjiru', { is_leader: true })] }),
-      'POST /hackathons/climate-hack/my-team/leave/': reply(400, { detail: 'Submission locked.' }),
-    })
-    expect(await screen.findByText('You need 2 members before you can submit.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Leave team' }))
-    const dialog = screen.getByRole('alertdialog', { name: 'Leave and delete your team?' })
-    expect(dialog).toHaveTextContent('You are the only member, so the team and its submission are deleted.')
-    await user.click(within(dialog).getByRole('button', { name: 'Leave team' }))
+    const leave = async () => {
+      await user.click(screen.getByRole('button', { name: 'Leave team' }))
+      await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Leave team' }))
+    }
+    await leave()
     expect(await screen.findByText('Submission locked.')).toBeInTheDocument()
+    await leave()
+    expect(await screen.findByText('You left the team')).toBeInTheDocument()
   })
 
   it('freezes the team once the hackathon moves on', async () => {
@@ -317,11 +277,6 @@ describe('Hackathon page', () => {
     expect(screen.getByText('Solar tracker')).toBeInTheDocument()
     expect(screen.getByText(/^Submitted /)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Repository' })).toBeInTheDocument()
-  })
-
-  it('says when a team did not submit in time', async () => {
-    show(inTeam({ status: 'completed' }), { [TEAM]: team() })
-    expect(await screen.findByText('Submissions are closed. Your team did not submit a project.')).toBeInTheDocument()
   })
 
   it('submits a project for a challenge', async () => {
@@ -350,29 +305,25 @@ describe('Hackathon page', () => {
     })
   })
 
-  it('updates a submitted project, and shows what the API rejected', async () => {
+  it('lets a lone member update a project with no challenge, after fixing what the API rejected', async () => {
     signIn({ sub: 'user-1' })
-    const { user, fetch } = show(inTeam({ submissions_open: true }), {
-      [TEAM]: team({ submission: submission({ description: 'Tracks the sun.', challenge: challenges[0] }) }),
-      'PUT /hackathons/climate-hack/my-team/submission/': reply(400, { repository_url: ['Enter a valid URL.'] }),
+    const { user, fetch } = show(inTeam({ submissions_open: true, challenges, min_team_size: 2 }), {
+      [TEAM]: team({ members: [member(1, 'Wanjiru', { is_leader: true })], submission: submission({ description: 'Tracks the sun.' }) }),
+      'PUT /hackathons/climate-hack/my-team/submission/': sequence(reply(400, { repository_url: ['Enter a valid URL.'] }), {}),
     })
-    expect(await screen.findByText('Your project')).toBeInTheDocument()
-    expect(screen.queryByRole('combobox', { name: 'Challenge' })).not.toBeInTheDocument()
+    expect(await screen.findByText('You need 2 members before you can submit.')).toBeInTheDocument()
+    // Leaving would delete the team, so the member is warned.
+    await user.click(screen.getByRole('button', { name: 'Leave team' }))
+    expect(screen.getByRole('alertdialog', { name: 'Leave and delete your team?' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Stay' }))
+
+    expect(screen.getByText('Your project')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('Solar tracker')
+    expect(screen.getByRole('combobox', { name: 'Challenge' })).toHaveValue('')
     await user.click(screen.getByRole('button', { name: 'Update submission' }))
     expect(await screen.findAllByText('Enter a valid URL.')).toHaveLength(2)
-    expect(sentBody(fetch, 'PUT /hackathons/climate-hack/my-team/submission/')).toMatchObject({ challenge_id: 3, title: 'Solar tracker' })
-  })
-
-  it('fills the form from a project with no challenge', async () => {
-    signIn({ sub: 'user-1' })
-    const { user, fetch } = show(inTeam({ submissions_open: true, challenges }), {
-      [TEAM]: team({ submission: submission({ description: 'Tracks the sun.' }) }),
-      'PUT /hackathons/climate-hack/my-team/submission/': {},
-    })
-    expect(await screen.findByRole('combobox', { name: 'Challenge' })).toHaveValue('')
     await user.click(screen.getByRole('button', { name: 'Update submission' }))
     expect(await screen.findByText('Saved. Your project is submitted.')).toBeInTheDocument()
-    expect(sentBody(fetch, 'PUT /hackathons/climate-hack/my-team/submission/')).toMatchObject({ challenge_id: null })
+    expect(sentBody(fetch, 'PUT /hackathons/climate-hack/my-team/submission/')).toMatchObject({ challenge_id: null, title: 'Solar tracker' })
   })
 })

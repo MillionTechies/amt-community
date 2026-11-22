@@ -108,9 +108,9 @@ describe('Overview', () => {
     expect(currentPath()).toBe('/manage/events/new')
   })
 
-  it('shows a hackathon manager only hackathons', async () => {
+  it('shows each organiser only what they run', async () => {
     at(19)
-    renderConsole('/manage', lists({ hackathons: [hackathon({ status: 'judging' })] }), {
+    const manager = renderConsole('/manage', lists({ hackathons: [hackathon({ status: 'judging' })] }), {
       member: organiser({ full_name: '', organizations: [membership({ roles: ['hackathon_manager'], can_manage_hackathons: true })] }),
     })
     expect(await screen.findByRole('heading', { level: 1, name: 'Good evening' })).toBeInTheDocument()
@@ -118,9 +118,8 @@ describe('Overview', () => {
     expect(screen.queryByText('Upcoming events')).not.toBeInTheDocument()
     expect(screen.queryByText('Registrations')).not.toBeInTheDocument()
     expect(screen.getByText('Active hackathons')).toBeInTheDocument()
-  })
+    manager.unmount()
 
-  it('shows an event organiser only events', async () => {
     renderConsole('/manage', lists(), {
       member: organiser({ organizations: [membership({ roles: ['event_organiser'], can_manage_events: true })] }),
     })

@@ -1,9 +1,12 @@
 """Who may manage what.
 
 Access is scoped to an organization:
-- platform admins (realm role `admin`) manage every organization;
 - an organization's admins (its `/admins` group) manage everything in it;
 - event organisers and hackathon managers hold a RoleAssignment in it.
+
+Platform admins (realm role `admin`) oversee the platform: the Platform area,
+organisation applications and platform settings. That gives them no say inside an
+organization; there they have only the memberships and roles anyone else would.
 """
 
 from __future__ import annotations
@@ -35,11 +38,11 @@ def admin_org_ids(request) -> set[str]:
 
 
 def is_org_admin(request, organization_id: str) -> bool:
-    return is_platform_admin(request) or organization_id in admin_org_ids(request)
+    return organization_id in admin_org_ids(request)
 
 
 def managed_org_ids(request, role: str) -> set[str]:
-    """Organizations where the user is an admin or holds `role`. Platform admins: see `can_manage`."""
+    """Organizations where the user is an admin or holds `role`."""
     profile = profile_of(request)
     if profile is None:
         return set()
@@ -52,7 +55,7 @@ def managed_org_ids(request, role: str) -> set[str]:
 def can_manage(request, organization_id: str, role: str) -> bool:
     if claims_of(request) is None:
         return False
-    return is_platform_admin(request) or organization_id in managed_org_ids(request, role)
+    return organization_id in managed_org_ids(request, role)
 
 
 def require_manage(request, organization_id: str, role: str) -> None:

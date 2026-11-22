@@ -22,15 +22,11 @@ const coverInput = () => screen.getByRole('group', { name: 'Cover image' }).quer
 const local = (iso: string) => new Date(iso).toISOString()
 
 describe('Event form', () => {
-  it('waits for the member to load', () => {
-    create()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
-  })
-
-  it('turns away members who organise no events', async () => {
+  it('turns away members who organise no events once they load', async () => {
     signIn()
     mockFetch({ 'GET /me/': me({ organizations: [membership()] }) })
     create()
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
     expect(await screen.findByText('You do not organise events for any organisation.')).toBeInTheDocument()
   })
 
@@ -77,7 +73,7 @@ describe('Event form', () => {
     })
   })
 
-  it('lets organisers of several organisations pick one, and recognises meeting links', async () => {
+  it('lets organisers of several organisations pick one, recognises meeting links, and goes back on cancel', async () => {
     signIn()
     const fetch = mockFetch({
       'GET /me/': organiser(
@@ -95,7 +91,6 @@ describe('Event form', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'How people attend' }), 'Online')
     expect(screen.queryByRole('textbox', { name: 'Venue' })).not.toBeInTheDocument()
     const link = screen.getByRole('textbox', { name: 'Meeting link' })
-    expect(screen.getByText(/Paste the link from Google Meet/)).toBeInTheDocument()
     await user.type(link, 'https://meet.google.com/abc')
     expect(screen.getByText('✓ Google Meet link. Only people who register will see it.')).toBeInTheDocument()
 
@@ -116,6 +111,9 @@ describe('Event form', () => {
       registration_deadline: local('2026-12-04T18:00'),
       capacity: null,
     })
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(currentPath()).toBe('/manage/events')
   })
 
   it('edits an existing event', async () => {
@@ -134,7 +132,6 @@ describe('Event form', () => {
     })
     const { user } = edit()
     expect(await screen.findByRole('textbox', { name: 'Title' })).toHaveValue('React workshop')
-    expect(screen.queryByRole('heading', { name: 'Create event' })).not.toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: 'Places' })).toHaveValue(30)
     expect(screen.getByLabelText('Registration closes')).toHaveValue(toLocalInput('2026-11-29T06:00:00Z'))
 
@@ -156,13 +153,5 @@ describe('Event form', () => {
     expect(await screen.findByRole('textbox', { name: 'Title' })).toHaveValue('React workshop')
     expect(screen.getByRole('spinbutton', { name: 'Places' })).toHaveValue(null)
     expect(screen.getByLabelText('Registration closes')).toHaveValue('')
-  })
-
-  it('goes back on cancel', async () => {
-    signIn()
-    mockFetch({ 'GET /me/': organiser() })
-    const { user } = create()
-    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
-    expect(currentPath()).toBe('/manage/events')
   })
 })

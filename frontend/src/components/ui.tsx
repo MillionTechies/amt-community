@@ -170,6 +170,7 @@ export function Field({
   error,
   children,
   group = false,
+  required = false,
 }: {
   label: string
   hint?: string
@@ -177,8 +178,15 @@ export function Field({
   children: ReactNode
   /** For a control with several parts (like the rich text editor), which cannot sit in a <label>. */
   group?: boolean
+  /** Mark the field as one that must be filled in, with a red asterisk. */
+  required?: boolean
 }) {
-  const caption = <span className="mb-1.5 block font-mono text-xs font-semibold uppercase tracking-wider text-stone-700">{text}</span>
+  const caption = (
+    <span className="mb-1.5 block font-mono text-xs font-semibold uppercase tracking-wider text-stone-700">
+      {text}
+      {required && <span aria-hidden="true" className="ml-0.5 text-red-600">*</span>}
+    </span>
+  )
   return (
     <div>
       {group ? (

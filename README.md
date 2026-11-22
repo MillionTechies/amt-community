@@ -163,7 +163,9 @@ Keycloak owns sign-in, users, organisations and organisation groups. The web app
 with the authorization code flow (PKCE) and sends the access token to the API. `amt-auth`
 validates it and reads the member's organisations and groups from it.
 
-- **Platform admin**: Keycloak realm role `admin`. Manages every organisation.
+- **Platform admin**: Keycloak realm role `admin`. Oversees the platform: the Platform
+  area, organisation applications and platform settings. It gives no rights inside an
+  organisation; to run an organisation's events, be its admin or hold a role there.
 - **Organisation admin**: member of the organisation's `/admins` group in Keycloak.
   Manages everything in that organisation.
 - **Event organiser, hackathon manager**: granted by an organisation's admin inside
@@ -178,12 +180,30 @@ token names an organisation the mirror has not seen, it is synced on that reques
 `run_worker` runs a full sync every 15 minutes (`--sync-interval`); and platform admins
 can press **Sync** under Organizations. Only one full sync runs at a time.
 
+### Organisations joining
+
+Universities, companies, tech communities, clubs and non-profits join from
+**Bring your organisation** (`/organizations/join`, linked from the home page, the footer
+and the organiser console). A signed-in member describes the organisation and applies;
+they get an email confirming it. Platform admins review applications under
+**Platform → Applications** (pending ones also show under "Needs attention").
+
+- **Approve**: pick the alias (suggested from the name; it cannot change later). Community
+  then creates the organisation in Keycloak with its `admins`, `clubs` and `mentorships`
+  groups, makes the applicant a member and an admin, syncs it into the mirror and emails
+  them. Every step can be repeated, so if Keycloak fails part-way, approving again carries
+  on where it stopped. It uses `community-backend`'s service account, which amt_auth's
+  Keycloak setup already gives `manage-organizations` and `manage-users`.
+- **Decline**: give a reason; it is emailed to the applicant, who may apply again.
+
+`apps/accounts/onboarding.py` holds the Keycloak steps.
+
 In production, Keycloak runs at `https://auth.amilliontechies.com`; see `deploy/keycloak/`
 in amt_auth. Community's backend uses client `community-backend` and the web app
 `community-frontend`.
 
 Every event and hackathon belongs to one organisation. Drafts are visible only to the
-people who manage that organisation; `apps/accounts/access.py` holds the rules.
+people who manage that organisation, and no one else can edit them, not even platform admins; `apps/accounts/access.py` holds the rules.
 
 ## What is in this slice
 

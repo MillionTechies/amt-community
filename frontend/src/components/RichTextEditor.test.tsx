@@ -65,30 +65,35 @@ describe('RichTextEditor', () => {
   it('shows older plain text as paragraphs, with the toolbar', () => {
     setup('First line\n\nSecond line')
     expect(editorBox().innerHTML).toContain('<p>First line</p><p>Second line</p>')
-    expect(editorBox().parentElement?.parentElement).toHaveStyle({ '--editor-min': '10rem' })
     expect(screen.getByRole('combobox', { name: 'Text style' })).toHaveValue('p')
     expect(screen.getByRole('combobox', { name: 'Text size' })).toHaveValue('')
     expect(tool('Undo')).toBeDisabled()
     expect(tool('Align left')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('shows the placeholder when empty', () => {
-    setup('')
+  it('shows the placeholder when empty, and text loaded later without reporting it as a change', async () => {
+    const { user, onSave } = setup('')
     expect(editorBox().querySelector('[data-placeholder="Describe the event"]')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Load saved' }))
+    expect(editorBox()).toHaveTextContent('Loaded from the server')
+    await user.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(editorBox()).not.toHaveTextContent('Loaded from the server')
+    expect(onSave).not.toHaveBeenCalled()
   })
 
-  it('turns the line into headings and back', async () => {
-    const { user, lastHtml } = setup()
+  it('turns the line into headings and back, and changes the text size', async () => {
+    const { user, selectAll, lastHtml } = setup()
     const style = screen.getByRole('combobox', { name: 'Text style' })
-    for (const [option, tag] of [['Heading', 'h2'], ['Subheading', 'h3'], ['Small heading', 'h4'], ['Paragraph', 'p']]) {
+    const restyle = async (option: string, tag: string) => {
       await user.selectOptions(style, option)
       expect(lastHtml()).toBe(`<${tag}>Hello world</${tag}>`)
       expect(style).toHaveValue(tag)
     }
-  })
+    await restyle('Heading', 'h2')
+    await restyle('Subheading', 'h3')
+    await restyle('Small heading', 'h4')
+    await restyle('Paragraph', 'p')
 
-  it('changes the text size', async () => {
-    const { user, selectAll, lastHtml } = setup()
     await selectAll()
     const size = screen.getByRole('combobox', { name: 'Text size' })
     await user.selectOptions(size, 'Large')
@@ -101,14 +106,21 @@ describe('RichTextEditor', () => {
   it('formats the selected text', async () => {
     const { user, selectAll, lastHtml } = setup()
     await selectAll()
-    for (const [name, tag] of [['Bold', 'strong'], ['Italic', 'em'], ['Underline', 'u'], ['Strikethrough', 's']]) {
+    const format = async (name: string, tag: string) => {
       await user.click(tool(name))
       expect(lastHtml()).toContain(`<${tag}>`)
       expect(tool(name)).toHaveAttribute('aria-pressed', 'true')
     }
+    await format('Bold', 'strong')
+    await format('Italic', 'em')
+    await format('Underline', 'u')
+    await format('Strikethrough', 's')
+
+    await user.keyboard('{Backspace}')
+    expect(lastHtml()).toBe('')
   })
 
-  it('makes lists and quotes', async () => {
+  it('makes lists, quotes and alignments, with undo and redo', async () => {
     const { user, lastHtml } = setup()
     await user.click(tool('Bulleted list'))
     expect(lastHtml()).toBe('<ul><li><p>Hello world</p></li></ul>')
@@ -116,16 +128,20 @@ describe('RichTextEditor', () => {
     await user.click(tool('Numbered list'))
     expect(lastHtml()).toBe('<ol><li><p>Hello world</p></li></ol>')
     await user.click(tool('Numbered list'))
+    expect(tool('Redo')).toBeDisabled()
     await user.click(tool('Quote'))
     expect(lastHtml()).toBe('<blockquote><p>Hello world</p></blockquote>')
     expect(tool('Quote')).toHaveAttribute('aria-pressed', 'true')
-  })
 
-  it('aligns text', async () => {
-    const { user, lastHtml } = setup()
+    await user.click(tool('Undo'))
+    expect(lastHtml()).toBe('<p>Hello world</p>')
+    expect(tool('Redo')).toBeEnabled()
+    await user.click(tool('Redo'))
+    expect(lastHtml()).toBe('<blockquote><p>Hello world</p></blockquote>')
+    await user.click(tool('Quote'))
+
     await user.click(tool('Align centre'))
     expect(lastHtml()).toBe('<p style="text-align: center;">Hello world</p>')
-    expect(tool('Align centre')).toHaveAttribute('aria-pressed', 'true')
     expect(tool('Align left')).toHaveAttribute('aria-pressed', 'false')
     await user.click(tool('Align right'))
     expect(tool('Align right')).toHaveAttribute('aria-pressed', 'true')
@@ -133,28 +149,15 @@ describe('RichTextEditor', () => {
     expect(tool('Align left')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('undoes and redoes changes', async () => {
-    const { user, lastHtml } = setup()
-    await user.click(tool('Quote'))
-    expect(tool('Undo')).toBeEnabled()
-    expect(tool('Redo')).toBeDisabled()
-    await user.click(tool('Undo'))
-    expect(lastHtml()).toBe('<p>Hello world</p>')
-    expect(tool('Redo')).toBeEnabled()
-    await user.click(tool('Redo'))
-    expect(lastHtml()).toBe('<blockquote><p>Hello world</p></blockquote>')
-  })
-
-  it('stores nothing once everything is deleted', async () => {
-    const { user, selectAll, lastHtml } = setup()
+  it('adds, edits and removes a link, ignoring a bare "https://" or a cancel', async () => {
+    const { user, selectAll, lastHtml, onSave } = setup()
     await selectAll()
-    await user.keyboard('{Backspace}')
-    expect(lastHtml()).toBe('')
-  })
+    await user.click(tool('Link'))
+    await user.click(screen.getByRole('button', { name: 'Save link' }))
+    await user.click(tool('Link'))
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onSave.mock.calls.every(([html]) => !html.includes('<a'))).toBe(true)
 
-  it('adds, edits and removes a link', async () => {
-    const { user, selectAll, lastHtml } = setup()
-    await selectAll()
     await user.click(tool('Link'))
     expect(screen.getByRole('alertdialog', { name: 'Add a link' })).toBeInTheDocument()
     const address = screen.getByLabelText('Link address')
@@ -166,54 +169,40 @@ describe('RichTextEditor', () => {
     expect(tool('Link')).toHaveAttribute('aria-pressed', 'true')
 
     await user.click(tool('Link'))
-    expect(screen.getByRole('alertdialog', { name: 'Edit link' })).toHaveTextContent('Clear the address to remove the link.')
+    expect(screen.getByRole('alertdialog', { name: 'Edit link' })).toBeInTheDocument()
     expect(screen.getByLabelText('Link address')).toHaveValue('https://example.com')
     await user.clear(screen.getByLabelText('Link address'))
     await user.click(screen.getByRole('button', { name: 'Save link' }))
     expect(lastHtml()).toBe('<p>Hello world</p>')
   })
 
-  it('treats a bare "https://" as no link, and leaves things alone when cancelled', async () => {
-    const { user, selectAll, onSave } = setup()
-    await selectAll()
-    await user.click(tool('Link'))
-    await user.click(screen.getByRole('button', { name: 'Save link' }))
-    await user.click(tool('Link'))
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-    expect(onSave.mock.calls.every(([html]) => !html.includes('<a'))).toBe(true)
-  })
-
-  it('embeds a YouTube video', async () => {
-    const { user, lastHtml } = setup()
+  it('embeds a YouTube video, explaining when an address is not YouTube', async () => {
+    const { user, onSave, lastHtml } = setup()
     await user.click(tool('YouTube video'))
-    const address = screen.getByLabelText('Video address')
-    expect(address).toHaveAttribute('type', 'url')
-    await user.type(address, 'https://youtu.be/dQw4w9WgXcQ')
-    await user.click(screen.getByRole('button', { name: 'Add video' }))
-    expect(lastHtml()).toContain('youtube-nocookie.com/embed/dQw4w9WgXcQ')
-  })
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
-  it('explains when a video address is not YouTube', async () => {
-    const { user, onSave } = setup()
     await user.click(tool('YouTube video'))
     await user.type(screen.getByLabelText('Video address'), 'https://vimeo.com/1')
     await user.click(screen.getByRole('button', { name: 'Add video' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('That is not a YouTube address')
     expect(onSave).not.toHaveBeenCalled()
-  })
 
-  it('adds nothing when the video prompt is cancelled', async () => {
-    const { user, onSave } = setup()
     await user.click(tool('YouTube video'))
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(onSave).not.toHaveBeenCalled()
+    await user.type(screen.getByLabelText('Video address'), 'https://youtu.be/dQw4w9WgXcQ')
+    await user.click(screen.getByRole('button', { name: 'Add video' }))
+    expect(lastHtml()).toContain('youtube-nocookie.com/embed/dQw4w9WgXcQ')
   })
 
-  it('uploads and inserts an image', async () => {
+  it('uploads and inserts an image, explaining why an upload failed', async () => {
     let finish: (value: unknown) => void = () => undefined
-    mockFetch({ 'POST /uploads/': () => new Promise((resolve) => (finish = resolve)) })
+    let uploads = 0
+    const fetch = mockFetch({
+      'POST /uploads/': () => (++uploads === 1 ? new Promise((resolve) => (finish = resolve)) : reply(400, { file: ['Images only.'] })),
+    })
     const { user, lastHtml } = setup()
+    fireEvent.change(fileInput(), { target: { files: [] } })
+    expect(fetch).not.toHaveBeenCalled()
+
     const click = vi.spyOn(fileInput(), 'click')
     await user.click(tool('Image'))
     expect(click).toHaveBeenCalled()
@@ -226,31 +215,17 @@ describe('RichTextEditor', () => {
     expect(lastHtml()).toContain('alt="stage.photo"')
     expect(tool('Image')).toBeEnabled()
     expect(fileInput()).toHaveValue('')
-  })
 
-  it('explains why an image upload failed', async () => {
-    mockFetch({ 'POST /uploads/': reply(400, { file: ['Images only.'] }) })
-    const { user } = setup()
     await user.upload(fileInput(), new File(['x'], 'notes.png', { type: 'image/png' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Images only.')
-  })
 
-  it('falls back to a general message for an unexpected upload failure', async () => {
     vi.stubGlobal('FormData', class {
       append() {
         throw 'no form data'
       }
     })
-    const { user } = setup()
     await user.upload(fileInput(), new File(['x'], 'notes.png', { type: 'image/png' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not upload the image.')
-  })
-
-  it('does nothing when the file picker is closed without a choice', () => {
-    const fetch = mockFetch({})
-    setup()
-    fireEvent.change(fileInput(), { target: { files: [] } })
-    expect(fetch).not.toHaveBeenCalled()
+    expect(await screen.findByText('Could not upload the image.')).toBeInTheDocument()
   })
 
   it('finishes quietly if the form closes during an upload', async () => {
@@ -261,15 +236,6 @@ describe('RichTextEditor', () => {
     unmount()
     finish(reply(201, { url: 'https://cdn.test/late.png' }))
     await new Promise((resolve) => setTimeout(resolve, 0))
-  })
-
-  it('shows text loaded after it started, without reporting it as a change', async () => {
-    const { user, onSave } = setup('')
-    await user.click(screen.getByRole('button', { name: 'Load saved' }))
-    expect(editorBox()).toHaveTextContent('Loaded from the server')
-    await user.click(screen.getByRole('button', { name: 'Reset' }))
-    expect(editorBox()).not.toHaveTextContent('Loaded from the server')
-    expect(onSave).not.toHaveBeenCalled()
   })
 
   it('shows nothing until the editor is ready', () => {

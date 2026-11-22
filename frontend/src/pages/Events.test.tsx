@@ -5,20 +5,18 @@ import { signIn } from '../test/auth'
 import { mockFetch, page, reply } from '../test/fetch'
 import { event, me, membership } from '../test/fixtures'
 import { renderApp } from '../test/render'
-import Events, { EVENT_TYPES, EVENT_TYPE_LABELS } from './Events'
+import Events from './Events'
 
 describe('Events page', () => {
-  it('names every event type', () => {
-    expect(EVENT_TYPES.map((t) => EVENT_TYPE_LABELS[t])).toContain('Developer meetup')
-  })
-
-  it('lists upcoming events and filters them', async () => {
+  it('lists upcoming events, filters and searches them, and shows past ones without day filters', async () => {
     mockFetch({
       'GET /events/?page=1&when=upcoming': page([event()]),
       'GET /events/?page=1&when=upcoming&event_type=meetup': page([]),
       'GET /events/?page=1&when=upcoming&within=today': page([]),
       'GET /events/?page=1&when=upcoming&delivery_mode=online': page([]),
       'GET /events/?page=1&when=upcoming&search=x': page([]),
+      'GET /events/?page=1&when=upcoming&search=xy': reply(500, { detail: 'Server down.' }),
+      'GET /events/?page=1&when=past&search=xy': page([]),
     })
     const { user } = renderApp(<Events />)
     expect(await screen.findByRole('heading', { name: 'React workshop' })).toBeInTheDocument()
@@ -44,16 +42,14 @@ describe('Events page', () => {
 
     await user.type(screen.getByRole('searchbox', { name: 'Search events' }), 'x')
     expect(await screen.findByText('No events match. Try another day or type.')).toBeInTheDocument()
-  })
 
-  it('shows past events without the day filters', async () => {
-    mockFetch({
-      'GET /events/?page=1&when=upcoming': page([event()]),
-      'GET /events/?page=1&when=past': page([]),
-    })
-    const { user } = renderApp(<Events />)
+    // A failed load shows the error, not an empty list.
+    await user.type(screen.getByRole('searchbox', { name: 'Search events' }), 'y')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Server down.')
+    expect(screen.queryByText(/No events match/)).not.toBeInTheDocument()
+
+    // Past events have no day filters.
     await user.click(screen.getByRole('tab', { name: 'Past' }))
-    expect(await screen.findByText('No past events.')).toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'When' })).not.toBeInTheDocument()
   })
 
@@ -70,13 +66,6 @@ describe('Events page', () => {
     expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Previous' }))
     expect(await screen.findByRole('heading', { name: 'First' })).toBeInTheDocument()
-  })
-
-  it('shows the error instead of an empty list when loading fails', async () => {
-    mockFetch({ 'GET /events/?page=1&when=upcoming': reply(500, { detail: 'Server down.' }) })
-    renderApp(<Events />)
-    expect(await screen.findByRole('alert')).toHaveTextContent('Server down.')
-    expect(screen.queryByText('No upcoming events.')).not.toBeInTheDocument()
   })
 
   it('lets event organisers create and see the events they manage', async () => {

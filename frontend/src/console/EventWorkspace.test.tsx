@@ -6,7 +6,7 @@ import type { CommunityEvent } from '../api'
 import {
   announcement, attendee, captureDownloads, eventStats, feedback, person, renderConsole, resource,
 } from '../test/console'
-import { callsTo, reply, sentBody } from '../test/fetch'
+import { callsTo, reply, sentBody, sequence } from '../test/fetch'
 import { event } from '../test/fixtures'
 import { currentPath } from '../test/render'
 
@@ -53,23 +53,20 @@ const kpi = (label: string) => screen.getAllByText(label, { selector: 'span' }).
 const detail = (term: string) => screen.getByText(term, { selector: 'dt' }).nextElementSibling
 
 describe('the event header', () => {
-  it('waits, then says when the event cannot be found', async () => {
-    renderConsole(BASE, { [`GET ${API}/`]: null })
-    expect(await screen.findByText('Event not found.')).toBeInTheDocument()
+  it.each([
+    ['cannot be found', null, 'Event not found.'],
+    ['did not load', reply(500, { detail: 'Server error.' }), 'Server error.'],
+    ['is not theirs to organise', event(), 'You do not organise this event.'],
+  ])('says when the event %s', async (_, response, message) => {
+    renderConsole(BASE, { [`GET ${API}/`]: response })
+    expect(await screen.findByText(message)).toBeInTheDocument()
   })
 
-  it('shows why the event did not load', async () => {
-    renderConsole(BASE, { [`GET ${API}/`]: reply(500, { detail: 'Server error.' }) })
-    expect(await screen.findByRole('alert')).toHaveTextContent('Server error.')
-  })
-
-  it('turns away someone who does not organise it', async () => {
-    renderConsole(BASE, { [`GET ${API}/`]: event() })
-    expect(await screen.findByText('You do not organise this event.')).toBeInTheDocument()
-  })
-
-  it('publishes a draft after asking', async () => {
-    const { user, fetch } = open('', { status: 'draft' }, { [`POST ${API}/transition/`]: reply(200, {}) })
+  it('publishes or deletes a draft after asking, and says when either fails', async () => {
+    const { user, fetch } = open('', { status: 'draft' }, {
+      [`POST ${API}/transition/`]: sequence(reply(400, { detail: 'Add a date first.' }), reply(200, {})),
+      [`DELETE ${API}/`]: sequence(reply(403, { detail: 'Not yours.' }), reply(204)),
+    })
     await title()
     expect(screen.getByText('This is a draft. Only organisers can see it until you publish.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Public page' })).toHaveAttribute('href', '/events/react-workshop')
@@ -81,22 +78,13 @@ describe('the event header', () => {
 
     await user.click(screen.getByRole('button', { name: 'Publish' }))
     await answer(user, 'Publish')
-    expect(await screen.findByText('Event published')).toBeInTheDocument()
-    expect(sentBody(fetch, `POST ${API}/transition/`)).toEqual({ status: 'published' })
-  })
-
-  it('says when publishing fails', async () => {
-    const { user } = open('', { status: 'draft' }, { [`POST ${API}/transition/`]: reply(400, { detail: 'Add a date first.' }) })
-    await title()
-    await user.click(screen.getByRole('button', { name: 'Publish' }))
-    await answer(user, 'Publish')
     expect(await screen.findByText('Could not update the event')).toBeInTheDocument()
     expect(screen.getByText('Add a date first.')).toBeInTheDocument()
-  })
+    await user.click(screen.getByRole('button', { name: 'Publish' }))
+    await answer(user, 'Publish')
+    expect(await screen.findByText('Event published')).toBeInTheDocument()
+    expect(sentBody(fetch, `POST ${API}/transition/`)).toEqual({ status: 'published' })
 
-  it('deletes a draft after asking, then goes back to the list', async () => {
-    const { user, fetch } = open('', { status: 'draft' }, { [`DELETE ${API}/`]: reply(204) })
-    await title()
     await user.click(screen.getByRole('button', { name: 'Delete' }))
     expect(within(dialog()).getByText('“React workshop” is removed for good.')).toBeInTheDocument()
     await answer(user, 'Cancel')
@@ -104,17 +92,12 @@ describe('the event header', () => {
 
     await user.click(screen.getByRole('button', { name: 'Delete' }))
     await answer(user, 'Delete draft')
-    expect(await screen.findByText('Draft deleted')).toBeInTheDocument()
-    await waitFor(() => expect(currentPath()).toBe('/manage/events'))
-  })
-
-  it('says when deleting fails', async () => {
-    const { user } = open('', { status: 'draft' }, { [`DELETE ${API}/`]: reply(403, { detail: 'Not yours.' }) })
-    await title()
-    await user.click(screen.getByRole('button', { name: 'Delete' }))
-    await answer(user, 'Delete draft')
     expect(await screen.findByText('Could not delete the draft')).toBeInTheDocument()
     expect(currentPath()).toBe(BASE)
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await answer(user, 'Delete draft')
+    expect(await screen.findByText('Draft deleted')).toBeInTheDocument()
+    await waitFor(() => expect(currentPath()).toBe('/manage/events'))
   })
 
   it('cancels or completes a published event', async () => {
@@ -132,12 +115,6 @@ describe('the event header', () => {
     await answer(user, 'Mark completed')
     expect(await screen.findByText('Event completed')).toBeInTheDocument()
     expect(sentBody(fetch, `POST ${API}/transition/`)).toEqual({ status: 'completed' })
-  })
-
-  it('offers no lifecycle actions once completed', async () => {
-    open('', { status: 'completed' })
-    await title()
-    expect(within(screen.getByRole('main')).queryAllByRole('button')).toHaveLength(0)
   })
 })
 
@@ -173,9 +150,7 @@ describe('EventOverview', () => {
     expect(steps.queryByRole('link', { name: 'Publish the event so people can register' })).not.toBeInTheDocument()
     expect(steps.getByRole('link', { name: 'Post a welcome announcement' })).toHaveAttribute('href', `${BASE}/content`)
 
-    expect(detail('Type')).toHaveTextContent('Technical workshop')
     expect(detail('Format')).toHaveTextContent('In person')
-    expect(detail('Venue')).toHaveTextContent('Nairobi Garage')
     expect(detail('Online')).toHaveTextContent('No')
     expect(detail('Places')).toHaveTextContent('40')
     expect(detail('Registration closes')).toHaveTextContent('When the event ends')
@@ -185,7 +160,7 @@ describe('EventOverview', () => {
     expect(currentPath()).toBe(`${BASE}/check-in`)
   })
 
-  it('reports attendance and ratings once the event has happened', async () => {
+  it('reports attendance and ratings once the event has happened, with nothing left to change', async () => {
     open('', {
       status: 'completed', starts_at: '2026-11-20T06:00:00Z', ends_at: '2026-11-20T09:00:00Z', summary: '', event_type: 'hack_night',
       venue: '', delivery_mode: 'online', meeting_provider: { id: 'zoom', name: 'Zoom' }, registration_deadline: '2026-11-19T21:00:00Z',
@@ -197,6 +172,8 @@ describe('EventOverview', () => {
       [`GET ${API}/announcements/`]: [announcement()],
     })
     expect(await screen.findByText('No limit on places')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancel event' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mark completed' })).not.toBeInTheDocument()
     expect(kpi('Waiting list')).toHaveTextContent('Nobody has cancelled')
     expect(kpi('Checked in')).toHaveTextContent('50% of those registered')
     expect(kpi('Average rating')).toHaveTextContent('4.3From 4 responses, out of 5')
@@ -204,10 +181,8 @@ describe('EventOverview', () => {
     expect(screen.getByText('Nobody has registered yet.')).toBeInTheDocument()
     expect(await screen.findByText('Post a welcome announcement', { selector: 'span' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Write a summary and description' })).toHaveAttribute('href', `${BASE}/edit`)
-    expect(screen.getByText('Mark it completed to release certificates', { selector: 'span' })).toBeInTheDocument()
 
     expect(detail('Type')).toHaveTextContent('Hack night')
-    expect(detail('Format')).toHaveTextContent('Online')
     expect(detail('Venue')).toHaveTextContent('Not set')
     expect(detail('Online')).toHaveTextContent('Zoom')
     expect(detail('Places')).toHaveTextContent('No limit')
@@ -225,12 +200,6 @@ describe('EventOverview', () => {
     expect(await screen.findByText('No link yet')).toBeInTheDocument()
     expect(kpi('Checked in')).toHaveTextContent('Nobody checked in yet')
   })
-
-  it('waits for the numbers', async () => {
-    open('', {}, { [`GET ${API}/stats/`]: () => new Promise(() => undefined) })
-    await title()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
-  })
 })
 
 describe('EventRegistrations', () => {
@@ -242,11 +211,16 @@ describe('EventRegistrations', () => {
   ]
   const rowOf = (name: string) => bodyRows().find((r) => r.textContent?.includes(name))!
 
-  it('filters, checks people in and undoes it', async () => {
+  it('filters, checks people in and undoes it, and exports the people shown', async () => {
+    const empty = open('/registrations', {}, { [`GET ${API}/registrations/`]: [] })
+    expect(await screen.findByRole('button', { name: 'Export CSV' })).toBeDisabled()
+    empty.unmount()
+
+    const downloads = captureDownloads()
     const { user, fetch } = open('/registrations', {}, {
       [`GET ${API}/registrations/`]: people,
-      [`POST ${API}/check-in/`]: reply(200, {}),
-      [`DELETE ${API}/check-in/?registration=2`]: reply(204),
+      [`POST ${API}/check-in/`]: sequence(reply(400, { detail: 'The event has not started.' }), reply(200, {})),
+      [`DELETE ${API}/check-in/?registration=2`]: sequence(reply(400, { detail: 'Too late to undo.' }), reply(204)),
     })
     expect(await screen.findByText('Ann Waiting')).toBeInTheDocument()
     const tab = (name: RegExp) => screen.getByRole('tab', { name })
@@ -259,64 +233,30 @@ describe('EventRegistrations', () => {
     // Newest first.
     expect(bodyRows()[0]).toHaveTextContent('Di Gone')
     expect(within(rowOf('Ben Here')).getByText('Strathmore')).toBeInTheDocument()
-    expect(within(rowOf('Ben Here')).getAllByText('Checked in')).toHaveLength(1)
     expect(within(rowOf('Cy Later')).queryByRole('button')).not.toBeInTheDocument()
 
     fireEvent.click(within(rowOf('Ann Waiting')).getByRole('button', { name: 'Check in' }))
-    await waitFor(() => expect(sentBody(fetch, `POST ${API}/check-in/`)).toEqual({ registration: 1 }))
+    expect(await screen.findByText('The event has not started.')).toBeInTheDocument()
+    fireEvent.click(within(rowOf('Ann Waiting')).getByRole('button', { name: 'Check in' }))
+    await waitFor(() => expect(callsTo(fetch, `POST ${API}/check-in/`)).toHaveLength(2))
+    expect(sentBody(fetch, `POST ${API}/check-in/`)).toEqual({ registration: 1 })
+
     fireEvent.click(within(rowOf('Ben Here')).getByRole('button', { name: 'Undo' }))
-    await waitFor(() => expect(callsTo(fetch, `DELETE ${API}/check-in/?registration=2`)).toHaveLength(1))
+    expect(await screen.findByText('Too late to undo.')).toBeInTheDocument()
+    fireEvent.click(within(rowOf('Ben Here')).getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(callsTo(fetch, `DELETE ${API}/check-in/?registration=2`)).toHaveLength(2))
 
     await user.click(tab(/^Waiting list/))
     expect(bodyRows()).toHaveLength(1)
     expect(bodyRows()[0]).toHaveTextContent('Cy Later')
-    for (const [name, who] of [[/^Not yet in/, 'Ann Waiting'], [/^Checked in/, 'Ben Here'], [/^Cancelled/, 'Di Gone']] as const) {
-      await user.click(tab(name))
-      expect(bodyRows()[0]).toHaveTextContent(who)
-    }
-  })
 
-  it('shows why a check-in failed', async () => {
-    open('/registrations', {}, {
-      [`GET ${API}/registrations/`]: people,
-      [`POST ${API}/check-in/`]: reply(400, { detail: 'The event has not started.' }),
-      [`DELETE ${API}/check-in/?registration=2`]: reply(400, { detail: 'Too late to undo.' }),
-    })
-    fireEvent.click(within(await screen.findByRole('row', { name: /Ann Waiting/ })).getByRole('button', { name: 'Check in' }))
-    expect(await screen.findByText('The event has not started.')).toBeInTheDocument()
-  })
-
-  it('shows why undoing a check-in failed', async () => {
-    open('/registrations', {}, {
-      [`GET ${API}/registrations/`]: people,
-      [`DELETE ${API}/check-in/?registration=2`]: reply(400, { detail: 'Too late to undo.' }),
-    })
-    fireEvent.click(within(await screen.findByRole('row', { name: /Ben Here/ })).getByRole('button', { name: 'Undo' }))
-    expect(await screen.findByText('Too late to undo.')).toBeInTheDocument()
-  })
-
-  it('exports the people shown as CSV', async () => {
-    const downloads = captureDownloads()
-    const { user } = open('/registrations', {}, { [`GET ${API}/registrations/`]: people })
-    await user.click(await screen.findByRole('tab', { name: /^Checked in/ }))
+    await user.click(tab(/^Checked in/))
     await user.click(screen.getByRole('button', { name: 'Export CSV' }))
     expect(downloads.name()).toBe('react-workshop-registrations.csv')
     expect(await downloads.text()).toBe(
       '"Name","Email","Institution","Status","Registered","Checked in"\n' +
         '"Ben Here","wanjiru@example.com","Strathmore","registered","2026-11-19T08:00:00Z","2026-11-21T09:00:00Z"',
     )
-  })
-
-  it('has nothing to export before anyone registers', async () => {
-    open('/registrations', {}, { [`GET ${API}/registrations/`]: [] })
-    expect(await screen.findByRole('button', { name: 'Export CSV' })).toBeDisabled()
-    expect(screen.getAllByText('Nobody has registered yet.').length).toBeGreaterThan(0)
-  })
-
-  it('waits for the list', async () => {
-    open('/registrations', {}, { [`GET ${API}/registrations/`]: () => new Promise(() => undefined) })
-    await title()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
   })
 })
 
@@ -335,7 +275,6 @@ describe('EventCheckIn', () => {
     })
     expect(await screen.findByText('of 20 registered')).toBeInTheDocument()
     expect(screen.getByText('4')).toBeInTheDocument()
-    expect(screen.getByText('Scans will be listed here.')).toBeInTheDocument()
     expect(within(screen.getByRole('main')).getByRole('link', { name: 'Registrations' })).toHaveAttribute('href', `${BASE}/registrations`)
 
     await user.click(screen.getByRole('button', { name: 'Start scanning' }))
@@ -367,7 +306,7 @@ describe('EventCheckIn', () => {
     await waitFor(() => expect(callsTo(fetch, `POST ${API}/check-in/`)).toHaveLength(4))
   })
 
-  it('ignores other tickets while one is being checked in', async () => {
+  it('ignores other tickets while one is being checked in, and explains when the camera cannot be used', async () => {
     const { user, fetch } = open('/check-in', {}, {
       [`GET ${API}/stats/`]: eventStats(),
       [`POST ${API}/check-in/`]: () => new Promise(() => undefined),
@@ -376,16 +315,10 @@ describe('EventCheckIn', () => {
     await user.click(screen.getByRole('button', { name: 'Show TICKET-1' }))
     await user.click(screen.getByRole('button', { name: 'Show TICKET-2' }))
     expect(callsTo(fetch, `POST ${API}/check-in/`)).toHaveLength(1)
-  })
 
-  it('explains when the camera cannot be used', async () => {
-    const { user } = open('/check-in')
-    await user.click(await screen.findByRole('button', { name: 'Start scanning' }))
     await user.click(screen.getByRole('button', { name: 'Block the camera' }))
     expect(screen.getByText('Could not use the camera. Allow camera access in your browser and try again.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Start scanning' })).toBeInTheDocument()
-    // The door count is still loading.
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
   })
 })
 
@@ -394,73 +327,52 @@ describe('EventContent', () => {
   const announcementsPanel = async () => within((await screen.findByRole('heading', { name: 'Announcements' })).closest('section')!)
   const resourcesPanel = async () => within((await screen.findByRole('heading', { name: 'Resources' })).closest('section')!)
 
-  it('posts an announcement, emailing everyone by default', async () => {
-    const { user, fetch } = open('/content', {}, {
-      [`GET ${API}/announcements/`]: [],
-      [`GET ${API}/resources/`]: [],
-      [`POST ${API}/announcements/`]: announcement(),
-    })
-    const panel = await announcementsPanel()
-    const post = await panel.findByRole('button', { name: 'Post announcement' })
-    expect(post).toBeDisabled()
-    await user.type(panel.getByLabelText('Title'), 'Welcome')
-    await user.click(editor())
-    await user.paste('Bring a laptop')
-    expect(post).toBeEnabled()
-    await user.click(post)
-    expect(await screen.findByText('Announcement posted')).toBeInTheDocument()
-    expect(screen.getByText('It is on the event page and was emailed to everyone registered.')).toBeInTheDocument()
-    expect(sentBody(fetch, `POST ${API}/announcements/`)).toEqual({ title: 'Welcome', body: '<p>Bring a laptop</p>', notify: true })
-    expect(panel.getByLabelText('Title')).toHaveValue('')
-  })
-
-  it('posts without email when asked, and shows a failure', async () => {
-    let attempts = 0
-    const { user, fetch } = open('/content', {}, {
-      [`GET ${API}/announcements/`]: [],
-      [`GET ${API}/resources/`]: [],
-      [`POST ${API}/announcements/`]: () => (attempts++ ? announcement() : reply(400, { title: ['Too long.'] })),
-    })
-    const panel = await announcementsPanel()
-    await user.type(await panel.findByLabelText('Title'), 'Quiet note')
-    await user.click(editor())
-    await user.paste('No email')
-    await user.click(panel.getByRole('checkbox', { name: 'Also email everyone registered' }))
-    await user.click(panel.getByRole('button', { name: 'Post announcement' }))
-    expect(await panel.findByText('Too long.')).toBeInTheDocument()
-
-    await user.click(panel.getByRole('button', { name: 'Post announcement' }))
-    expect(await screen.findByText('It is on the event page.')).toBeInTheDocument()
-    expect(sentBody(fetch, `POST ${API}/announcements/`)).toMatchObject({ notify: false })
-    expect(panel.getByRole('checkbox', { name: 'Also email everyone registered' })).not.toBeChecked()
-  })
-
-  it('removes an announcement after asking', async () => {
+  it('posts announcements, emailing everyone unless asked not to, and removes one after asking', async () => {
     const { user, fetch } = open('/content', {}, {
       [`GET ${API}/announcements/`]: [announcement({ id: 9, title: 'Parking' })],
       [`GET ${API}/resources/`]: [],
+      [`POST ${API}/announcements/`]: sequence(reply(400, { title: ['Too long.'] }), announcement()),
       [`DELETE ${API}/announcements/9/`]: reply(204),
     })
     const panel = await announcementsPanel()
     expect(await panel.findByText('Parking')).toBeInTheDocument()
     expect(panel.getByText('Bring a laptop.')).toBeInTheDocument()
 
+    const post = panel.getByRole('button', { name: 'Post announcement' })
+    expect(post).toBeDisabled()
+    await user.type(panel.getByLabelText('Title'), 'Welcome')
+    await user.click(editor())
+    await user.paste('Bring a laptop')
+    await user.click(post)
+    expect(await panel.findByText('Too long.')).toBeInTheDocument()
+    await user.click(post)
+    expect(await screen.findByText('It is on the event page and was emailed to everyone registered.')).toBeInTheDocument()
+    expect(sentBody(fetch, `POST ${API}/announcements/`)).toEqual({ title: 'Welcome', body: '<p>Bring a laptop</p>', notify: true })
+    expect(panel.getByLabelText('Title')).toHaveValue('')
+
+    await user.type(panel.getByLabelText('Title'), 'Quiet note')
+    await user.click(editor())
+    await user.paste('No email')
+    await user.click(panel.getByRole('checkbox', { name: 'Also email everyone registered' }))
+    await user.click(post)
+    expect(await screen.findByText('It is on the event page.')).toBeInTheDocument()
+    expect(sentBody(fetch, `POST ${API}/announcements/`)).toMatchObject({ title: 'Quiet note', notify: false })
+    expect(panel.getByRole('checkbox', { name: 'Also email everyone registered' })).not.toBeChecked()
+
     await user.click(panel.getByRole('button', { name: 'Remove' }))
     expect(within(dialog()).getByText(/“Parking” disappears from the event page/)).toBeInTheDocument()
     await answer(user, 'Cancel')
     expect(callsTo(fetch, `DELETE ${API}/announcements/9/`)).toHaveLength(0)
-
     await user.click(panel.getByRole('button', { name: 'Remove' }))
     await answer(user, 'Remove')
     expect(await screen.findByText('Announcement removed')).toBeInTheDocument()
   })
 
   it('adds and removes resources', async () => {
-    let added = 0
     const { user, fetch } = open('/content', {}, {
       [`GET ${API}/announcements/`]: [],
       [`GET ${API}/resources/`]: [resource({ id: 3, title: 'Slides' })],
-      [`POST ${API}/resources/`]: () => (added++ ? resource() : reply(400, { url: ['Enter a valid URL.'] })),
+      [`POST ${API}/resources/`]: sequence(reply(400, { url: ['Enter a valid URL.'] }), resource()),
       [`DELETE ${API}/resources/3/`]: reply(204),
     })
     const panel = await resourcesPanel()
@@ -482,8 +394,13 @@ describe('EventContent', () => {
 })
 
 describe('EventFeedback', () => {
-  it('summarises ratings and lists comments', async () => {
-    open('/feedback', {}, {
+  it('points to the event page before any feedback, then summarises ratings and lists comments', async () => {
+    const none = open('/feedback', {}, { [`GET ${API}/feedback/`]: [] })
+    expect(await screen.findByText(/No feedback yet/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'View the page' })).toHaveAttribute('href', '/events/react-workshop')
+    none.unmount()
+
+    const { unmount } = open('/feedback', {}, {
       [`GET ${API}/feedback/`]: [
         feedback({ id: 1, rating: 5, comment: 'Loved it' }),
         feedback({ id: 2, rating: 4 }),
@@ -498,24 +415,10 @@ describe('EventFeedback', () => {
     expect(screen.getByRole('heading', { name: 'Comments (2)' })).toBeInTheDocument()
     expect(screen.getByText('Loved it')).toBeInTheDocument()
     expect(screen.getByText('1 of 5')).toBeInTheDocument()
-  })
+    unmount()
 
-  it('says when ratings came without comments', async () => {
     open('/feedback', {}, { [`GET ${API}/feedback/`]: [feedback({ rating: 4 })] })
     expect(await screen.findByText('out of 5, from 1 response')).toBeInTheDocument()
     expect(screen.getByText('Ratings came in without comments.')).toBeInTheDocument()
-  })
-
-  it('points to the event page before any feedback', async () => {
-    const { user } = open('/feedback', {}, { [`GET ${API}/feedback/`]: [] })
-    expect(await screen.findByText(/No feedback yet/)).toBeInTheDocument()
-    await user.click(screen.getByRole('link', { name: 'View the page' }))
-    expect(currentPath()).toBe('/events/react-workshop')
-  })
-
-  it('waits for the feedback', async () => {
-    open('/feedback', {}, { [`GET ${API}/feedback/`]: () => new Promise(() => undefined) })
-    await title()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
   })
 })

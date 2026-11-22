@@ -1,6 +1,7 @@
 """What Community emails, and to whom. Each function queues emails, then hands them to `deliver`.
 
 - welcome, the first time a new member signs in
+- an organization application was received, approved or declined
 - registration confirmed (with the ticket QR code and a calendar invite), or waitlisted
 - moved off the waiting list
 - an announcement, when the organiser ticks "also email" (events and hackathons)
@@ -227,6 +228,61 @@ def welcome(profile) -> None:
         button_url=settings.COMMUNITY_URL, button_label="Explore Community",
     )
     deliver([email] if email else [])
+
+
+# --- organization applications -----------------------------------------------------
+
+
+def _application_email(application, kind, subject, heading, paragraphs, button_label):
+    email = _queue(
+        kind, application.applicant, subject,
+        key=f"{kind}:{application.id}",
+        preheader=paragraphs[0], eyebrow=application.name, heading=heading, paragraphs=paragraphs,
+        button_url=f"{settings.COMMUNITY_URL}/organizations/join", button_label=button_label,
+    )
+    deliver([email] if email else [])
+
+
+def application_received(application) -> None:
+    """Right after a member applies to bring their organization onto Community."""
+    _application_email(
+        application, "application_received", f"We received your application for {application.name}",
+        f"Thanks, {_first_name(application.applicant)}!",
+        [
+            f"We received your application to bring {application.name} onto A Million Techies Community.",
+            "Our team reviews every application, usually within two working days. "
+            "We will email you as soon as it is decided.",
+        ],
+        "See your application",
+    )
+
+
+def application_approved(application) -> None:
+    _application_email(
+        application, "application_approved", f"{application.name} is now on A Million Techies Community",
+        f"Welcome aboard, {application.name}!",
+        [
+            f"Your application was approved, and you are now the admin of {application.name}.",
+            "Sign out and in again, then open the organiser console to create events and "
+            "hackathons and give your team roles.",
+            *([application.review_note] if application.review_note else []),
+        ],
+        "Get started",
+    )
+
+
+def application_declined(application) -> None:
+    _application_email(
+        application, "application_declined", f"About your application for {application.name}",
+        f"About {application.name}",
+        [
+            f"Thank you for applying to bring {application.name} onto A Million Techies Community. "
+            "We could not approve it this time.",
+            *([application.review_note] if application.review_note else []),
+            "You are welcome to apply again, or reply to this email if you have questions.",
+        ],
+        "Apply again",
+    )
 
 
 # --- registrations -----------------------------------------------------------------

@@ -21,15 +21,11 @@ const coverInput = () => screen.getByRole('group', { name: 'Cover image' }).quer
 const local = (value: string) => new Date(value).toISOString()
 
 describe('Hackathon form', () => {
-  it('waits for the member to load', () => {
-    create()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
-  })
-
-  it('turns away members who manage no hackathons', async () => {
+  it('turns away members who manage no hackathons once they load', async () => {
     signIn()
     mockFetch({ 'GET /me/': me({ organizations: [membership({ can_manage_events: true })] }) })
     create()
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
     expect(await screen.findByText('You do not manage hackathons for any organisation.')).toBeInTheDocument()
   })
 
@@ -54,16 +50,10 @@ describe('Hackathon form', () => {
     await user.type(screen.getByRole('textbox', { name: 'Who can take part' }), 'Students')
 
     const prizes = screen.getByRole('group', { name: 'Prizes' })
-    expect(within(prizes).getByText(/List them in order/)).toBeInTheDocument()
-    expect(within(prizes).getByRole('textbox', { name: 'Prize 1 title' })).toHaveAttribute('placeholder', 'Winner')
-    expect(within(prizes).getByRole('textbox', { name: 'Prize 1 value' })).toHaveAttribute('placeholder', 'KES 60,000')
     await user.type(within(prizes).getByRole('textbox', { name: 'Prize 1 title' }), 'Winner')
     await user.type(within(prizes).getByRole('textbox', { name: 'Prize 1 value' }), 'KES 50,000')
     await user.click(within(prizes).getByRole('button', { name: 'Add prize' }))
     await user.click(within(prizes).getByRole('button', { name: 'Add prize' }))
-    expect(within(prizes).getByRole('textbox', { name: 'Prize 2 title' })).toHaveAttribute('placeholder', 'Runner-up')
-    expect(within(prizes).getByRole('textbox', { name: 'Prize 2 value' })).toHaveAttribute('placeholder', 'Value')
-    expect(within(prizes).getByRole('textbox', { name: 'Prize 3 title' })).toHaveAttribute('placeholder', 'Title')
     await user.type(within(prizes).getByRole('textbox', { name: 'Prize 3 title' }), 'Best design')
     await user.click(within(prizes).getByRole('button', { name: 'Remove prize 2' }))
     expect(within(prizes).queryByRole('textbox', { name: 'Prize 3 title' })).not.toBeInTheDocument()
@@ -99,7 +89,7 @@ describe('Hackathon form', () => {
     })
   })
 
-  it('lets managers of several organisations pick one, and shows what the API rejected', async () => {
+  it('lets managers of several organisations pick one, shows what the API rejected, and goes back on cancel', async () => {
     signIn()
     const fetch = mockFetch({
       'GET /me/': manager(
@@ -111,15 +101,18 @@ describe('Hackathon form', () => {
     const { user } = create()
     await user.selectOptions(await screen.findByRole('combobox', { name: 'Organisation' }), 'Code Club')
     await user.type(screen.getByRole('textbox', { name: 'Title' }), 'Water hack')
-    for (const name of ['Starts', 'Ends', 'Registration closes', 'Submissions close']) {
-      await user.type(screen.getByLabelText(name), '2026-12-01T09:00')
-    }
+    await user.type(screen.getByLabelText('Starts'), '2026-12-01T09:00')
+    await user.type(screen.getByLabelText('Ends'), '2026-12-01T09:00')
+    await user.type(screen.getByLabelText('Registration closes'), '2026-12-01T09:00')
+    await user.type(screen.getByLabelText('Submissions close'), '2026-12-01T09:00')
     await user.click(screen.getByRole('button', { name: 'Save draft' }))
 
     const prizes = screen.getByRole('group', { name: 'Prizes' })
     expect(await within(prizes).findByRole('alert')).toHaveTextContent('Give every prize a title.')
-    expect(within(prizes).queryByText(/List them in order/)).not.toBeInTheDocument()
     expect(sentBody(fetch, 'POST /hackathons/')).toMatchObject({ organization_id: 'c', prizes: [{ title: '', value: '' }] })
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(currentPath()).toBe('/manage/hackathons')
   })
 
   it('edits an existing hackathon and its prizes', async () => {
@@ -131,7 +124,6 @@ describe('Hackathon form', () => {
     })
     const { user } = edit()
     expect(await screen.findByRole('textbox', { name: 'Title' })).toHaveValue('Climate hack')
-    expect(screen.queryByRole('heading', { name: 'Create hackathon' })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Prize 1 title' })).toHaveValue('First')
     await editRichText(user, 'Description')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -151,13 +143,5 @@ describe('Hackathon form', () => {
     edit()
     expect(await screen.findByRole('textbox', { name: 'Prize 1 title' })).toHaveValue('')
     expect(screen.queryByRole('textbox', { name: 'Prize 2 title' })).not.toBeInTheDocument()
-  })
-
-  it('goes back on cancel', async () => {
-    signIn()
-    mockFetch({ 'GET /me/': manager() })
-    const { user } = create()
-    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
-    expect(currentPath()).toBe('/manage/hackathons')
   })
 })

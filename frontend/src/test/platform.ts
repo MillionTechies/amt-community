@@ -5,7 +5,7 @@
  *   orgDetail({ admins: 0, admin_people: [] })
  *   emailRow({ status: 'failed', last_error: 'Mailbox full' })
  */
-import type { EmailRow, MemberRow, OrgDetail, OrgRow, Overview } from '../platform/types'
+import type { ApplicationRow, EmailRow, MemberRow, OrgDetail, OrgRow, Overview } from '../platform/types'
 
 // A busy community: everything counted, one thing needing attention, one recent event.
 export const overview = (overrides: Partial<Overview> = {}): Overview => ({
@@ -96,5 +96,27 @@ export const emailRow = (overrides: Partial<EmailRow> = {}): EmailRow => ({
   created_at: '2026-11-20T08:00:00Z',
   sent_at: '2026-11-20T08:00:05Z',
   event: 'React workshop',
+  ...overrides,
+})
+
+// An application to join, waiting for review.
+export const applicationRow = (overrides: Partial<ApplicationRow> = {}): ApplicationRow => ({
+  id: 1,
+  name: 'Moi University',
+  kind: 'institution',
+  kind_label: 'University, college or school',
+  website: 'https://mu.ac.ke',
+  location: 'Eldoret',
+  about: 'A public university in Eldoret.',
+  plans: 'Monthly meetups.',
+  contact_phone: '+254700000000',
+  status: 'pending',
+  review_note: '',
+  applicant: { sub: 'user-1', name: 'Wanjiru Kamau', email: 'wanjiru@example.com', institution: 'Moi University' },
+  reviewed_by: '',
+  reviewed_at: null,
+  created_at: '2026-11-20T08:00:00Z',
+  organization_id: '',
+  suggested_alias: 'moi-university',
   ...overrides,
 })
