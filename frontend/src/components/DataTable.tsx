@@ -68,7 +68,12 @@ export function DataTable<T>({
   const slots = useMemo(
     () =>
       Object.fromEntries(
-        columns.flatMap((c, i) => (c.cell ? [[i, (_: unknown, row: { __row: T }) => <>{c.cell!(row.__row)}</>]] : [])),
+        // Draw the cell for display only; sorting and searching use the column's `value`.
+        columns.flatMap((c, i) =>
+          c.cell
+            ? [[i, (data: unknown, type: string, row: { __row: T }) => (type === 'display' ? <>{c.cell!(row.__row)}</> : data)]]
+            : [],
+        ),
       ),
     [columns],
   )

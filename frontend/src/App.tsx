@@ -2,12 +2,12 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Suspense, lazy, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from 'react-oidc-context'
-import { Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { setToken } from './api'
 import { JUST_SIGNED_IN } from './auth'
 import { LogoTile } from './components/brand'
-import { ErrorBoundary } from './components/ErrorBoundary'
+import { ErrorBoundary, PageOutlet } from './components/ErrorBoundary'
 import { Icon } from './components/icons'
 import { BottomNav } from './components/mobile'
 import { Button, Empty, Spinner } from './components/ui'
@@ -143,7 +143,7 @@ function PublicLayout() {
     <div className="flex min-h-screen flex-col pb-[calc(3.6rem+env(safe-area-inset-bottom))] md:pb-0">
       <Header />
       <main className={isLanding ? 'w-full flex-1' : 'mx-auto w-full max-w-6xl flex-1 px-4 py-8'}>
-        <Outlet />
+        <PageOutlet />
       </main>
       <footer className="no-print border-t border-stone-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-stone-500 sm:flex-row sm:items-center sm:justify-between">

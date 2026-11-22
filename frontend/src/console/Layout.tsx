@@ -2,11 +2,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from 'react-oidc-context'
-import { Link, NavLink, Outlet, useLocation, useMatch } from 'react-router-dom'
+import { Link, NavLink, useLocation, useMatch } from 'react-router-dom'
 
 import { api } from '../api'
 import type { CommunityEvent, Hackathon } from '../api'
 import { LogoTile } from '../components/brand'
+import { PageOutlet } from '../components/ErrorBoundary'
 import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
 import { Button, Empty, LinkButton, Spinner, StatusBadge } from '../components/ui'
@@ -338,7 +339,7 @@ function Console() {
           </div>
         </header>
         <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <Outlet />
+          <PageOutlet />
         </main>
       </div>
     </div>
