@@ -120,8 +120,3 @@ def connection_for(profile, provider_id: str, organization_id) -> Connection | N
     organisation's own app if it has one, else the platform's."""
     app = PROVIDERS[provider_id].app_for(organization_id)
     return Connection.objects.filter(profile=profile, provider=provider_id, organization_id=app).first()
-
-
-def disconnect(connection: Connection) -> None:
-    """Forget the account. Copies already made stay in the organiser's calendar."""
-    connection.delete()
