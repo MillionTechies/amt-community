@@ -78,6 +78,8 @@ export function DataTable<T>({
     [columns],
   )
 
+  // Callers rebuild columns every render; their titles are what matter here.
+  const optionsKey = [columns.map((c) => c.title).join('|'), pageLength, empty, searchPlaceholder, order?.join()].join('\n')
   const options = useMemo(
     () => ({
       pageLength,
@@ -124,14 +126,14 @@ export function DataTable<T>({
         tr.addEventListener('keydown', (e) => e.key === 'Enter' && open.current?.(row.__row))
       },
     }),
-    // Callers rebuild columns every render; their titles are what matter here.
-    [columns.map((c) => c.title).join('|'), pageLength, empty, searchPlaceholder, order?.join()],
+    [optionsKey],
   )
 
   return (
     <div className="amt-dt">
       {toolbar && <div className="amt-dt__toolbar">{toolbar}</div>}
-      <DT ref={table} data={data} options={options} slots={slots} className="display" />
+      {/* DataTables reads its options once, so a change of options draws a new table. */}
+      <DT key={optionsKey} ref={table} data={data} options={options} slots={slots} className="display" />
     </div>
   )
 }

@@ -89,6 +89,24 @@ describe('DataTable', () => {
   })
 })
 
+describe('when its options change', () => {
+  it('shows the new empty message', () => {
+    const { rerender } = render(<DataTable rows={[]} columns={columns} empty="No upcoming events." />)
+    expect(screen.getByText('No upcoming events.')).toBeInTheDocument()
+    rerender(<DataTable rows={[]} columns={columns} empty="No events here." />)
+    expect(screen.getByText('No events here.')).toBeInTheDocument()
+    expect(screen.queryByText('No upcoming events.')).not.toBeInTheDocument()
+  })
+
+  it('sorts in the new order', () => {
+    const names = () => bodyRows().map((r) => within(r).getAllByRole('cell')[0].textContent)
+    const { rerender } = render(<DataTable rows={people} columns={columns} order={[0, 'asc']} />)
+    expect(names()).toEqual(['Amina', 'Otieno', 'Wanjiru'])
+    rerender(<DataTable rows={people} columns={columns} order={[0, 'desc']} />)
+    expect(names()).toEqual(['Wanjiru', 'Otieno', 'Amina'])
+  })
+})
+
 describe('a column drawn with React', () => {
   const drawn: Col<Person>[] = [{ title: 'Name', value: (p) => p.name, cell: (p) => <b>{p.name}</b> }]
 
