@@ -89,9 +89,15 @@ echo "The API and the web app are healthy."
 
 # --- 6. Check ----------------------------------------------------------------------
 step "Checking $COMMUNITY_URL and $API_URL"
-# curl answers 000 when it can't connect at all (no DNS yet, Caddy not set up); keep
-# going so the summary below says which address failed.
-status() { curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$1" || true; }
+# Ask this server's Caddy directly (--resolve), so a DNS cache on the server can't fail
+# the check; the deploy workflow checks the public addresses from outside. curl answers
+# 000 when it can't connect at all (Caddy not set up); keep going so the summary below
+# says which address failed.
+status() {
+  local host="${1#https://}"
+  host="${host%%/*}"
+  curl -s -o /dev/null -w '%{http_code}' --max-time 15 --resolve "$host:443:127.0.0.1" "$1" || true
+}
 site="$(status "$COMMUNITY_URL/")"
 page="$(status "$COMMUNITY_URL/events")"
 api="$(status "$API_URL/api/stats/")"
@@ -99,7 +105,7 @@ echo "web app:     $site"
 echo "app routes:  $page (served by the app, expected 200)"
 echo "API:         $api"
 if [ "$site $page $api" != "200 200 200" ]; then
-  echo "Check failed. 000 means no connection: check the DNS records and the Caddy sites." >&2
+  echo "Check failed. 000 means Caddy did not answer: check the Caddy sites (Caddyfile.snippet)." >&2
   exit 1
 fi
 
