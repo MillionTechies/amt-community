@@ -297,7 +297,11 @@ function Console() {
         <Empty>
           <p className="mb-1 font-semibold text-ink">You are signed in as a member</p>
           <p className="mb-4">The organiser console is for people who run events or hackathons. Ask your organisation's admin to give you a role, then sign in again.</p>
-          <LinkButton to="/dashboard">Go to my activity</LinkButton>
+          <p className="mb-4">Is your organisation not on Community yet? Apply to bring it here and you become its admin.</p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <LinkButton to="/organizations/join">Bring your organisation</LinkButton>
+            <LinkButton to="/dashboard" variant="secondary">Go to my activity</LinkButton>
+          </div>
         </Empty>
       </div>
     )

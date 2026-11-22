@@ -2,6 +2,7 @@
 import { Route, Routes } from 'react-router-dom'
 
 import Configuration from '../console/Configuration'
+import Applications from './Applications'
 import PlatformLayout from './Layout'
 import { NotFound, OrganizationDetail, Organizations } from './Organizations'
 import Overview from './Overview'
@@ -14,6 +15,7 @@ export default function PlatformApp() {
         <Route index element={<Overview />} />
         <Route path="organizations" element={<Organizations />} />
         <Route path="organizations/:id" element={<OrganizationDetail />} />
+        <Route path="applications" element={<Applications />} />
         <Route path="members" element={<Members />} />
         <Route path="emails" element={<Emails />} />
         <Route path="configuration" element={<Configuration mode="platform" />} />

@@ -489,12 +489,12 @@ export default function Home() {
             </li>
             <li className="flex items-center justify-between gap-4 py-4">
               <span>
-                <span className="block font-semibold">Partner</span>
-                <span className="block text-sm text-stone-500">Universities and companies: host, sponsor or hire from the community.</span>
+                <span className="block font-semibold">Bring your organisation</span>
+                <span className="block text-sm text-stone-500">Universities, companies, tech communities and groups: run your events and hackathons here.</span>
               </span>
-              <a href={`${MAIN_SITE}/contact`} className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-brand-700 hover:text-brand-800">
-                Talk to us <External />
-              </a>
+              <Link to="/organizations/join" className="shrink-0 text-sm font-semibold text-brand-700 hover:text-brand-800">
+                Apply to join
+              </Link>
             </li>
           </ul>
         </div>

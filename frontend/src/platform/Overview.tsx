@@ -10,7 +10,7 @@ import { DailyBars } from '../console/charts'
 import { ConsoleHeader, Kpi, Meter, Panel, relative } from '../console/shared'
 import type { Overview as Data } from './types'
 
-const ATTENTION_ICON: Record<string, IconName> = { organization: 'home', email: 'inbox', event: 'calendar', config: 'shield' }
+const ATTENTION_ICON: Record<string, IconName> = { organization: 'home', email: 'inbox', event: 'calendar', config: 'shield', application: 'users' }
 
 function StatusMeters({ counts, order }: { counts: Record<string, number>; order: string[] }) {
   const total = Object.values(counts).reduce((a, b) => a + b, 0)

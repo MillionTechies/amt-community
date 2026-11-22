@@ -1,25 +1,31 @@
 """The platform admin's view of the whole community: every organisation, member, event and email.
 
-Read-only summaries, plus retrying a failed email. Only platform admins (realm role `admin`).
+Read-only summaries, plus retrying a failed email and reviewing organisation applications.
+Only platform admins (realm role `admin`).
 """
 
 from datetime import timedelta
 
 from amt_auth.django.models import Membership, Organization
 from amt_auth.django.permissions import IsPlatformAdmin
+from amt_auth.exceptions import AdminAPIError
 from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404
+from django.core.validators import validate_slug
 from django.utils import timezone
+from rest_framework import serializers
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import Profile, RoleAssignment
+from apps.accounts import access, onboarding
+from apps.accounts.models import OrganizationApplication, Profile, RoleAssignment
 from apps.configuration import config
 from apps.configuration.registry import GROUPS
 from apps.events.models import Event, Registration
 from apps.hackathons.models import Hackathon, Submission, TeamMember
 from apps.integrations.providers import PROVIDERS
-from apps.notifications import sender
+from apps.notifications import emails, sender
 from apps.notifications.models import OutboundEmail
 
 ADMINS_GROUP = "/admins"
@@ -42,7 +48,7 @@ class OverviewView(APIView):
         month_ago = now - timedelta(days=30)
         live_orgs = Organization.objects.filter(deleted_at=None)
         registrations = Registration.objects.exclude(status=Registration.Status.CANCELLED)
-        emails = OutboundEmail.objects.all()
+        outbound = OutboundEmail.objects.all()
 
         attention = []
         orgs_without_admins = live_orgs.exclude(
@@ -50,7 +56,10 @@ class OverviewView(APIView):
         ).distinct()
         for org in orgs_without_admins[:10]:
             attention.append({"kind": "organization", "title": f"{org.name} has no admin", "detail": "Add someone to its admins group in Keycloak.", "link": f"/platform/organizations/{org.id}"})
-        failed = emails.filter(status=OutboundEmail.Status.FAILED).count()
+        pending = OrganizationApplication.objects.filter(status=OrganizationApplication.Status.PENDING).count()
+        if pending:
+            attention.append({"kind": "application", "title": f"{pending} {'organisation is' if pending == 1 else 'organisations are'} waiting to join", "detail": "Review their applications.", "link": "/platform/applications"})
+        failed = outbound.filter(status=OutboundEmail.Status.FAILED).count()
         if failed:
             attention.append({"kind": "email", "title": f"{failed} {'email' if failed == 1 else 'emails'} could not be sent", "detail": "Check the email settings, then retry them.", "link": "/platform/emails"})
         stale = Event.objects.filter(status=Event.Status.PUBLISHED, ends_at__lt=now).count()
@@ -82,8 +91,8 @@ class OverviewView(APIView):
             "events_by_status": _status_counts(Event.objects),
             "hackathons_by_status": _status_counts(Hackathon.objects),
             "emails": {
-                "sent_30d": emails.filter(status=OutboundEmail.Status.SENT, sent_at__gte=month_ago).count(),
-                "queued": emails.filter(status__in=[OutboundEmail.Status.QUEUED, OutboundEmail.Status.SENDING]).count(),
+                "sent_30d": outbound.filter(status=OutboundEmail.Status.SENT, sent_at__gte=month_ago).count(),
+                "queued": outbound.filter(status__in=[OutboundEmail.Status.QUEUED, OutboundEmail.Status.SENDING]).count(),
                 "failed": failed,
             },
             # One timestamp per registration in the last 30 days, for the sign-ups chart.
@@ -233,14 +242,14 @@ class EmailsView(APIView):
     permission_classes = [IsPlatformAdmin]
 
     def get(self, request):
-        emails = OutboundEmail.objects.select_related("event").order_by("-created_at")[:500]
+        latest = OutboundEmail.objects.select_related("event").order_by("-created_at")[:500]
         return Response([
             {
                 "id": e.id, "kind": e.kind, "to": e.to, "subject": e.subject, "status": e.status,
                 "attempts": e.attempts, "last_error": e.last_error, "created_at": e.created_at,
                 "sent_at": e.sent_at, "event": e.event.title if e.event_id else "",
             }
-            for e in emails
+            for e in latest
         ])
 
     def post(self, request):
@@ -251,3 +260,74 @@ class EmailsView(APIView):
         failed.update(status=OutboundEmail.Status.QUEUED, attempts=0, last_error="")
         sender.deliver(ids)
         return Response({"retried": len(ids)})
+
+
+def _application_row(a: OrganizationApplication) -> dict:
+    return {
+        "id": a.id, "name": a.name, "kind": a.kind, "kind_label": a.get_kind_display(),
+        "website": a.website, "location": a.location, "about": a.about, "plans": a.plans,
+        "contact_phone": a.contact_phone, "status": a.status, "review_note": a.review_note,
+        "applicant": {"sub": a.applicant_id, "name": a.applicant.full_name, "email": a.applicant.email, "institution": a.applicant.institution},
+        "reviewed_by": a.reviewed_by.full_name if a.reviewed_by_id else "",
+        "reviewed_at": a.reviewed_at, "created_at": a.created_at, "organization_id": a.keycloak_id,
+        "suggested_alias": onboarding.suggest_alias(a.name) if a.status == OrganizationApplication.Status.PENDING else "",
+    }
+
+
+class ApplicationsView(APIView):
+    """Every application to bring an organisation onto Community, newest first."""
+
+    permission_classes = [IsPlatformAdmin]
+
+    def get(self, request):
+        applications = OrganizationApplication.objects.select_related("applicant", "reviewed_by")
+        return Response([_application_row(a) for a in applications])
+
+
+class _Approve(serializers.Serializer):
+    alias = serializers.CharField(max_length=60, validators=[validate_slug])
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class _Decline(serializers.Serializer):
+    note = serializers.CharField()
+
+
+class ApplicationReviewView(APIView):
+    """POST .../approve/ {"alias", "note"?} creates the organisation; .../decline/ {"note"} turns it down."""
+
+    permission_classes = [IsPlatformAdmin]
+
+    def post(self, request, application_id, decision):
+        application = get_object_or_404(
+            OrganizationApplication.objects.select_related("applicant"),
+            id=application_id, status=OrganizationApplication.Status.PENDING,
+        )
+        if decision == "approve":
+            data = _Approve(data=request.data)
+            data.is_valid(raise_exception=True)
+            self._provision(application, data.validated_data["alias"].lower())
+            application.status = OrganizationApplication.Status.APPROVED
+        else:
+            data = _Decline(data=request.data)
+            data.is_valid(raise_exception=True)
+            application.status = OrganizationApplication.Status.DECLINED
+        application.review_note = data.validated_data["note"].strip()
+        application.reviewed_by = access.profile_of(request)
+        application.reviewed_at = timezone.now()
+        application.save()
+        if decision == "approve":
+            emails.application_approved(application)
+        else:
+            emails.application_declined(application)
+        return Response(_application_row(application))
+
+    def _provision(self, application, alias):
+        try:
+            onboarding.provision(application, alias)
+        except AdminAPIError as exc:
+            if exc.status_code == onboarding.ALREADY_EXISTS:
+                raise ValidationError({"alias": "Keycloak already has an organisation with this name or alias. Pick another alias."}) from exc
+            error = APIException("Keycloak could not create the organisation. Try again in a moment.")
+            error.status_code = 502
+            raise error from exc

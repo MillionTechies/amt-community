@@ -13,6 +13,7 @@ import { useAccess } from '../console/shared'
 const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
   { to: '/platform', label: 'Overview', icon: 'gauge', end: true },
   { to: '/platform/organizations', label: 'Organisations', icon: 'home' },
+  { to: '/platform/applications', label: 'Applications', icon: 'inbox' },
   { to: '/platform/members', label: 'Members', icon: 'users' },
   { to: '/platform/emails', label: 'Email delivery', icon: 'inbox' },
   { to: '/platform/configuration', label: 'Configuration', icon: 'shield' },
@@ -20,6 +21,7 @@ const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
 
 const LABELS: Record<string, string> = {
   organizations: 'Organisations',
+  applications: 'Applications',
   members: 'Members',
   emails: 'Email delivery',
   configuration: 'Configuration',

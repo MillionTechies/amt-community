@@ -8,4 +8,15 @@ urlpatterns = [
     path("platform/organizations/<str:organization_id>/", views.OrganizationDetailView.as_view()),
     path("platform/members/", views.MembersView.as_view()),
     path("platform/emails/", views.EmailsView.as_view()),
+    path("platform/applications/", views.ApplicationsView.as_view()),
+    path(
+        "platform/applications/<int:application_id>/approve/",
+        views.ApplicationReviewView.as_view(),
+        {"decision": "approve"},
+    ),
+    path(
+        "platform/applications/<int:application_id>/decline/",
+        views.ApplicationReviewView.as_view(),
+        {"decision": "decline"},
+    ),
 ]

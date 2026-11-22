@@ -40,6 +40,7 @@ describe('signed in', () => {
   it('turns away a member without a role', async () => {
     const { user } = renderConsole(SHELL, {}, { member: me({ organizations: [membership()] }) })
     expect(await screen.findByText('You are signed in as a member')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Bring your organisation' })).toHaveAttribute('href', '/organizations/join')
     await user.click(screen.getByRole('link', { name: 'Go to my activity' }))
     expect(currentPath()).toBe('/dashboard')
   })

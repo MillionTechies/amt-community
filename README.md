@@ -178,6 +178,24 @@ token names an organisation the mirror has not seen, it is synced on that reques
 `run_worker` runs a full sync every 15 minutes (`--sync-interval`); and platform admins
 can press **Sync** under Organizations. Only one full sync runs at a time.
 
+### Organisations joining
+
+Universities, companies, tech communities, clubs and non-profits join from
+**Bring your organisation** (`/organizations/join`, linked from the home page, the footer
+and the organiser console). A signed-in member describes the organisation and applies;
+they get an email confirming it. Platform admins review applications under
+**Platform → Applications** (pending ones also show under "Needs attention").
+
+- **Approve**: pick the alias (suggested from the name; it cannot change later). Community
+  then creates the organisation in Keycloak with its `admins`, `clubs` and `mentorships`
+  groups, makes the applicant a member and an admin, syncs it into the mirror and emails
+  them. Every step can be repeated, so if Keycloak fails part-way, approving again carries
+  on where it stopped. It uses `community-backend`'s service account, which amt_auth's
+  Keycloak setup already gives `manage-organizations` and `manage-users`.
+- **Decline**: give a reason; it is emailed to the applicant, who may apply again.
+
+`apps/accounts/onboarding.py` holds the Keycloak steps.
+
 In production, Keycloak runs at `https://auth.amilliontechies.com`; see `deploy/keycloak/`
 in amt_auth. Community's backend uses client `community-backend` and the web app
 `community-frontend`.

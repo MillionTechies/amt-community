@@ -61,7 +61,7 @@ describe('Home page', () => {
 
     expect(screen.getByRole('link', { name: /Pick up the skills/ })).toHaveAttribute('href', 'https://learn.amilliontechies.com')
     expect(screen.getByText('You are here', { selector: 'span' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Talk to us/ })).toHaveAttribute('href', 'https://amilliontechies.com/contact')
+    expect(screen.getByRole('link', { name: 'Apply to join' })).toHaveAttribute('href', '/organizations/join')
 
     await user.click(screen.getByRole('button', { name: 'Join the community' }))
     expect(auth.signinRedirect).toHaveBeenLastCalledWith(expect.objectContaining({ prompt: 'create' }))

@@ -73,7 +73,7 @@ export function Organizations() {
             order={[0, 'asc']}
             onOpen={(o) => navigate(`/platform/organizations/${encodeURIComponent(o.id)}`)}
             searchPlaceholder="Search organisations"
-            empty="No organisations yet. Create them in Keycloak, then refresh."
+            empty="No organisations yet. Approve an application, or create one in Keycloak and refresh."
             toolbar={
               <>
                 <p className="text-sm text-stone-600"><span className="font-semibold text-ink">{orgs.data.length}</span> organisations</p>

@@ -68,7 +68,7 @@ describe('organisations list', () => {
   it('says when there are no organisations yet', async () => {
     mockFetch({ 'GET /platform/organizations/': [] })
     renderApp(<Organizations />, { route: '/platform/organizations' })
-    expect(await screen.findByText('No organisations yet. Create them in Keycloak, then refresh.')).toBeInTheDocument()
+    expect(await screen.findByText('No organisations yet. Approve an application, or create one in Keycloak and refresh.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
   })
 
