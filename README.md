@@ -163,7 +163,9 @@ Keycloak owns sign-in, users, organisations and organisation groups. The web app
 with the authorization code flow (PKCE) and sends the access token to the API. `amt-auth`
 validates it and reads the member's organisations and groups from it.
 
-- **Platform admin**: Keycloak realm role `admin`. Manages every organisation.
+- **Platform admin**: Keycloak realm role `admin`. Oversees the platform: the Platform
+  area, organisation applications and platform settings. It gives no rights inside an
+  organisation; to run an organisation's events, be its admin or hold a role there.
 - **Organisation admin**: member of the organisation's `/admins` group in Keycloak.
   Manages everything in that organisation.
 - **Event organiser, hackathon manager**: granted by an organisation's admin inside
@@ -201,7 +203,7 @@ in amt_auth. Community's backend uses client `community-backend` and the web app
 `community-frontend`.
 
 Every event and hackathon belongs to one organisation. Drafts are visible only to the
-people who manage that organisation; `apps/accounts/access.py` holds the rules.
+people who manage that organisation, and no one else can edit them, not even platform admins; `apps/accounts/access.py` holds the rules.
 
 ## What is in this slice
 

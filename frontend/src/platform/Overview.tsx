@@ -8,6 +8,7 @@ import type { IconName } from '../components/icons'
 import { ErrorNote, Spinner, StatusBadge, formatDate } from '../components/ui'
 import { DailyBars } from '../console/charts'
 import { ConsoleHeader, Kpi, Meter, Panel, relative } from '../console/shared'
+import { PublicLink } from './Organizations'
 import type { Overview as Data } from './types'
 
 const ATTENTION_ICON: Record<string, IconName> = { organization: 'home', email: 'inbox', event: 'calendar', config: 'shield', application: 'users' }
@@ -96,13 +97,13 @@ export default function Overview() {
               <ul className="divide-y divide-stone-100">
                 {overview.data.recent_events.map((e) => (
                   <li key={e.slug}>
-                    <Link to={`/manage/events/${e.slug}`} className="block px-5 py-3 hover:bg-stone-50">
+                    <PublicLink to={`/events/${e.slug}`} status={e.status} className="block px-5 py-3 hover:bg-stone-50">
                       <span className="flex items-center justify-between gap-2">
                         <span className="truncate text-sm font-semibold">{e.title}</span>
                         <StatusBadge status={e.status} />
                       </span>
                       <span className="block text-xs text-stone-500">{e.organization} · {formatDate(e.starts_at)} · added {relative(e.created_at)}</span>
-                    </Link>
+                    </PublicLink>
                   </li>
                 ))}
               </ul>

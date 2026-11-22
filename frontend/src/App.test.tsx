@@ -171,7 +171,7 @@ describe('a signed-in member', () => {
   })
 
   it.each([
-    [me({ is_platform_admin: true }), 'You are a platform admin'],
+    [me({ is_platform_admin: true, organizations: [membership({ is_admin: true })] }), 'You are an organisation admin'],
     [me({ organizations: [membership({ is_admin: true })] }), 'You are an organisation admin'],
     [me({ organizations: [membership({ roles: ['event_organiser'], can_manage_events: true })] }), 'You are an event organiser'],
     [me({ organizations: [membership({ roles: ['hackathon_manager'], can_manage_hackathons: true })] }), 'You are a hackathon manager'],
@@ -181,6 +181,14 @@ describe('a signed-in member', () => {
     showApp('/events')
     expect(await header().findByRole('link', { name: /Organiser console/ })).toHaveAttribute('title', title)
     expect(header().queryByRole('link', { name: 'Platform' }) !== null).toBe(profile.is_platform_admin)
+  })
+
+  it('gives a platform admin with no organisation the platform area, not the console', async () => {
+    signIn()
+    mockFetch({ 'GET /me/': me({ is_platform_admin: true }) })
+    showApp('/events')
+    expect(await header().findByRole('link', { name: 'Platform' })).toBeInTheDocument()
+    expect(header().queryByRole('link', { name: /Organiser console/ })).not.toBeInTheDocument()
   })
 
   it('takes a platform admin to the platform area', async () => {

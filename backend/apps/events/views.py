@@ -48,8 +48,6 @@ def visible_events(request):
     ).prefetch_related(
         Prefetch("registrations", queryset=first_going[:PREVIEW_SIZE], to_attr="preview_registrations")
     ).order_by("starts_at", "id")
-    if access.is_platform_admin(request):
-        return events
     return events.filter(
         Q(status__in=PUBLIC_STATUSES)
         | Q(organization_id__in=access.managed_org_ids(request, ROLE))
@@ -97,10 +95,7 @@ class EventViewSet(viewsets.ModelViewSet):
             )
             events = events.filter(id__in=mine.values("event_id")) if profile else events.none()
         elif params.get("scope") == "managed":
-            if not access.is_platform_admin(self.request):
-                events = events.filter(
-                    organization_id__in=access.managed_org_ids(self.request, ROLE)
-                )
+            events = events.filter(organization_id__in=access.managed_org_ids(self.request, ROLE))
         return events
 
     # The serializer needs the member's registrations and managed organizations.

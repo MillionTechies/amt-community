@@ -328,14 +328,17 @@ def test_upcoming_and_past_events(admin, anonymous, org):
     assert slugs(anonymous.get("/api/events/?when=past")) == [over["slug"], long_over["slug"]]
 
 
-def test_platform_admins_see_and_manage_every_event(admin, org, other_org):
+def test_platform_admins_do_not_run_other_organisations_events(admin, org, other_org):
     draft = create_event(admin, org, publish=False)
     elsewhere = create_event(sign_in("uma", admin_of=[other_org]), other_org)
     root = sign_in("root", platform_admin=True)
-    listed = root.get("/api/events/?scope=managed").json()["results"]
-    assert {e["slug"] for e in listed} == {draft["slug"], elsewhere["slug"]}
-    assert all(e["can_manage"] for e in listed)
-    assert slugs(sign_in("dan").get("/api/events/")) == [elsewhere["slug"]]
+    assert root.get("/api/events/?scope=managed").json()["results"] == []
+    # They see what any member sees: published events, never someone's draft.
+    listed = root.get("/api/events/").json()["results"]
+    assert [e["slug"] for e in listed] == [elsewhere["slug"]] and not listed[0]["can_manage"]
+    assert root.get(f"/api/events/{draft['slug']}/").status_code == 404
+    assert root.patch(f"/api/events/{elsewhere['slug']}/", {"title": "Mine now"}, format="json").status_code == 403
+    assert root.post(f"/api/events/{elsewhere['slug']}/announcements/", {"title": "Hi", "body": "x"}, format="json").status_code == 403
 
 
 def test_event_details_are_checked(admin, org, other_org):

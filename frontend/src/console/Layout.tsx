@@ -117,11 +117,11 @@ function Sidebar({ onNavigate }: { onNavigate: () => void }) {
           </div>
         </div>
 
-        {(access.team || access.platform) && (
+        {access.team && (
           <div>
             <p className="mb-2 px-3 font-mono text-[11px] font-semibold uppercase tracking-wider text-stone-500 before:content-['//_']">Organisation</p>
             <div className="space-y-0.5">
-              {access.team && <NavLink to="/manage/team" className={navItem}><NavIcon name="users" />Team and roles</NavLink>}
+              <NavLink to="/manage/team" className={navItem}><NavIcon name="users" />Team and roles</NavLink>
               <NavLink to="/manage/configuration" className={navItem}><NavIcon name="gauge" />Configuration</NavLink>
             </div>
           </div>

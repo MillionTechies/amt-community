@@ -89,9 +89,7 @@ class ScopesView(APIView):
         scopes = []
         if access.is_platform_admin(request):
             scopes.append({"id": "platform", "name": "Platform", "kind": "platform"})
-            orgs = Organization.objects.filter(deleted_at=None)
-        else:
-            orgs = Organization.objects.filter(id__in=access.admin_org_ids(request), deleted_at=None)
+        orgs = Organization.objects.filter(id__in=access.admin_org_ids(request), deleted_at=None)
         scopes += [{"id": o.id, "name": o.name, "kind": "organization"} for o in orgs.order_by("name")]
         return Response(scopes)
 

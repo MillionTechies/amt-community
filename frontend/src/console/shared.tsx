@@ -6,19 +6,20 @@ import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
 import { useMe } from '../hooks'
 
-/** What the signed-in member may run, across all their organisations. */
+/**
+ * What the signed-in member may run, across all their organisations. Being a platform admin
+ * (`platform`) opens the Platform area only; inside organisations it grants nothing.
+ */
 export function useAccess() {
   const me = useMe()
   const orgs = me?.organizations ?? []
   const platform = me?.is_platform_admin ?? false
-  const events = platform || orgs.some((o) => o.can_manage_events)
-  const hackathons = platform || orgs.some((o) => o.can_manage_hackathons)
-  const team = platform || orgs.some((o) => o.is_admin)
+  const events = orgs.some((o) => o.can_manage_events)
+  const hackathons = orgs.some((o) => o.can_manage_hackathons)
+  const team = orgs.some((o) => o.is_admin)
   const any = events || hackathons || team
   const managed = new Set(orgs.flatMap((o) => o.roles))
-  const role = platform
-    ? 'Platform admin'
-    : orgs.some((o) => o.is_admin)
+  const role = orgs.some((o) => o.is_admin)
       ? 'Organisation admin'
       : managed.size > 1
         ? 'Event organiser and hackathon manager'

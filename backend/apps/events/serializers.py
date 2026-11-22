@@ -162,10 +162,7 @@ def event_context(request, events) -> dict:
     profile = access.profile_of(request)
     if profile is None:
         return context
-    if access.is_platform_admin(request):
-        context["managed_org_ids"] = {e.organization_id for e in events}
-    else:
-        context["managed_org_ids"] = access.managed_org_ids(request, access.Role.EVENT_ORGANISER)
+    context["managed_org_ids"] = access.managed_org_ids(request, access.Role.EVENT_ORGANISER)
     registrations = Registration.objects.filter(
         profile=profile, event__in=[e.id for e in events]
     ).select_related("event", "feedback")

@@ -117,7 +117,10 @@ describe('one organisation', () => {
         upcoming_events: 1,
         admin_people: [{ sub: 'a', name: 'Amina Yusuf', email: 'amina@example.com' }],
         role_people: [{ name: 'Otieno Ouma', email: 'otieno@example.com', role: 'event_organiser' }],
-        event_list: [{ slug: 'react-workshop', title: 'React workshop', status: 'published', starts_at: '2026-11-30T06:00:00Z', registered: 12 }],
+        event_list: [
+          { slug: 'react-workshop', title: 'React workshop', status: 'published', starts_at: '2026-11-30T06:00:00Z', registered: 12 },
+          { slug: 'secret-plan', title: 'Secret plan', status: 'draft', starts_at: '2026-12-30T06:00:00Z', registered: 0 },
+        ],
         hackathon_list: [{ slug: 'climate-hack', title: 'Climate hack', status: 'judging', starts_at: '2026-12-01T06:00:00Z' }],
         overrides: [{ group: 'Email', keys: ['from_address', 'reply_to'] }],
       }),
@@ -132,8 +135,10 @@ describe('one organisation', () => {
     expect(screen.getByText('1 upcoming')).toBeInTheDocument()
     expect(screen.getByText('Last event 30 Nov 2026')).toBeInTheDocument()
 
-    expect(within(panel('Events (1)')).getByRole('link', { name: /React workshop\s*30 Nov 2026 · 12 registered/ })).toHaveAttribute('href', '/manage/events/react-workshop')
-    expect(within(panel('Hackathons (1)')).getByRole('link', { name: /Climate hack/ })).toHaveAttribute('href', '/manage/hackathons/climate-hack')
+    expect(within(panel('Events (2)')).getByRole('link', { name: /React workshop\s*30 Nov 2026 · 12 registered/ })).toHaveAttribute('href', '/events/react-workshop')
+    // A draft has no public page, so it is not a link.
+    expect(within(panel('Events (2)')).getByText('Secret plan').closest('a')).toBeNull()
+    expect(within(panel('Hackathons (1)')).getByRole('link', { name: /Climate hack/ })).toHaveAttribute('href', '/hackathons/climate-hack')
     expect(within(panel('Admins')).getByText('amina@example.com')).toBeInTheDocument()
     const roles = panel('Organisers and managers')
     expect(within(roles).getByText('Otieno Ouma')).toBeInTheDocument()

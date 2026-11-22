@@ -25,14 +25,15 @@ def field(groups, key):
 
 
 def test_who_can_change_what(root, admin, bob, org, other_org):
-    assert [s["id"] for s in root.get("/api/configuration/").json()][0] == "platform"
+    # Platform admins change the platform's settings, not an organisation's.
+    assert [s["id"] for s in root.get("/api/configuration/").json()] == ["platform"]
     assert [s["id"] for s in admin.get("/api/configuration/").json()] == [org.id]
     assert bob.get("/api/configuration/").json() == []
 
     assert admin.get("/api/configuration/platform/").status_code == 403
     assert admin.get(f"/api/configuration/{other_org.id}/").status_code == 403
     assert bob.get(f"/api/configuration/{org.id}/").status_code == 403
-    assert root.get(f"/api/configuration/{org.id}/").status_code == 200
+    assert root.get(f"/api/configuration/{org.id}/").status_code == 403
 
     # Organisations override only what makes sense per organisation.
     org_keys = {f["key"] for g in admin.get(f"/api/configuration/{org.id}/").json() for f in g["fields"]}

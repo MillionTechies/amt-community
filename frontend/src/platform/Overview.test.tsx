@@ -31,7 +31,7 @@ describe('platform overview', () => {
     expect(within(hackathons).getAllByRole('meter').map((m) => m.getAttribute('aria-label'))).toEqual(['published', 'completed'])
 
     const newest = within(panel('Newest events')).getByRole('link', { name: /React workshop/ })
-    expect(newest).toHaveAttribute('href', '/manage/events/react-workshop')
+    expect(newest).toHaveAttribute('href', '/events/react-workshop')
     expect(newest).toHaveTextContent('Acme Labs · 30 Nov 2026 · added today')
   })
 

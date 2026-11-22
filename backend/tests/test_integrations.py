@@ -190,11 +190,13 @@ def test_only_an_organisations_organisers_connect_to_its_app(bob, org, fake):
     assert not fake.calls
 
 
-def test_platform_admins_see_every_organisations_own_app(admin, org, other_org, fake):
+def test_platform_admins_see_only_the_apps_of_organisations_they_run(admin, org, other_org, fake):
     Setting.objects.create(organization=other_org, key="zoom.client_id", value="uon")
     Setting.objects.create(organization=other_org, key="zoom.client_secret", value=seal("uon-secret"))
     root = sign_in("root", platform_admin=True)
-    zoom_apps = {(i["app"], i["app_name"]) for i in root.get("/api/integrations/").json() if i["id"] == "zoom"}
+    assert {i["app"] for i in root.get("/api/integrations/").json() if i["id"] == "zoom"} == {None}
+    uon_admin = sign_in("root2", platform_admin=True, admin_of=[other_org])
+    zoom_apps = {(i["app"], i["app_name"]) for i in uon_admin.get("/api/integrations/").json() if i["id"] == "zoom"}
     assert zoom_apps == {(None, "A Million Techies"), (other_org.id, "UON")}
     # The organisation's own admins do not run other organisations' events.
     assert {i["app"] for i in admin.get("/api/integrations/").json() if i["id"] == "zoom"} == {None}

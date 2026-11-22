@@ -336,14 +336,16 @@ def test_hackathon_announcements(admin, bob, carol, anonymous, org):
     assert str(Announcement.objects.get()) == "Kick-off moved"
 
 
-def test_platform_admins_see_and_manage_every_hackathon(admin, org, other_org):
+def test_platform_admins_do_not_run_other_organisations_hackathons(admin, org, other_org):
     draft = create_hackathon(admin, org, publish=False)
     rival = sign_in("rita", admin_of=[other_org])
     theirs = create_hackathon(rival, other_org, title="Theirs")
     root = sign_in("root", platform_admin=True)
-    listed = root.get("/api/hackathons/?scope=managed").json()["results"]
-    assert {h["slug"] for h in listed} == {draft["slug"], theirs["slug"]}
-    assert all(h["can_manage"] for h in listed)
+    assert root.get("/api/hackathons/?scope=managed").json()["results"] == []
+    listed = root.get("/api/hackathons/").json()["results"]
+    assert [h["slug"] for h in listed] == [theirs["slug"]] and not listed[0]["can_manage"]
+    assert root.get(f"/api/hackathons/{draft['slug']}/").status_code == 404
+    assert root.patch(f"/api/hackathons/{theirs['slug']}/", {"title": "Mine now"}, format="json").status_code == 403
     # An organisation's admins manage only their own.
     assert [h["slug"] for h in rival.get("/api/hackathons/?scope=managed").json()["results"]] == [theirs["slug"]]
 

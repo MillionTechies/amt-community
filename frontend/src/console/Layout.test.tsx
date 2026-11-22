@@ -95,9 +95,9 @@ describe('signed in', () => {
   })
 
   it('takes a platform admin to the platform area', async () => {
-    const { user } = renderConsole(SHELL, {}, { member: me({ full_name: 'Root', is_platform_admin: true }) })
+    const { user } = renderConsole(SHELL, {}, { member: me({ full_name: 'Root', is_platform_admin: true, organizations: [membership({ is_admin: true })] }) })
     const nav = within(await screen.findByRole('complementary'))
-    expect(nav.getByText('Platform admin', { selector: 'span' })).toBeInTheDocument()
+    expect(nav.getByText('Organisation admin', { selector: 'span' })).toBeInTheDocument()
     expect(nav.getByRole('link', { name: 'Team and roles' })).toBeInTheDocument()
     await user.click(nav.getByRole('link', { name: 'Platform admin' }))
     expect(currentPath()).toBe('/platform')
@@ -156,7 +156,7 @@ describe('the mobile menu', () => {
   })
 
   it('closes when switching to the member view or the platform area', async () => {
-    const { user } = renderConsole(SHELL, {}, { member: me({ is_platform_admin: true }) })
+    const { user } = renderConsole(SHELL, {}, { member: me({ is_platform_admin: true, organizations: [membership({ is_admin: true })] }) })
     await user.click(await screen.findByRole('button', { name: 'Open menu' }))
     await user.click(within(screen.getByRole('dialog')).getByRole('link', { name: 'Platform admin' }))
     expect(currentPath()).toBe('/platform')

@@ -75,12 +75,13 @@ def test_role_needs_a_member_who_has_signed_in(admin, org):
     assert response.status_code == 400
 
 
-def test_platform_admin_manages_every_organization(org, other_org):
-    root = sign_in("root", platform_admin=True)
+def test_platform_admins_manage_only_their_own_organizations(org, other_org):
+    root = sign_in("root", platform_admin=True, admin_of=[org])
     me = root.get("/api/me/").json()
     assert me["is_platform_admin"] is True
-    assert {o["alias"] for o in me["organizations"] if o["can_manage_events"]} == {"jkuat", "uon"}
-    assert root.get(f"/api/organizations/{other_org.id}/roles/").status_code == 200
+    assert [o["alias"] for o in me["organizations"]] == ["jkuat"]
+    assert root.get(f"/api/organizations/{org.id}/roles/").status_code == 200
+    assert root.get(f"/api/organizations/{other_org.id}/roles/").status_code == 403
 
 
 def test_initials():

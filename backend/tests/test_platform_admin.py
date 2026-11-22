@@ -53,7 +53,7 @@ def test_organisations_and_their_detail(root, admin, bob, org, other_org):
     assert rows["jkuat"]["admins"] == 1 and rows["jkuat"]["events"] == 1 and rows["jkuat"]["registrations"] == 1
     assert rows["uon"]["events"] == 0
 
-    root.put(f"/api/configuration/{org.id}/", {"values": {"email.from_name": "JKUAT Club"}}, format="json")
+    admin.put(f"/api/configuration/{org.id}/", {"values": {"email.from_name": "JKUAT Club"}}, format="json")
     detail = root.get(f"/api/platform/organizations/{org.id}/").json()
     assert detail["admin_people"][0]["name"] == "Alice"
     assert detail["event_list"][0]["registered"] == 1
