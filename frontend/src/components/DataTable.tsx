@@ -68,11 +68,18 @@ export function DataTable<T>({
   const slots = useMemo(
     () =>
       Object.fromEntries(
-        columns.flatMap((c, i) => (c.cell ? [[i, (_: unknown, row: { __row: T }) => <>{c.cell!(row.__row)}</>]] : [])),
+        // Draw the cell for display only; sorting and searching use the column's `value`.
+        columns.flatMap((c, i) =>
+          c.cell
+            ? [[i, (data: unknown, type: string, row: { __row: T }) => (type === 'display' ? <>{c.cell!(row.__row)}</> : data)]]
+            : [],
+        ),
       ),
     [columns],
   )
 
+  // Callers rebuild columns every render; their titles are what matter here.
+  const optionsKey = [columns.map((c) => c.title).join('|'), pageLength, empty, searchPlaceholder, order?.join()].join('\n')
   const options = useMemo(
     () => ({
       pageLength,
@@ -119,14 +126,14 @@ export function DataTable<T>({
         tr.addEventListener('keydown', (e) => e.key === 'Enter' && open.current?.(row.__row))
       },
     }),
-    // Callers rebuild columns every render; their titles are what matter here.
-    [columns.map((c) => c.title).join('|'), pageLength, empty, searchPlaceholder, order?.join()],
+    [optionsKey],
   )
 
   return (
     <div className="amt-dt">
       {toolbar && <div className="amt-dt__toolbar">{toolbar}</div>}
-      <DT ref={table} data={data} options={options} slots={slots} className="display" />
+      {/* DataTables reads its options once, so a change of options draws a new table. */}
+      <DT key={optionsKey} ref={table} data={data} options={options} slots={slots} className="display" />
     </div>
   )
 }

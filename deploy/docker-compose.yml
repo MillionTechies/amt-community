@@ -1,0 +1,93 @@
+# Production Community: API, worker, web app and PostgreSQL, behind the server's Caddy.
+#
+#   cp .env.example .env   # fill it in
+#   ./deploy.sh            # builds, migrates, starts and checks (see README.md)
+#
+# Caddy runs in its own container and reaches the services over the Docker network
+# named by PROXY_NETWORK, as amt-community-api:8000 and amt-community-web:80. Nothing
+# is published on the host. Service names are prefixed `amt-community-` because that
+# network is shared with other projects (the identity server's `amt-keycloak` among
+# them): a plain `api` or `db` would clash with theirs in Docker's DNS.
+name: amt-community
+
+x-api: &api
+  build:
+    context: ..
+    dockerfile: deploy/api.Dockerfile
+  image: amt-community-api:local
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DB_HOST: amt-community-db
+    DB_PORT: "5432"
+    DB_NAME: community
+    DB_USER: community
+    DJANGO_DEBUG: "false"
+  volumes:
+    - media:/app/media
+  depends_on:
+    amt-community-db:
+      condition: service_healthy
+
+services:
+  amt-community-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: community
+      POSTGRES_USER: community
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U community -d community"]
+      interval: 10s
+      retries: 10
+
+  amt-community-api:
+    <<: *api
+    networks: [internal, proxy]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/stats/', timeout=5)"
+      interval: 15s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
+
+  # Sends queued emails and reminders, retries failures, syncs organisations.
+  amt-community-worker:
+    <<: *api
+    command: ["python", "manage.py", "run_worker"]
+    networks: [internal]
+
+  amt-community-web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+      args:
+        VITE_API_URL: ${API_URL:?set API_URL in .env}
+    image: amt-community-web:local
+    restart: unless-stopped
+    volumes:
+      - media:/srv/media:ro
+    networks: [proxy]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+networks:
+  internal:
+  proxy:
+    name: ${PROXY_NETWORK:?set PROXY_NETWORK in .env to the Docker network Caddy is on}
+    external: true
+
+volumes:
+  db-data:
+  media:

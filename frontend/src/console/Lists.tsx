@@ -12,11 +12,14 @@ import { Button, ErrorNote, LinkButton, Spinner, StatusBadge, formatDate, label 
 import { EVENT_TYPE_LABELS } from '../pages/Events'
 import { ConsoleHeader, FilterChips, Meter, useAccess } from './shared'
 
-/** Every page of a list endpoint. The managed sets are small enough to sort and search here. */
+/**
+ * Every page of a list endpoint, whose `path` already carries a query string. The managed
+ * sets are small enough to sort and search here.
+ */
 async function fetchAll<T>(path: string): Promise<T[]> {
   const rows: T[] = []
   for (let page = 1; ; page++) {
-    const data = await api<Paginated<T>>(`${path}${path.includes('?') ? '&' : '?'}page=${page}`)
+    const data = await api<Paginated<T>>(`${path}&page=${page}`)
     rows.push(...data.results)
     if (!data.next) return rows
   }

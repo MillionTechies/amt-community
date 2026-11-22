@@ -1,6 +1,7 @@
 /** Catches a crash while rendering, so the page shows what went wrong instead of going blank. */
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
 
 export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: string }, { error: Error | null }> {
   state = { error: null as Error | null }
@@ -33,4 +34,15 @@ export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: s
       </div>
     )
   }
+}
+
+/** The current route's page, with its own error screen, so the header and menus around it
+ * keep working when a page crashes. Moving to another page clears the error. */
+export function PageOutlet() {
+  const { pathname } = useLocation()
+  return (
+    <ErrorBoundary resetKey={pathname}>
+      <Outlet />
+    </ErrorBoundary>
+  )
 }

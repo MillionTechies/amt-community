@@ -22,6 +22,14 @@ if not SECRET_KEY:
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 
+# In production the API sits behind Caddy, which terminates HTTPS and forwards the
+# original scheme and host, so absolute URLs (uploaded images) come out right.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -46,6 +54,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Serves the admin's and the API docs' static files from STATIC_ROOT.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -98,6 +108,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # The member-facing site, for links in emails and calendar invites.
 COMMUNITY_URL = os.environ.get("COMMUNITY_URL", "http://localhost:5173").rstrip("/")
@@ -153,7 +164,7 @@ MEDIA_S3_SECRET_ACCESS_KEY = os.environ.get("MEDIA_S3_SECRET_ACCESS_KEY", "")
 MEDIA_S3_CUSTOM_DOMAIN = os.environ.get("MEDIA_S3_CUSTOM_DOMAIN", "")
 STORAGES = {
     "default": {"BACKEND": "apps.configuration.storage.ConfiguredStorage"},
-    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

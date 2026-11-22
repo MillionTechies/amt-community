@@ -134,7 +134,8 @@ function TestEmail({ scope }: { scope: string }) {
       </form>
       <div className="mt-2 empty:hidden">
         {send.data && <Notice>Sent to {send.data.sent_to}, from {send.data.from}.</Notice>}
-        {send.error && <ErrorNote error={send.error instanceof ApiError ? (send.error.fields.to ?? send.error.message) : send.error} />}
+        {/* api() only ever throws ApiError, so the error may carry a message for the address. */}
+        {send.error && <ErrorNote error={(send.error as ApiError).fields.to ?? send.error.message} />}
       </div>
     </div>
   )

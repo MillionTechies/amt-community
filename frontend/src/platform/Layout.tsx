@@ -1,9 +1,10 @@
 /** The platform admin area: its own sidebar, set apart from the organiser console. */
 import { useEffect, useState } from 'react'
 import { useAuth } from 'react-oidc-context'
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 
 import { LogoTile } from '../components/brand'
+import { PageOutlet } from '../components/ErrorBoundary'
 import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
 import { Empty, LinkButton, Spinner } from '../components/ui'
@@ -132,7 +133,7 @@ export default function PlatformLayout() {
           <Crumbs />
           <span className="ml-auto rounded-md bg-amber-100 px-2 py-1 font-mono text-[11px] font-semibold uppercase tracking-wider text-amber-800">Whole platform</span>
         </header>
-        <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8"><Outlet /></main>
+        <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8"><PageOutlet /></main>
       </div>
     </div>
   )

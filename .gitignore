@@ -8,3 +8,8 @@ dist/
 .idea/
 *.log
 backend/media/
+.coverage
+coverage/
+staticfiles/
+deploy/.env
+deploy/backups/
