@@ -155,6 +155,16 @@ describe('form fields', () => {
     expect(screen.getByText('Keep it short')).toBeInTheDocument()
   })
 
+  it('marks a required field with an asterisk, kept out of its name', () => {
+    render(
+      <Field label="Title" required>
+        <Input required />
+      </Field>,
+    )
+    expect(screen.getByRole('textbox', { name: 'Title' })).toBeRequired()
+    expect(screen.getByText('*')).toHaveAttribute('aria-hidden', 'true')
+  })
+
   it('shows the error in place of the hint', () => {
     render(
       <Field label="Summary" hint="One line" error="Required.">

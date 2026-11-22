@@ -293,41 +293,89 @@ class _Decline(serializers.Serializer):
     note = serializers.CharField()
 
 
+TAKEN = "Keycloak already has an organisation with this name or alias. Pick another alias."
+KEYCLOAK_DOWN = "Keycloak could not create the organisation. Try again in a moment."
+
+
+def _decide(application, decision: str, *, alias: str, note: str, reviewer) -> None:
+    """Approve (creating the organisation in Keycloak) or decline one pending application, and email the applicant."""
+    if decision == "approve":
+        try:
+            onboarding.provision(application, alias)
+        except AdminAPIError as exc:
+            if exc.status_code == onboarding.ALREADY_EXISTS:
+                raise ValidationError({"alias": TAKEN}) from exc
+            error = APIException(KEYCLOAK_DOWN)
+            error.status_code = 502
+            raise error from exc
+        application.status = OrganizationApplication.Status.APPROVED
+    else:
+        application.status = OrganizationApplication.Status.DECLINED
+    application.review_note = note.strip()
+    application.reviewed_by = reviewer
+    application.reviewed_at = timezone.now()
+    application.save()
+    if decision == "approve":
+        emails.application_approved(application)
+    else:
+        emails.application_declined(application)
+
+
+def _pending():
+    return OrganizationApplication.objects.select_related("applicant").filter(
+        status=OrganizationApplication.Status.PENDING
+    )
+
+
 class ApplicationReviewView(APIView):
     """POST .../approve/ {"alias", "note"?} creates the organisation; .../decline/ {"note"} turns it down."""
 
     permission_classes = [IsPlatformAdmin]
 
     def post(self, request, application_id, decision):
-        application = get_object_or_404(
-            OrganizationApplication.objects.select_related("applicant"),
-            id=application_id, status=OrganizationApplication.Status.PENDING,
+        application = get_object_or_404(_pending(), id=application_id)
+        data = (_Approve if decision == "approve" else _Decline)(data=request.data)
+        data.is_valid(raise_exception=True)
+        _decide(
+            application, decision, alias=data.validated_data.get("alias", "").lower(),
+            note=data.validated_data["note"], reviewer=access.profile_of(request),
         )
-        if decision == "approve":
-            data = _Approve(data=request.data)
-            data.is_valid(raise_exception=True)
-            self._provision(application, data.validated_data["alias"].lower())
-            application.status = OrganizationApplication.Status.APPROVED
-        else:
-            data = _Decline(data=request.data)
-            data.is_valid(raise_exception=True)
-            application.status = OrganizationApplication.Status.DECLINED
-        application.review_note = data.validated_data["note"].strip()
-        application.reviewed_by = access.profile_of(request)
-        application.reviewed_at = timezone.now()
-        application.save()
-        if decision == "approve":
-            emails.application_approved(application)
-        else:
-            emails.application_declined(application)
         return Response(_application_row(application))
 
-    def _provision(self, application, alias):
-        try:
-            onboarding.provision(application, alias)
-        except AdminAPIError as exc:
-            if exc.status_code == onboarding.ALREADY_EXISTS:
-                raise ValidationError({"alias": "Keycloak already has an organisation with this name or alias. Pick another alias."}) from exc
-            error = APIException("Keycloak could not create the organisation. Try again in a moment.")
-            error.status_code = 502
-            raise error from exc
+
+class _Bulk(serializers.Serializer):
+    ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False, max_length=100)
+    decision = serializers.ChoiceField(choices=["approve", "decline"])
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate(self, data):
+        if data["decision"] == "decline" and data["note"].strip() == "":
+            raise ValidationError({"note": "Give a reason. It is emailed to every applicant."})
+        return data
+
+
+class ApplicationBulkReviewView(APIView):
+    """POST {"ids", "decision", "note"} decides many at once. Approvals use each one's suggested alias.
+
+    One failing (a taken name, Keycloak down) does not stop the others; it is reported back.
+    """
+
+    permission_classes = [IsPlatformAdmin]
+
+    def post(self, request):
+        data = _Bulk(data=request.data)
+        data.is_valid(raise_exception=True)
+        decision, note = data.validated_data["decision"], data.validated_data["note"]
+        done, failed = [], []
+        for application in _pending().filter(id__in=data.validated_data["ids"]).order_by("created_at"):
+            try:
+                _decide(
+                    application, decision, alias=onboarding.suggest_alias(application.name),
+                    note=note, reviewer=access.profile_of(request),
+                )
+                done.append(application.id)
+            except ValidationError:
+                failed.append({"id": application.id, "name": application.name, "error": "Its name or alias is taken in Keycloak. Open it to pick another alias."})
+            except APIException:
+                failed.append({"id": application.id, "name": application.name, "error": KEYCLOAK_DOWN})
+        return Response({"done": done, "failed": failed})

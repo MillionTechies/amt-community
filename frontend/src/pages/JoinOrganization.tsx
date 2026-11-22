@@ -9,32 +9,22 @@ import { useAuth } from 'react-oidc-context'
 import { ApiError, api } from '../api'
 import type { ApplicationStatus, OrganizationApplication, OrganizationKind } from '../api'
 import { Icon } from '../components/icons'
-import type { IconName } from '../components/icons'
-import { Badge, Button, Card, ErrorNote, Field, Input, Notice, PageHeader, Select, Textarea, formatDate } from '../components/ui'
+import { Badge, Button, Card, ErrorNote, Field, Input, PageHeader, Select, Textarea, formatDate } from '../components/ui'
 import { useAct, useOrganiserSignIn, useSignIn, useSignUp } from '../hooks'
 
-const KINDS: { value: OrganizationKind; label: string; blurb: string; icon: IconName }[] = [
-  { value: 'institution', label: 'University, college or school', blurb: 'Run tech events for your students and staff.', icon: 'school' },
-  { value: 'community', label: 'Tech community', blurb: 'Meetups, study groups, conferences, GDGs and more.', icon: 'users' },
-  { value: 'company', label: 'Company', blurb: 'Host workshops and hackathons, and meet talent.', icon: 'code' },
-  { value: 'group', label: 'Club or student group', blurb: 'A campus club, chapter or society.', icon: 'sparkles' },
-  { value: 'nonprofit', label: 'Non-profit or foundation', blurb: 'Programmes that bring more people into tech.', icon: 'globe' },
-  { value: 'other', label: 'Something else', blurb: 'Tell us about it.', icon: 'star' },
-]
-
-const BENEFITS: { icon: IconName; title: string; text: string }[] = [
-  { icon: 'calendar', title: 'Events', text: 'Workshops and meetups with registration, waiting lists, QR tickets and check-in.' },
-  { icon: 'trophy', title: 'Hackathons', text: 'Teams, project submissions, judges, scoring and a public leaderboard.' },
-  { icon: 'users', title: 'Your team', text: 'Make people event organisers or hackathon managers for your organisation.' },
-  { icon: 'star', title: 'Certificates', text: 'Attendees get participation certificates anyone can verify.' },
-  { icon: 'video', title: 'Your own tools', text: 'Use your Google, Microsoft or Zoom account and your own email sender.' },
-  { icon: 'megaphone', title: 'Reach', text: 'Your events are listed for every member of A Million Techies.' },
+const KINDS: { value: OrganizationKind; label: string }[] = [
+  { value: 'institution', label: 'University, college or school' },
+  { value: 'community', label: 'Tech community' },
+  { value: 'company', label: 'Company' },
+  { value: 'group', label: 'Club or student group' },
+  { value: 'nonprofit', label: 'Non-profit or foundation' },
+  { value: 'other', label: 'Something else' },
 ]
 
 const STEPS = [
-  ['Apply', 'Sign in with your A Million Techies account and tell us about your organisation. It takes two minutes.'],
-  ['We review it', 'Our team checks every application, usually within two working days, and emails you the answer.'],
-  ['Start organising', 'You become your organisation’s admin. Create events, run hackathons and add your team.'],
+  ['Apply', 'Tell us about your organisation.'],
+  ['We review it', 'Usually within two working days.'],
+  ['Start organising', 'You become its admin and can add your team.'],
 ]
 
 const STATUS: Record<ApplicationStatus, { tone: string; text: string }> = {
@@ -73,33 +63,33 @@ function ApplicationForm() {
         }}
       >
         <h2 className="text-lg font-semibold">Tell us about your organisation</h2>
-        <Field label="Organisation name" error={errors.name}>
+        <Field label="Organisation name" required error={errors.name}>
           <Input required maxLength={255} placeholder="For example: Moi University, PyData Nairobi" value={form.name} onChange={set('name')} />
         </Field>
-        <Field label="What kind of organisation is it?" error={errors.kind}>
+        <Field label="What kind of organisation is it?" required error={errors.kind}>
           <Select required value={form.kind} onChange={set('kind')}>
             <option value="" disabled>Choose one</option>
             {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
           </Select>
         </Field>
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Website or social page" hint="Optional" error={errors.website}>
+          <Field label="Website or social page" error={errors.website}>
             <Input type="url" placeholder="https://" value={form.website} onChange={set('website')} />
           </Field>
-          <Field label="Where are you based?" hint="Optional" error={errors.location}>
+          <Field label="Where are you based?" error={errors.location}>
             <Input maxLength={255} placeholder="City, country" value={form.location} onChange={set('location')} />
           </Field>
         </div>
-        <Field label="About your organisation" hint="Who you are and who your members are." error={errors.about}>
+        <Field label="About your organisation" required hint="Who you are and who your members are." error={errors.about}>
           <Textarea required value={form.about} onChange={set('about')} />
         </Field>
-        <Field label="What would you like to run here?" hint="Optional. Meetups, workshops, a hackathon, a bootcamp…" error={errors.plans}>
+        <Field label="What would you like to run here?" hint="Meetups, workshops, a hackathon, a bootcamp…" error={errors.plans}>
           <Textarea rows={3} value={form.plans} onChange={set('plans')} />
         </Field>
-        <Field label="Phone number" hint="Optional. In case we need to reach you quickly." error={errors.contact_phone}>
+        <Field label="Phone number" hint="In case we need to reach you quickly." error={errors.contact_phone}>
           <Input type="tel" maxLength={40} value={form.contact_phone} onChange={set('contact_phone')} />
         </Field>
-        <p className="text-sm text-stone-500">You will be the organisation’s first admin, and can add more people once it is approved.</p>
+        <p className="text-sm text-stone-500"><span className="text-red-600">*</span> Required</p>
         <ErrorNote error={send.error} />
         <Button type="submit" disabled={send.isPending}>{send.isPending ? 'Sending…' : 'Send application'}</Button>
       </form>
@@ -139,9 +129,7 @@ function SignedOut() {
   return (
     <Card className="space-y-4 text-center">
       <p className="text-lg font-semibold">Ready to apply?</p>
-      <p className="text-stone-600">
-        Applications come from a member account, which becomes your organisation’s first admin. Creating one is free.
-      </p>
+      <p className="text-stone-600">You need a free account to apply. It becomes your organisation’s admin.</p>
       <div className="flex flex-wrap justify-center gap-3">
         <Button onClick={signUp}>Create an account</Button>
         <Button variant="secondary" onClick={signIn}>Sign in to apply</Button>
@@ -159,50 +147,19 @@ export default function JoinOrganization() {
   })
 
   return (
-    <div className="space-y-12">
+    <div className="mx-auto max-w-5xl">
       <PageHeader
         eyebrow="For organisations"
-        title="Bring your organisation to the community"
-        subtitle="Universities, companies, tech communities and student groups run their events and hackathons on A Million Techies Community. Joining is free."
+        title="Bring your organisation"
+        subtitle="Universities, companies, tech communities and student groups run their events and hackathons here. It’s free."
       />
-
-      <section aria-labelledby="who" className="space-y-4">
-        <h2 id="who" className="text-xl font-bold">Who can join</h2>
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {KINDS.map((k) => (
-            <li key={k.value} className="flex gap-3 rounded-xl border border-stone-200 bg-white p-4">
-              <Icon name={k.icon} className="h-9 w-9 shrink-0 rounded-lg bg-brand-50 p-2 text-brand-700" />
-              <span>
-                <span className="block font-semibold">{k.label}</span>
-                <span className="block text-sm text-stone-600">{k.blurb}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section aria-labelledby="get" className="space-y-4">
-        <h2 id="get" className="text-xl font-bold">What you get</h2>
-        <ul className="grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
-          {BENEFITS.map((b) => (
-            <li key={b.title} className="flex gap-3">
-              <Icon name={b.icon} className="mt-0.5 h-5 w-5 shrink-0 text-brand-700" />
-              <span>
-                <span className="block font-semibold">{b.title}</span>
-                <span className="block text-sm text-stone-600">{b.text}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <div className="grid gap-8 lg:grid-cols-5">
-        <section aria-labelledby="how" className="space-y-4 lg:col-span-2">
-          <h2 id="how" className="text-xl font-bold">How it works</h2>
-          <ol className="space-y-5">
+      <div className="grid gap-8 lg:grid-cols-3">
+        <section aria-labelledby="how" className="space-y-4">
+          <h2 id="how" className="eyebrow text-stone-700">How it works</h2>
+          <ol className="space-y-4">
             {STEPS.map(([title, text], i) => (
-              <li key={title} className="flex gap-4">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ink font-mono text-sm font-semibold text-white">{i + 1}</span>
+              <li key={title} className="flex gap-3">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-ink font-mono text-xs font-semibold text-white">{i + 1}</span>
                 <span>
                   <span className="block font-semibold">{title}</span>
                   <span className="block text-sm text-stone-600">{text}</span>
@@ -210,12 +167,10 @@ export default function JoinOrganization() {
               </li>
             ))}
           </ol>
-          <Notice tone="amber">
-            Already on Community? Ask your organisation’s admin to add you. They can make you an event organiser or hackathon manager.
-          </Notice>
+          <p className="text-sm text-stone-500">Already on Community? Ask your organisation’s admin to add you.</p>
         </section>
 
-        <div id="apply" className="space-y-6 lg:col-span-3">
+        <div id="apply" className="space-y-6 lg:col-span-2">
           {auth.isAuthenticated ? (
             <>
               <ErrorNote error={applications.error} />

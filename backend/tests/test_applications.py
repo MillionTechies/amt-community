@@ -34,7 +34,7 @@ class FakeKeycloak:
         self.calls.append(("create", name, alias))
         if self.create_error:
             raise self.create_error
-        return "kc-moi"
+        return f"kc-{alias.split('-')[0]}"
 
     def list_org_groups(self, org_id):
         return self.groups
@@ -57,7 +57,7 @@ def keycloak(monkeypatch):
 
     def fake_sync(org_id, admin, repo):
         synced.append(org_id)
-        Organization.objects.create(id=org_id, name="Moi University", alias="moi-university", synced_at=timezone.now())
+        Organization.objects.create(id=org_id, name=org_id, alias=org_id.removeprefix("kc-"), synced_at=timezone.now())
 
     monkeypatch.setattr(onboarding, "_admin", lambda: fake)
     monkeypatch.setattr(onboarding, "sync_organization", fake_sync)
@@ -256,3 +256,66 @@ def test_the_model_reads_well():
     profile = sign_in("dan").profile
     application = OrganizationApplication.objects.create(applicant=profile, name="PyData", kind="community", about="x")
     assert str(application) == "PyData (Waiting for review)"
+
+
+# --- many at once ----------------------------------------------------------------------
+
+
+def bulk(client, **body):
+    return client.post("/api/platform/applications/bulk/", body, format="json")
+
+
+def test_approving_many_at_once_uses_suggested_aliases(bob, carol, root, keycloak):
+    apply(bob)
+    apply(carol, name="PyData Nairobi", kind="community")
+    ids = list(OrganizationApplication.objects.values_list("id", flat=True))
+    mail.outbox.clear()
+    response = bulk(root, ids=ids, decision="approve")
+    assert response.json() == {"done": sorted(ids), "failed": []}
+    assert [c[2] for c in keycloak.calls if c[0] == "create"] == ["moi-university", "pydata-nairobi"]
+    assert set(OrganizationApplication.objects.values_list("status", flat=True)) == {"approved"}
+    assert len(mail.outbox) == 2
+
+
+def test_one_failure_does_not_stop_the_rest(bob, carol, dan_and_eve, root, keycloak):
+    apply(bob)
+    apply(carol, name="PyData Nairobi")
+    apply(dan_and_eve, name="Eve Labs")
+    first, second, third = OrganizationApplication.objects.order_by("created_at")
+    errors = iter([AdminAPIError(409, "taken"), None, AdminAPIError(500, "down")])
+
+    def create(name, alias):
+        error = next(errors)
+        if error:
+            raise error
+        return f"kc-{alias}"
+
+    keycloak.create_organization = create
+    body = bulk(root, ids=[first.id, second.id, third.id], decision="approve").json()
+    assert body["done"] == [second.id]
+    assert body["failed"] == [
+        {"id": first.id, "name": "Moi University", "error": "Its name or alias is taken in Keycloak. Open it to pick another alias."},
+        {"id": third.id, "name": "Eve Labs", "error": "Keycloak could not create the organisation. Try again in a moment."},
+    ]
+
+
+@pytest.fixture
+def dan_and_eve():
+    return sign_in("dan")
+
+
+def test_declining_many_needs_one_reason_for_all(bob, carol, root):
+    apply(bob)
+    apply(carol, name="PyData Nairobi")
+    ids = list(OrganizationApplication.objects.values_list("id", flat=True))
+    assert bulk(root, ids=ids, decision="decline", note="  ").json() == {"note": ["Give a reason. It is emailed to every applicant."]}
+    mail.outbox.clear()
+    assert bulk(root, ids=ids, decision="decline", note="Not a tech organisation.").json()["done"] == sorted(ids)
+    assert set(OrganizationApplication.objects.values_list("review_note", flat=True)) == {"Not a tech organisation."}
+    assert len(mail.outbox) == 2
+    # Already decided ones are skipped.
+    assert bulk(root, ids=ids, decision="approve").json() == {"done": [], "failed": []}
+
+
+def test_bulk_review_is_for_platform_admins(bob):
+    assert bulk(bob, ids=[1], decision="decline", note="x").status_code == 403

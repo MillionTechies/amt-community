@@ -9,6 +9,7 @@ urlpatterns = [
     path("platform/members/", views.MembersView.as_view()),
     path("platform/emails/", views.EmailsView.as_view()),
     path("platform/applications/", views.ApplicationsView.as_view()),
+    path("platform/applications/bulk/", views.ApplicationBulkReviewView.as_view()),
     path(
         "platform/applications/<int:application_id>/approve/",
         views.ApplicationReviewView.as_view(),

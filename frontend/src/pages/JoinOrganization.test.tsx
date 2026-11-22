@@ -11,14 +11,9 @@ const LIST = 'GET /organizations/applications/'
 const SEND = 'POST /organizations/applications/'
 
 describe('bringing an organisation onto Community', () => {
-  it('explains who can join and asks visitors to sign in first', async () => {
+  it('explains how it works and asks visitors to sign in first', async () => {
     const { user } = renderApp(<JoinOrganization />, { route: '/organizations/join' })
-    expect(screen.getByRole('heading', { name: 'Bring your organisation to the community' })).toBeInTheDocument()
-    const who = within(screen.getByRole('region', { name: 'Who can join' }))
-    expect(who.getByText('University, college or school')).toBeInTheDocument()
-    expect(who.getByText('Tech community')).toBeInTheDocument()
-    expect(who.getByText('Club or student group')).toBeInTheDocument()
-    expect(within(screen.getByRole('region', { name: 'What you get' })).getByText('Hackathons')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Bring your organisation' })).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'How it works' })).getAllByRole('listitem')).toHaveLength(3)
 
     await user.click(screen.getByRole('button', { name: 'Create an account' }))
@@ -36,7 +31,11 @@ describe('bringing an organisation onto Community', () => {
     })
     const { user } = renderApp(<JoinOrganization />, { route: '/organizations/join' })
 
-    await user.type(await screen.findByRole('textbox', { name: 'Organisation name' }), 'PyData Nairobi')
+    const name = await screen.findByRole('textbox', { name: 'Organisation name' })
+    // Required fields carry an asterisk; optional ones do not.
+    expect(name.closest('label')).toHaveTextContent('Organisation name*')
+    expect(screen.getByRole('textbox', { name: 'Website or social page' }).closest('label')).not.toHaveTextContent('*')
+    await user.type(name, 'PyData Nairobi')
     await user.selectOptions(screen.getByRole('combobox', { name: 'What kind of organisation is it?' }), 'community')
     await user.type(screen.getByRole('textbox', { name: 'Website or social page' }), 'https://pydata.org/nairobi')
     await user.type(screen.getByRole('textbox', { name: 'Where are you based?' }), 'Nairobi')
