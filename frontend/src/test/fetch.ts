@@ -27,6 +27,16 @@ export interface Reply {
 // Build a reply with the given status and body.
 export const reply = (status: number, body?: unknown): Reply => ({ status, body, __reply: true })
 
+// A paginated list body ({ count, next, results }); pass `next` when there is a further page.
+export const page = <T,>(results: T[], next: string | null = null) => ({ count: results.length, next, results })
+
+// A handler that answers each request with the next of `results`, repeating the last one:
+// 'GET /events/demo/': sequence(event(), event({ my_registration: registration() }))
+export const sequence = (...results: unknown[]) => {
+  let calls = 0
+  return () => results[Math.min(calls++, results.length - 1)]
+}
+
 type Handler = unknown
 
 const isReply = (value: unknown): value is Reply => typeof value === 'object' && value !== null && '__reply' in value

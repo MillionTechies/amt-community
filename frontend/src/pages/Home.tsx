@@ -39,9 +39,9 @@ function External({ className = '' }: { className?: string }) {
   )
 }
 
-function Eyebrow({ children, dark = false }: { children: ReactNode; dark?: boolean }) {
+function Eyebrow({ children }: { children: ReactNode }) {
   return (
-    <p className={`mb-4 text-xs font-semibold uppercase tracking-[0.2em] ${dark ? 'text-brand-300' : 'text-brand-700'}`}>
+    <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-brand-700">
       {children}
     </p>
   )

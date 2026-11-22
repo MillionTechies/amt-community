@@ -22,6 +22,8 @@ interface Options {
   route?: string
   /** A route pattern for the element, when it reads params. */
   path?: string
+  /** Addresses visited before `route`, so going back has somewhere to go. */
+  history?: string[]
   queryClient?: QueryClient
 }
 
@@ -33,7 +35,7 @@ export const testQueryClient = () =>
 export const currentPath = () => screen.getByTestId('location').textContent
 
 // Render `ui` inside the app's providers; returns Testing Library's result plus a user-event `user` and the query client.
-export function renderApp(ui: ReactElement, { route = '/', path, queryClient = testQueryClient() }: Options = {}) {
+export function renderApp(ui: ReactElement, { route = '/', path, history = [], queryClient = testQueryClient() }: Options = {}) {
   const element = path ? (
     <Routes>
       <Route path={path} element={ui} />
@@ -43,7 +45,7 @@ export function renderApp(ui: ReactElement, { route = '/', path, queryClient = t
   const user = userEvent.setup()
   const result = render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[route]}>
+      <MemoryRouter initialEntries={[...history, route]}>
         <FeedbackProvider>
           {element}
           <LocationProbe />
