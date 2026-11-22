@@ -1,14 +1,18 @@
+from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 from django.core import mail
+from django.urls import reverse
+from django.utils import timezone
+from model_bakery import baker
 
 from apps.configuration import config, storage
 from apps.configuration.mail import ConfiguredEmailBackend
 from apps.configuration.models import Setting
+from apps.events.models import Event
 from apps.integrations.providers import PROVIDERS
 from tests.conftest import sign_in
-from tests.test_events import create_event
 
 
 @pytest.fixture
@@ -16,8 +20,12 @@ def root():
     return sign_in("root", platform_admin=True)
 
 
+def configuration(scope):
+    return reverse("configuration", kwargs={"scope": scope})
+
+
 def save(client, scope, values):
-    return client.put(f"/api/configuration/{scope}/", {"values": values}, format="json")
+    return client.put(configuration(scope), {"values": values}, format="json")
 
 
 def field(groups, key):
@@ -26,17 +34,19 @@ def field(groups, key):
 
 def test_who_can_change_what(root, admin, bob, org, other_org):
     # Platform admins change the platform's settings, not an organisation's.
-    assert [s["id"] for s in root.get("/api/configuration/").json()] == ["platform"]
-    assert [s["id"] for s in admin.get("/api/configuration/").json()] == [org.id]
-    assert bob.get("/api/configuration/").json() == []
+    scopes = reverse("configuration-scopes")
+    assert [s["id"] for s in root.get(scopes).json()] == ["platform"]
+    assert [s["id"] for s in admin.get(scopes).json()] == [org.id]
+    assert bob.get(scopes).json() == []
 
-    assert admin.get("/api/configuration/platform/").status_code == 403
-    assert admin.get(f"/api/configuration/{other_org.id}/").status_code == 403
-    assert bob.get(f"/api/configuration/{org.id}/").status_code == 403
-    assert root.get(f"/api/configuration/{org.id}/").status_code == 403
+    assert admin.get(configuration("platform")).status_code == 403
+    assert admin.get(configuration(other_org.id)).status_code == 403
+    assert bob.get(configuration(org.id)).status_code == 403
+    assert root.get(configuration(org.id)).status_code == 403
+    assert root.get(configuration("org-missing")).status_code == 404
 
     # Organisations override only what makes sense per organisation.
-    org_keys = {f["key"] for g in admin.get(f"/api/configuration/{org.id}/").json() for f in g["fields"]}
+    org_keys = {f["key"] for g in admin.get(configuration(org.id)).json() for f in g["fields"]}
     assert "google.client_id" in org_keys and "email.from_name" in org_keys
     assert "email.host" not in org_keys and "storage.bucket" not in org_keys
     assert save(admin, org.id, {"email.host": "smtp.evil.example"}).status_code == 400
@@ -45,6 +55,7 @@ def test_who_can_change_what(root, admin, bob, org, other_org):
 def test_secrets_are_stored_sealed_and_never_shown(root, settings):
     settings.GOOGLE_OAUTH_CLIENT_ID = ""
     settings.GOOGLE_OAUTH_CLIENT_SECRET = ""
+    settings.EMAIL_HOST = "smtp.from-env.example"
     assert not PROVIDERS["google"].configured()
     groups = save(root, "platform", {"google.client_id": "plat-id", "google.client_secret": "plat-secret"}).json()
     secret = field(groups, "google.client_secret")
@@ -52,19 +63,17 @@ def test_secrets_are_stored_sealed_and_never_shown(root, settings):
     assert field(groups, "google.client_id")["value"] == "plat-id"
     assert "plat-secret" not in Setting.objects.get(key="google.client_secret").value
     assert PROVIDERS["google"].configured() and PROVIDERS["google"].client_secret() == "plat-secret"
-    assert next(g for g in groups if g["id"] == "google")["redirect_uri"].endswith("/api/integrations/google/callback/")
+    redirect = next(g for g in groups if g["id"] == "google")["redirect_uri"]
+    assert redirect.endswith(reverse("integration-callback", kwargs={"provider_id": "google"}))
+    # Values from the environment show as defaults.
+    host = field(groups, "email.host")
+    assert host["value"] == "" and host["inherited"] == "smtp.from-env.example" and host["source"] == "environment"
 
     save(root, "platform", {"google.client_secret": None})
     assert not PROVIDERS["google"].configured()
 
 
-def test_environment_values_show_as_defaults(root, settings):
-    settings.EMAIL_HOST = "smtp.from-env.example"
-    host = field(root.get("/api/configuration/platform/").json(), "email.host")
-    assert host["value"] == "" and host["inherited"] == "smtp.from-env.example" and host["source"] == "environment"
-
-
-def test_an_organisation_can_use_its_own_app(root, admin, org, settings):
+def test_an_organisation_can_use_its_own_app(root, admin, org):
     save(root, "platform", {"zoom.client_id": "plat", "zoom.client_secret": "plat-secret"})
     zoom = PROVIDERS["zoom"]
     assert zoom.app_for(org.id) is None  # the platform's app until the organisation sets its own
@@ -74,93 +83,86 @@ def test_an_organisation_can_use_its_own_app(root, admin, org, settings):
     assert zoom.app_for(org.id) == org.id and zoom.client_id(org.id) == "jkuat"
     assert zoom.client_id() == "plat"  # everyone else is unaffected
 
-    listed = admin.get("/api/integrations/").json()
+    listed = admin.get(reverse("integrations")).json()
     assert {(i["id"], i["app"]) for i in listed if i["id"] == "zoom"} == {("zoom", None), ("zoom", org.id)}
-    for_org = admin.get(f"/api/integrations/?organization={org.id}").json()
-    assert next(i for i in for_org if i["id"] == "zoom")["app_name"] == "JKUAT"
+    for_org = admin.get(reverse("integrations"), {"organization": org.id}).json()
+    assert {i["id"]: i["app_name"] for i in for_org} == {"google": "A Million Techies", "microsoft": "A Million Techies", "zoom": "JKUAT"}
 
-    start = admin.post("/api/integrations/zoom/", {"app": org.id}, format="json").json()
-    assert parse_qs(urlparse(start["authorize_url"]).query)["client_id"] == ["jkuat"]
+    started = admin.post(reverse("integration", kwargs={"provider_id": "zoom"}), {"app": org.id}, format="json").json()
+    assert parse_qs(urlparse(started["authorize_url"]).query)["client_id"] == ["jkuat"]
 
 
 def test_organisations_send_under_their_own_name(root, admin, bob, org):
     save(root, "platform", {"email.from_address": "events@amilliontechies.com"})
     save(admin, org.id, {"email.from_name": "JKUAT Tech Club", "email.reply_to": "club@jkuat.example"})
-    event = create_event(admin, org)
-    bob.post(f"/api/events/{event['slug']}/register/")
+    starts_at = timezone.now() + timedelta(days=7)
+    event = baker.make(Event, organization=org, status=Event.Status.PUBLISHED, starts_at=starts_at, ends_at=starts_at + timedelta(hours=2))
+    bob.post(reverse("event-register", kwargs={"slug": event.slug}))
     message = mail.outbox[-1]
     assert message.from_email == "JKUAT Tech Club <events@amilliontechies.com>"
     assert message.reply_to == ["club@jkuat.example"]
 
 
-def test_sending_a_test_email(root):
-    response = root.post("/api/configuration/platform/test-email/", {"to": "me@example.com"}, format="json")
+def test_sending_a_test_email_shows_the_mail_servers_words(root, monkeypatch):
+    url = reverse("configuration-test-email", kwargs={"scope": "platform"})
+    response = root.post(url, {"to": "me@example.com"}, format="json")
     assert response.status_code == 200 and mail.outbox[-1].to == ["me@example.com"]
-    assert root.post("/api/configuration/platform/test-email/", {"to": "nope"}, format="json").status_code == 400
+    assert root.post(url, {"to": "nope"}, format="json").status_code == 400
+
+    def refuse(self):
+        raise ConnectionRefusedError("Connection refused")
+
+    monkeypatch.setattr("django.core.mail.EmailMultiAlternatives.send", refuse)
+    refused = root.post(url, {"to": "me@example.com"}, format="json")
+    assert refused.status_code == 400 and refused.json() == {"to": "Could not send: Connection refused"}
 
 
 def test_smtp_and_storage_follow_the_page(root, settings, tmp_path):
     save(root, "platform", {"email.host": "smtp.example.com", "email.port": "587", "email.use_tls": True, "email.username": "u", "email.password": "p"})
     backend = ConfiguredEmailBackend()
     assert (backend.host, backend.port, backend.use_tls, backend.username, backend.password) == ("smtp.example.com", 587, True, "u", "p")
-    assert save(root, "platform", {"email.port": "five"}).status_code == 400
 
     settings.MEDIA_ROOT = tmp_path
     assert type(storage.current()).__name__ == "FileSystemStorage"
+    assert storage.ConfiguredStorage().location == str(tmp_path)
     save(root, "platform", {"storage.bucket": "amt-media", "storage.access_key_id": "k", "storage.secret_access_key": "s"})
     assert type(storage.current()).__name__ == "S3Storage"
-    config.forget()
 
 
-def test_unknown_organisation_is_not_found(root):
-    assert root.get("/api/configuration/org-missing/").status_code == 404
-
-
-def test_bad_values_are_refused_and_nothing_is_saved(root):
+def test_values_are_checked_before_anything_is_saved(root):
     assert save(root, "platform", ["email.host"]).status_code == 400
-    response = save(root, "platform", {
+    refused = save(root, "platform", {
         "no.such.key": "x",
         "email.host": ["a", "list"],
+        "email.port": "five",
         "email.from_address": "not-an-address",
         "storage.endpoint_url": "s3.example.com",
         "email.use_ssl": False,
     })
-    assert response.status_code == 400
-    errors = response.json()
-    assert set(errors) == {"no.such.key", "email.host", "email.from_address", "storage.endpoint_url"}
-    assert errors["email.host"] == "Use text."
-    assert errors["email.from_address"] == "Use an email address."
-    assert errors["storage.endpoint_url"] == "Use a full address starting with https://."
+    assert refused.status_code == 400
+    assert refused.json() == {
+        "no.such.key": "This setting cannot be changed here.",
+        "email.host": "Use text.",
+        "email.port": "Use a whole number.",
+        "email.from_address": "Use an email address.",
+        "storage.endpoint_url": "Use a full address starting with https://.",
+    }
     assert not Setting.objects.exists()
 
-
-def test_good_email_url_and_boolean_values_are_saved(root):
-    response = save(root, "platform", {
+    saved = save(root, "platform", {
         "email.from_address": "events@example.com",
         "storage.endpoint_url": "https://s3.example.com",
         "email.use_ssl": False,
     })
-    assert response.status_code == 200
+    assert saved.status_code == 200
     assert config.get("email.from_address") == "events@example.com"
     assert config.get("storage.endpoint_url") == "https://s3.example.com"
     stored = Setting.objects.get(key="email.use_ssl")
-    assert stored.value == "false"
-    assert str(stored) == "email.use_ssl (platform)"
-
-
-def test_a_failed_test_email_shows_the_mail_servers_words(root, monkeypatch):
-    def refuse(self):
-        raise ConnectionRefusedError("Connection refused")
-
-    monkeypatch.setattr("django.core.mail.EmailMultiAlternatives.send", refuse)
-    response = root.post("/api/configuration/platform/test-email/", {"to": "me@example.com"}, format="json")
-    assert response.status_code == 400
-    assert response.json() == {"to": "Could not send: Connection refused"}
+    assert stored.value == "false" and str(stored) == "email.use_ssl (platform)"
 
 
 def test_settings_no_longer_known_are_ignored(org):
-    Setting.objects.create(key="retired.setting", value="old")
-    Setting.objects.create(organization=org, key="email.from_name", value="JKUAT")
-    config.forget()
+    baker.make(Setting, key="retired.setting", value="old")
+    baker.make(Setting, organization=org, key="email.from_name", value="JKUAT")
     assert config._stored() == {(org.id, "email.from_name"): "JKUAT"}
     assert str(Setting.objects.get(key="email.from_name")) == f"email.from_name ({org.id})"
