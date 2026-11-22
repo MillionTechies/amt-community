@@ -222,9 +222,10 @@ class HackathonViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get", "post"])
     def teams(self, request, slug=None):
-        """GET lists the teams. POST registers the member by creating a team they lead."""
+        """GET lists the teams, for its managers. POST registers the member by creating a team they lead."""
         hackathon = self.get_object()
         if request.method == "GET":
+            access.require_manage(request, hackathon.organization_id, ROLE)
             teams = hackathon.teams.prefetch_related("members__profile").select_related(
                 "submission"
             )

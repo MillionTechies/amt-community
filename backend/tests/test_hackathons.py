@@ -106,8 +106,9 @@ def test_team_formation(admin, bob, carol, org):
     detail = bob.get(url).json()
     assert (detail["team_count"], detail["participant_count"]) == (1, 2)
     assert detail["my_team_id"] == team.json()["id"]
-    # Other people see the team, but never its invite code.
-    listed = dan.get(f"{url}teams/").json()
+    # Only its managers list the teams, and never see invite codes.
+    assert dan.get(f"{url}teams/").status_code == 403
+    listed = admin.get(f"{url}teams/").json()
     assert listed[0]["name"] == "Byte Me" and "invite_code" not in listed[0]
     assert dan.get(f"{url}my-team/").status_code == 404
     assert bob.get("/api/hackathons/?scope=mine").json()["count"] == 1
