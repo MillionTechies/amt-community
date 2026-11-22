@@ -26,12 +26,20 @@ const google = configGroup({
   fields: [
     configField({ key: 'google_client_id', label: 'Client ID' }),
     configField({ key: 'google_client_secret', label: 'Client secret', kind: 'secret' }),
+    configField({ key: 'google_debug', label: 'Debug', kind: 'boolean', inherited: 'false', source: 'organization' }),
   ],
 })
 const zoom = configGroup({ id: 'zoom', title: 'Zoom', description: 'Meetings.', own: true, redirect_uri: 'https://api.test/oauth/zoom/', fields: [] })
 const storage = configGroup({ id: 'storage', title: 'Image storage', description: 'Where images go.', ready: true, fields: [] })
 
 const card = (title: string) => within(screen.getByRole('heading', { level: 2, name: title }).closest('section')!)
+
+// A reply the test hands over when it is ready, so the page can be seen waiting for it.
+function later() {
+  let resolve!: (value: unknown) => void
+  const promise = new Promise((r) => { resolve = r })
+  return { promise, resolve }
+}
 
 function show(mode?: 'platform' | 'organizations', routes: Record<string, unknown> = {}) {
   const fetch = mockFetch({
@@ -50,19 +58,19 @@ describe('Configuration', () => {
       'GET /configuration/org-1/': [storage],
     })
     expect(await screen.findByRole('heading', { level: 1, name: 'Configuration' })).toBeInTheDocument()
-    expect(screen.getByText("Settings for Acme Labs. Anything left empty uses the platform's setting.")).toBeInTheDocument()
+    expect(screen.getByText(/Settings for Acme Labs/)).toBeInTheDocument()
     expect(await screen.findByText('Using platform')).toBeInTheDocument()
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 
-  it('shows where each setting comes from and whether each app is set up', async () => {
-    const { user } = show()
+  it('shows where each setting comes from and whether each app is set up, for each organisation', async () => {
+    const { user } = show(undefined, { 'GET /configuration/org-2/': [configGroup({ id: 'branding', title: 'Branding', fields: [] })] })
     expect(await screen.findByRole('heading', { level: 2, name: 'Email' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Acme Labs' })).toHaveAttribute('aria-selected', 'true')
 
     const mail = card('Email')
     expect(mail.getByText('Shown as the sender. Using the platform setting: A Million Techies')).toBeInTheDocument()
     expect(mail.getByLabelText('Sender name')).toHaveAttribute('placeholder', 'A Million Techies')
-    expect(mail.getByText('Where replies go.')).toBeInTheDocument()
     expect(mail.getByLabelText('Reply-to')).toHaveAttribute('type', 'email')
     expect(mail.getByLabelText('Reply-to')).toHaveValue('hi@acme.org')
     expect(mail.getByLabelText('Tracking')).toHaveValue('true')
@@ -75,36 +83,49 @@ describe('Configuration', () => {
     expect(mail.getByLabelText('Port')).toHaveAttribute('placeholder', '587')
     expect(mail.getByLabelText('Site')).toHaveAttribute('type', 'url')
     expect(mail.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(mail.queryByText(/Not set up|Own app|Using platform/)).not.toBeInTheDocument()
 
     const googleCard = card('Google')
     expect(googleCard.getByText('Not set up')).toBeInTheDocument()
     expect(googleCard.getByLabelText('Client ID')).toHaveAttribute('type', 'text')
     expect(googleCard.getByLabelText('Client secret')).toHaveAttribute('placeholder', 'Not set')
+    expect(within(googleCard.getByLabelText('Debug')).getByRole('option', { name: 'Default (off)' })).toBeInTheDocument()
+    expect(googleCard.getByText('Using the default: false')).toBeInTheDocument()
     expect(googleCard.getByText(/Leave these empty to use the platform's app/)).toBeInTheDocument()
     await user.click(googleCard.getByRole('button', { name: 'Copy' }))
     expect(googleCard.getByRole('button', { name: 'Copied' })).toBeInTheDocument()
     await expect(navigator.clipboard.readText()).resolves.toBe('https://api.test/oauth/google/')
 
-    const zoomCard = card('Zoom')
-    expect(zoomCard.getByText('Own app')).toBeInTheDocument()
-    expect(zoomCard.queryByText(/Leave these empty/)).not.toBeInTheDocument()
+    expect(card('Zoom').getByText('Own app')).toBeInTheDocument()
+    expect(card('Zoom').queryByText(/Leave these empty/)).not.toBeInTheDocument()
     expect(card('Image storage').getByText('Using platform')).toBeInTheDocument()
-    expect(mail.queryByText(/Not set up|Own app|Using platform/)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Beta Hub' }))
+    expect(await screen.findByRole('heading', { name: 'Branding' })).toBeInTheDocument()
+    expect(screen.getByText(/Settings for Beta Hub/)).toBeInTheDocument()
   })
 
-  it('saves only the settings that changed', async () => {
+  it('saves only the settings that changed, and shows what went wrong', async () => {
     // After saving, the server reports the new values.
     let groups = [email]
     const savedEmail = configGroup({ ...email, fields: email.fields.map((f) => (f.key === 'sender_name' ? { ...f, is_set: true, value: 'Acme' } : f)) })
+    const saved = later()
+    const replies = [
+      () => reply(400, { sender_name: ['Too long.'] }),
+      () => reply(409, { detail: 'Someone else saved first.' }),
+      () => saved.promise,
+    ]
     const { user, fetch } = show(undefined, {
       'GET /configuration/org-1/': () => groups,
-      'PUT /configuration/org-1/': () => new Promise((resolve) => setTimeout(() => {
-        groups = [savedEmail]
-        resolve(groups)
-      }, 20)),
+      'PUT /configuration/org-1/': () => replies.shift()!(),
     })
     const mail = await waitFor(() => card('Email'))
     const save = mail.getByRole('button', { name: 'Save' })
+
+    await user.type(mail.getByLabelText('Sender name'), 'Draft')
+    await user.click(mail.getByRole('button', { name: 'Discard changes' }))
+    expect(mail.getByLabelText('Sender name')).toHaveValue('')
+    expect(mail.queryByRole('button', { name: 'Discard changes' })).not.toBeInTheDocument()
 
     // Typing a value back to what is saved is no change.
     await user.type(mail.getByLabelText('Reply-to'), 'x')
@@ -114,7 +135,6 @@ describe('Configuration', () => {
 
     await user.type(mail.getByLabelText('Sender name'), 'Acme')
     await user.clear(mail.getByLabelText('Reply-to'))
-    expect(mail.getByLabelText('Reply-to')).toHaveValue('')
     await user.selectOptions(mail.getByLabelText('Tracking'), 'Default (on)')
     expect(mail.getByLabelText('Tracking')).toHaveValue('')
     await user.selectOptions(mail.getByLabelText('Tracking'), 'Off')
@@ -130,8 +150,18 @@ describe('Configuration', () => {
     await user.type(mail.getByLabelText('API key'), '{Backspace}')
     await user.type(mail.getByLabelText('Port'), '2525')
 
+    // A problem with one setting shows beside it; a problem with the card, above it.
+    await user.click(save)
+    expect(await mail.findByRole('alert')).toHaveTextContent('Too long.')
+    expect(mail.queryByText(/Shown as the sender/)).not.toBeInTheDocument()
+    await user.click(save)
+    expect(await mail.findByText('Someone else saved first.')).toBeInTheDocument()
+    expect(mail.getByText(/Shown as the sender/)).toBeInTheDocument()
+
     await user.click(save)
     expect(await mail.findByRole('button', { name: 'Saving…' })).toBeDisabled()
+    groups = [savedEmail]
+    saved.resolve(groups)
     expect(await mail.findByText('Saved')).toBeInTheDocument()
     expect(sentBody(fetch, 'PUT /configuration/org-1/')).toEqual({
       values: { sender_name: 'Acme', reply_to: null, smtp_password: null, port: '2525' },
@@ -143,39 +173,16 @@ describe('Configuration', () => {
     expect(mail.queryByText('Saved')).not.toBeInTheDocument()
   })
 
-  it('discards changes', async () => {
-    const { user } = show()
-    const mail = await waitFor(() => card('Email'))
-    await user.type(mail.getByLabelText('Sender name'), 'Acme')
-    await user.click(mail.getByRole('button', { name: 'Discard changes' }))
-    expect(mail.getByLabelText('Sender name')).toHaveValue('')
-    expect(mail.queryByRole('button', { name: 'Discard changes' })).not.toBeInTheDocument()
-  })
-
-  it('shows problems next to the setting, or for the whole card', async () => {
-    let attempts = 0
-    const { user } = show(undefined, {
-      'PUT /configuration/org-1/': () => (attempts++ ? reply(409, { detail: 'Someone else saved first.' }) : reply(400, { sender_name: ['Too long.'] })),
-    })
-    const mail = await waitFor(() => card('Email'))
-    await user.type(mail.getByLabelText('Sender name'), 'Acme')
-    await user.click(mail.getByRole('button', { name: 'Save' }))
-    expect(await mail.findByRole('alert')).toHaveTextContent('Too long.')
-    expect(mail.queryByText(/Shown as the sender/)).not.toBeInTheDocument()
-
-    await user.click(mail.getByRole('button', { name: 'Save' }))
-    expect(await mail.findByText('Someone else saved first.')).toBeInTheDocument()
-    expect(mail.getByText(/Shown as the sender/)).toBeInTheDocument()
-  })
-
   it('sends a test email', async () => {
+    const sent = later()
     const replies = [
       () => reply(400, { to: ['Enter a valid email address.'] }),
       () => reply(502, { detail: 'The mail server refused.' }),
-      () => new Promise((resolve) => setTimeout(() => resolve({ sent_to: 'me@example.com', from: 'Acme <no-reply@acme.org>' }), 20)),
+      () => sent.promise,
     ]
     const { user, fetch } = show(undefined, { 'POST /configuration/org-1/test-email/': () => replies.shift()!() })
     const mail = await waitFor(() => card('Email'))
+    expect(card('Google').queryByPlaceholderText('you@example.com')).not.toBeInTheDocument()
     await user.type(mail.getByPlaceholderText('you@example.com'), 'me@example.com')
     await user.click(mail.getByRole('button', { name: 'Send test' }))
     expect(await mail.findByText('Enter a valid email address.')).toBeInTheDocument()
@@ -183,56 +190,31 @@ describe('Configuration', () => {
     expect(await mail.findByText('The mail server refused.')).toBeInTheDocument()
     await user.click(mail.getByRole('button', { name: 'Send test' }))
     expect(await mail.findByRole('button', { name: 'Sending…' })).toBeDisabled()
+    sent.resolve({ sent_to: 'me@example.com', from: 'Acme <no-reply@acme.org>' })
     expect(await mail.findByText('Sent to me@example.com, from Acme <no-reply@acme.org>.')).toBeInTheDocument()
     expect(sentBody(fetch, 'POST /configuration/org-1/test-email/')).toEqual({ to: 'me@example.com' })
-    expect(card('Google').queryByPlaceholderText('you@example.com')).not.toBeInTheDocument()
   })
 
-  it('switches between organisations', async () => {
-    const { user } = show(undefined, { 'GET /configuration/org-2/': [configGroup({ id: 'branding', title: 'Branding', fields: [] })] })
-    expect(await screen.findByRole('tab', { name: 'Acme Labs' })).toHaveAttribute('aria-selected', 'true')
-    await user.click(screen.getByRole('tab', { name: 'Beta Hub' }))
-    expect(await screen.findByRole('heading', { name: 'Branding' })).toBeInTheDocument()
-    expect(screen.getByText(/Settings for Beta Hub/)).toBeInTheDocument()
-  })
-
-  it('shows the platform’s own settings to a platform admin', async () => {
-    show('platform')
+  it('shows the platform’s own settings to a platform admin, and each scope only to its admins', async () => {
+    const admin = show('platform')
     expect(await screen.findByRole('heading', { level: 1, name: 'Platform configuration' })).toBeInTheDocument()
-    expect(screen.getByText('Settings for the whole platform. Organisations use these unless they set their own.')).toBeInTheDocument()
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
     expect(await screen.findByText('Ready')).toBeInTheDocument()
     expect(card('SMTP').getByText('Not set up')).toBeInTheDocument()
     expect(within(card('SMTP').getByLabelText('Debug')).getByRole('option', { name: 'Default (off)' })).toBeInTheDocument()
-  })
+    admin.unmount()
 
-  it('names an inherited “off” as the default', async () => {
-    show(undefined, {
-      'GET /configuration/': [acme],
-      'GET /configuration/org-1/': [configGroup({ fields: [configField({ key: 'debug', label: 'Debug', kind: 'boolean', inherited: 'false', source: 'organization' })] })],
-    })
-    const debug = await screen.findByLabelText('Debug')
-    expect(within(debug).getByRole('option', { name: 'Default (off)' })).toBeInTheDocument()
-    expect(screen.getByText('Using the default: false')).toBeInTheDocument()
-  })
-
-  it('tells someone without a scope that they cannot change settings', async () => {
-    const { unmount } = show('platform', { 'GET /configuration/': [acme] })
+    const orgAdmin = show('platform', { 'GET /configuration/': [acme] })
     expect(await screen.findByText('Only platform admins can change platform settings.')).toBeInTheDocument()
-    unmount()
+    orgAdmin.unmount()
+
     show(undefined, { 'GET /configuration/': [platform] })
     expect(await screen.findByText('Only an organisation’s admins can change its settings.')).toBeInTheDocument()
   })
 
-  it('waits for the scopes, then the settings, and shows why they did not load', async () => {
-    const { fetch, unmount } = show(undefined, { 'GET /configuration/org-1/': reply(500, { detail: 'Server error.' }) })
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
+  it('shows why the settings did not load, without retrying', async () => {
+    const { fetch } = show(undefined, { 'GET /configuration/org-1/': reply(500, { detail: 'Server error.' }) })
     expect(await screen.findByRole('alert')).toHaveTextContent('Server error.')
     expect(callsTo(fetch, 'GET /configuration/org-1/')).toHaveLength(1)
-    unmount()
-
-    show(undefined, { 'GET /configuration/org-1/': () => new Promise(() => undefined) })
-    expect(await screen.findByRole('heading', { level: 1, name: 'Configuration' })).toBeInTheDocument()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
   })
 })

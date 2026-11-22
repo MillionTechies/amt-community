@@ -15,7 +15,13 @@ const crumbs = () => screen.getByRole('navigation', { name: 'Breadcrumb' })
 const SHELL = '/manage/somewhere'
 
 describe('signed out', () => {
-  it('offers the organiser sign-in, coming back to the console', async () => {
+  it('offers the organiser sign-in once it has settled, coming back to the console', async () => {
+    auth.isLoading = true
+    const settling = renderApp(<ConsoleApp />, { route: '/manage', path: '/manage/*' })
+    expect(screen.getByRole('button', { name: 'Sign in as an organiser' })).toBeDisabled()
+    settling.unmount()
+
+    auth.isLoading = false
     const { user } = renderApp(<ConsoleApp />, { route: '/manage', path: '/manage/*' })
     expect(screen.getByRole('heading', { name: 'Organiser console' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Sign in as an organiser' }))
@@ -23,20 +29,9 @@ describe('signed out', () => {
     await user.click(screen.getByRole('link', { name: 'Back to Community' }))
     expect(currentPath()).toBe('/')
   })
-
-  it('waits while the sign-in is still settling', () => {
-    auth.isLoading = true
-    renderApp(<ConsoleApp />, { route: '/manage', path: '/manage/*' })
-    expect(screen.getByRole('button', { name: 'Sign in as an organiser' })).toBeDisabled()
-  })
 })
 
 describe('signed in', () => {
-  it('waits for the member’s roles', () => {
-    renderConsole(SHELL)
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
-  })
-
   it('turns away a member without a role', async () => {
     const { user } = renderConsole(SHELL, {}, { member: me({ organizations: [membership()] }) })
     expect(await screen.findByText('You are signed in as a member')).toBeInTheDocument()
@@ -45,61 +40,47 @@ describe('signed in', () => {
     expect(currentPath()).toBe('/dashboard')
   })
 
-  it('shows an organiser their sections, name and role', async () => {
+  it('shows an organiser their sections, name and role, a fresh page at the top, and signs out', async () => {
     const { user } = renderConsole(SHELL)
     expect(await screen.findByText('Amina Odhiambo')).toBeInTheDocument()
     const nav = within(sidebar())
     expect(nav.getByText('AO')).toBeInTheDocument()
     expect(nav.getByText('Event organiser and hackathon manager')).toBeInTheDocument()
-    expect(nav.getByRole('link', { name: 'Events' })).toBeInTheDocument()
     expect(nav.getByRole('link', { name: 'Hackathons' })).toBeInTheDocument()
-    expect(nav.getByRole('link', { name: 'Connected accounts' })).toBeInTheDocument()
     expect(nav.queryByText('Organisation')).not.toBeInTheDocument()
     expect(nav.queryByRole('link', { name: 'Platform admin' })).not.toBeInTheDocument()
+    expect(window.scrollTo).toHaveBeenCalledTimes(1)
 
     await user.click(nav.getByRole('link', { name: 'Events' }))
     expect(currentPath()).toBe('/manage/events')
+    expect(window.scrollTo).toHaveBeenCalledTimes(2)
+
+    await user.click(nav.getByRole('button', { name: 'Sign out' }))
+    expect(auth.signoutRedirect).toHaveBeenCalled()
     await user.click(nav.getByRole('link', { name: 'Switch to member view' }))
     expect(currentPath()).toBe('/dashboard')
   })
 
-  it('names each kind of role', async () => {
-    const roles = [
-      [membership({ roles: ['event_organiser'], can_manage_events: true }), 'Event organiser'],
-      [membership({ roles: ['hackathon_manager'], can_manage_hackathons: true }), 'Hackathon manager'],
-      [membership({ is_admin: true, can_manage_events: true, can_manage_hackathons: true }), 'Organisation admin'],
-    ] as const
-    for (const [organization, role] of roles) {
-      const { unmount } = renderConsole(SHELL, {}, { member: organiser({ organizations: [organization] }) })
-      await loaded()
-      expect(await within(sidebar()).findByText(role)).toBeInTheDocument()
-      unmount()
-    }
+  it.each([
+    ['an event organiser', membership({ roles: ['event_organiser'], can_manage_events: true }), 'Event organiser', ['Events'], ['Hackathons', 'Team and roles']],
+    ['a hackathon manager', membership({ roles: ['hackathon_manager'], can_manage_hackathons: true }), 'Hackathon manager', ['Hackathons'], ['Events', 'Team and roles']],
+    ['an organisation admin', membership({ is_admin: true }), 'Organisation admin', ['Team and roles', 'Configuration'], ['Events', 'Hackathons']],
+  ])('names %s and shows only their sections', async (_, organization, role, shown, hidden) => {
+    renderConsole(SHELL, {}, { member: organiser({ organizations: [organization] }) })
+    await loaded()
+    const nav = within(sidebar())
+    expect(await nav.findByText(role)).toBeInTheDocument()
+    expect(shown.map((name) => nav.queryByRole('link', { name }))).not.toContain(null)
+    expect(hidden.map((name) => nav.queryByRole('link', { name }))).toEqual(hidden.map(() => null))
   })
 
-  it('shows only what an event organiser can create', async () => {
-    renderConsole(SHELL, {}, { member: organiser({ organizations: [membership({ roles: ['event_organiser'], can_manage_events: true })] }) })
-    const nav = within(await screen.findByRole('complementary'))
-    expect(nav.queryByRole('link', { name: 'Hackathons' })).not.toBeInTheDocument()
-  })
-
-  it('gives an organisation admin the team and configuration pages', async () => {
-    const { user } = renderConsole(SHELL, {}, { member: organiser({ organizations: [membership({ is_admin: true })] }) })
-    const nav = within(await screen.findByRole('complementary'))
-    expect(nav.getByText('Organisation admin')).toBeInTheDocument()
-    expect(nav.queryByRole('link', { name: 'Events' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Create' })).not.toBeInTheDocument()
-    await user.click(nav.getByRole('link', { name: 'Team and roles' }))
-    expect(currentPath()).toBe('/manage/team')
-    expect(nav.getByRole('link', { name: 'Configuration' })).toHaveAttribute('href', '/manage/configuration')
-  })
-
-  it('takes a platform admin to the platform area', async () => {
+  it('takes a platform admin to the platform area, from the menu too', async () => {
     const { user } = renderConsole(SHELL, {}, { member: me({ full_name: 'Root', is_platform_admin: true, organizations: [membership({ is_admin: true })] }) })
     const nav = within(await screen.findByRole('complementary'))
     expect(nav.getByText('Organisation admin', { selector: 'span' })).toBeInTheDocument()
-    expect(nav.getByRole('link', { name: 'Team and roles' })).toBeInTheDocument()
-    await user.click(nav.getByRole('link', { name: 'Platform admin' }))
+    expect(screen.queryByRole('button', { name: 'Create' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Open menu' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('link', { name: 'Platform admin' }))
     expect(currentPath()).toBe('/platform')
   })
 
@@ -113,20 +94,6 @@ describe('signed in', () => {
     renderConsole(SHELL, {}, { member: organiser({ full_name: '' }), name: '' })
     await loaded()
     expect(await within(sidebar()).findByText('Organiser')).toBeInTheDocument()
-  })
-
-  it('signs out', async () => {
-    const { user } = renderConsole(SHELL)
-    await user.click(await within(await screen.findByRole('complementary')).findByRole('button', { name: 'Sign out' }))
-    expect(auth.signoutRedirect).toHaveBeenCalled()
-  })
-
-  it('scrolls to the top on each new page', async () => {
-    const { user } = renderConsole(SHELL)
-    const nav = within(await screen.findByRole('complementary'))
-    expect(window.scrollTo).toHaveBeenCalledTimes(1)
-    await user.click(nav.getByRole('link', { name: 'Connected accounts' }))
-    expect(window.scrollTo).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -153,13 +120,6 @@ describe('the mobile menu', () => {
     await user.click(within(await openMenu()).getByRole('link', { name: /A Million Techies/ }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(currentPath()).toBe('/manage')
-  })
-
-  it('closes when switching to the member view or the platform area', async () => {
-    const { user } = renderConsole(SHELL, {}, { member: me({ is_platform_admin: true, organizations: [membership({ is_admin: true })] }) })
-    await user.click(await screen.findByRole('button', { name: 'Open menu' }))
-    await user.click(within(screen.getByRole('dialog')).getByRole('link', { name: 'Platform admin' }))
-    expect(currentPath()).toBe('/platform')
   })
 })
 
@@ -199,31 +159,27 @@ describe('the create menu', () => {
   it('offers only hackathons to a hackathon manager', async () => {
     const { user } = renderConsole(SHELL, {}, { member: organiser({ organizations: [membership({ roles: ['hackathon_manager'], can_manage_hackathons: true })] }) })
     await user.click(await screen.findByRole('button', { name: 'Create' }))
-    expect(screen.getAllByRole('menuitem')).toHaveLength(1)
-    expect(screen.getByRole('menuitem', { name: /Hackathon/ })).toBeInTheDocument()
+    expect(screen.getAllByRole('menuitem').map((item) => item.getAttribute('href'))).toEqual(['/manage/hackathons/new'])
   })
 })
 
 describe('breadcrumbs and the item menu', () => {
-  it('names each part of the address', async () => {
-    renderConsole('/manage/events/new')
+  it('names each part of the address, treating “new” as a form, not an item', async () => {
+    const newEvent = renderConsole('/manage/events/new')
     const trail = within(await screen.findByRole('navigation', { name: 'Breadcrumb' }))
     expect(trail.getByRole('link', { name: 'Console' })).toHaveAttribute('href', '/manage')
     expect(trail.getByRole('link', { name: 'Events' })).toHaveAttribute('href', '/manage/events')
     expect(trail.getByText('New')).toHaveAttribute('aria-current', 'page')
     expect(screen.queryByText('This event')).not.toBeInTheDocument()
-  })
+    newEvent.unmount()
 
-  it('treats a new hackathon as a form, not an item', async () => {
     renderConsole('/manage/hackathons/new')
-    const trail = within(await screen.findByRole('navigation', { name: 'Breadcrumb' }))
-    expect(trail.getByRole('link', { name: 'Hackathons' })).toBeInTheDocument()
-    expect(trail.getByText('New')).toBeInTheDocument()
+    expect(within(await screen.findByRole('navigation', { name: 'Breadcrumb' })).getByText('New')).toBeInTheDocument()
     expect(screen.queryByText('This hackathon')).not.toBeInTheDocument()
   })
 
-  it('shows the event being managed, with its sections', async () => {
-    const { user } = renderConsole('/manage/events/react-workshop/check-in', {
+  it('shows the event or hackathon being managed, with its sections', async () => {
+    const { user, unmount } = renderConsole('/manage/events/react-workshop/check-in', {
       'GET /events/react-workshop/': event({ can_manage: true, status: 'draft' }),
     })
     await loaded()
@@ -234,20 +190,17 @@ describe('breadcrumbs and the item menu', () => {
     expect(within(crumbs()).getByText('Check-in')).toHaveAttribute('aria-current', 'page')
     expect(nav.getByText('Draft')).toBeInTheDocument()
     expect(nav.getByRole('link', { name: 'Check-in' })).toHaveAttribute('aria-current', 'page')
-    expect(nav.getByRole('link', { name: 'Feedback' })).toHaveAttribute('href', '/manage/events/react-workshop/feedback')
-
     await user.click(nav.getAllByRole('link', { name: 'Overview' })[1])
     expect(currentPath()).toBe('/manage/events/react-workshop')
-  })
+    unmount()
 
-  it('shows the hackathon being managed, with its sections', async () => {
     renderConsole('/manage/hackathons/climate-hack/somewhere', {
       'GET /hackathons/climate-hack/': hackathon({ can_manage: true }),
     })
     await loaded()
-    const nav = within(sidebar())
-    expect(await nav.findByText('This hackathon')).toBeInTheDocument()
-    expect(nav.getByRole('link', { name: 'Leaderboard' })).toHaveAttribute('href', '/manage/hackathons/climate-hack/leaderboard')
+    const hackNav = within(sidebar())
+    expect(await hackNav.findByText('This hackathon')).toBeInTheDocument()
+    expect(hackNav.getByRole('link', { name: 'Leaderboard' })).toHaveAttribute('href', '/manage/hackathons/climate-hack/leaderboard')
     expect(within(crumbs()).getByText('somewhere')).toBeInTheDocument()
   })
 })

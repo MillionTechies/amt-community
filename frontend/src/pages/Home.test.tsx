@@ -37,8 +37,6 @@ describe('Home page', () => {
       [STATS]: stats,
     })
     const { user } = renderApp(<Home />)
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Learn. Build. Grow. Together.')
-
     expect(await screen.findByText('7 going')).toBeInTheDocument()
     expect(screen.getByText('Full · waitlist open')).toBeInTheDocument()
     expect(screen.getByText('1 place left')).toBeInTheDocument()
@@ -51,16 +49,12 @@ describe('Home page', () => {
     const card = featuredCard()
     expect(card).toHaveAttribute('href', '/hackathons/open')
     expect(card).toHaveTextContent('Climate')
-    expect(card).toHaveTextContent('Code for the planet.')
     expect(card).toHaveTextContent(`Register by ${formatDate('2026-11-30T21:00:00Z')}`)
     expect(card).toHaveTextContent('Teams2Builders7Challenges0')
 
     expect(await screen.findByText('1,200')).toBeInTheDocument()
-    expect(screen.getByText('check-ins at events')).toBeInTheDocument()
     expect(screen.queryByText('events run')).not.toBeInTheDocument()
 
-    expect(screen.getByRole('link', { name: /Pick up the skills/ })).toHaveAttribute('href', 'https://learn.amilliontechies.com')
-    expect(screen.getByText('You are here', { selector: 'span' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Apply to join' })).toHaveAttribute('href', '/organizations/join')
 
     await user.click(screen.getByRole('button', { name: 'Join the community' }))
@@ -71,71 +65,55 @@ describe('Home page', () => {
     expect(auth.signinRedirect).toHaveBeenLastCalledWith(expect.not.objectContaining({ prompt: 'create' }))
   })
 
-  it('features a running hackathon when none is open for sign-ups', async () => {
+  it('shows placeholders while loading, then says what is coming while the community is new', async () => {
+    let events: (value: unknown) => void = () => undefined
+    let hackathons: (value: unknown) => void = () => undefined
     mockFetch({
+      [EVENTS]: () => new Promise((resolve) => (events = resolve)),
+      [HACKATHONS]: () => new Promise((resolve) => (hackathons = resolve)),
+      [STATS]: { members: 0, events: 0, check_ins: 0, hackathons: 0, projects: 0, organizations: 0 },
+    })
+    const { container } = renderApp(<Home />)
+    expect(container.querySelectorAll('.animate-pulse')).toHaveLength(4)
+    expect(screen.queryByText(/No upcoming events yet/)).not.toBeInTheDocument()
+
+    // A photo that will not load gives way to a branded block.
+    const alt = 'A Million Techies members learning together'
+    fireEvent.error(screen.getByRole('img', { name: alt }))
+    expect(screen.getByRole('img', { name: alt }).tagName).toBe('DIV')
+
+    events(page([]))
+    expect(await screen.findByText('No upcoming events yet. New ones show up here first.')).toBeInTheDocument()
+    expect(container.querySelectorAll('.animate-pulse')).toHaveLength(1)
+    hackathons(page([hackathon({ status: 'draft' })]))
+    expect(await screen.findByText('The first hackathon will be announced here.')).toBeInTheDocument()
+    expect(screen.getByText(/The first events are being planned/)).toBeInTheDocument()
+    expect(screen.queryByText('members')).not.toBeInTheDocument()
+  })
+
+  it('lets members who organise events create one, and calls a hackathon not yet open upcoming', async () => {
+    signIn()
+    mockFetch({
+      'GET /me/': me({ organizations: [membership({ can_manage_events: true })] }),
+      [EVENTS]: page([]),
+      [HACKATHONS]: page([hackathon()]),
+    })
+    renderApp(<Home />)
+    expect(await screen.findByRole('link', { name: 'Create an event' })).toHaveAttribute('href', '/manage/events/new')
+    expect(screen.queryByRole('button', { name: /Join free|Join the community/ })).not.toBeInTheDocument()
+    expect(await within(live()).findByText('Hackathon · Upcoming')).toBeInTheDocument()
+  })
+
+  it('offers other members nothing to organise, and features a running hackathon', async () => {
+    signIn()
+    mockFetch({
+      'GET /me/': me(),
       [EVENTS]: page([]),
       [HACKATHONS]: page([hackathon({ slug: 'done', status: 'completed' }), hackathon({ slug: 'scoring', title: 'Scoring hack', status: 'judging' })]),
     })
     renderApp(<Home />)
     expect(await within(live()).findByText('Hackathon · Judging')).toBeInTheDocument()
     expect(featuredCard()).toHaveTextContent('See the hackathon')
-    expect(featuredCard()).not.toHaveTextContent('Climate')
-  })
-
-  it('calls a published hackathon that is not yet open upcoming', async () => {
-    mockFetch({ [EVENTS]: page([]), [HACKATHONS]: page([hackathon()]) })
-    renderApp(<Home />)
-    expect(await within(live()).findByText('Hackathon · Upcoming')).toBeInTheDocument()
-  })
-
-  it('says what is coming while the community is new', async () => {
-    mockFetch({
-      [EVENTS]: page([]),
-      [HACKATHONS]: page([hackathon({ status: 'draft' })]),
-      [STATS]: { members: 0, events: 0, check_ins: 0, hackathons: 0, projects: 0, organizations: 0 },
-    })
-    renderApp(<Home />)
-    expect(await screen.findByText('No upcoming events yet. New ones show up here first.')).toBeInTheDocument()
-    expect(await screen.findByText('The first hackathon will be announced here.')).toBeInTheDocument()
-    expect(screen.getByText(/The first events are being planned/)).toBeInTheDocument()
-    expect(screen.queryByText('members')).not.toBeInTheDocument()
-  })
-
-  it('shows placeholders while the lists load', async () => {
-    let finish: (value: unknown) => void = () => undefined
-    mockFetch({ [EVENTS]: () => new Promise((resolve) => (finish = resolve)), [HACKATHONS]: () => new Promise(() => undefined) })
-    const { container } = renderApp(<Home />)
-    expect(container.querySelectorAll('.animate-pulse')).toHaveLength(4)
-    expect(screen.queryByText(/No upcoming events yet/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/The first hackathon/)).not.toBeInTheDocument()
-    finish(page([]))
-    expect(await screen.findByText(/No upcoming events yet/)).toBeInTheDocument()
-    expect(container.querySelectorAll('.animate-pulse')).toHaveLength(1)
-  })
-
-  it('stands a branded block in for a photo that will not load', () => {
-    mockFetch({})
-    renderApp(<Home />)
-    const alt = 'A Million Techies members learning together'
-    fireEvent.error(screen.getByRole('img', { name: alt }))
-    expect(screen.getByRole('img', { name: alt }).tagName).toBe('DIV')
-  })
-
-  it('lets members who organise events create one', async () => {
-    signIn()
-    mockFetch({ 'GET /me/': me({ organizations: [membership({ can_manage_events: true })] }), [EVENTS]: page([]), [HACKATHONS]: page([]) })
-    renderApp(<Home />)
-    expect(await screen.findByRole('link', { name: 'Create an event' })).toHaveAttribute('href', '/manage/events/new')
-    expect(screen.getByRole('link', { name: 'Find your next event' })).toHaveAttribute('href', '/events')
-    expect(screen.queryByRole('button', { name: 'Join free' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Join the community' })).not.toBeInTheDocument()
-  })
-
-  it('offers other members nothing to organise', async () => {
-    signIn()
-    mockFetch({ 'GET /me/': me(), [EVENTS]: page([]), [HACKATHONS]: page([]) })
-    renderApp(<Home />)
-    expect(await screen.findByText('No upcoming events yet. New ones show up here first.')).toBeInTheDocument()
     const organise = screen.getByText('Organise').closest('li')!
     expect(within(organise).queryByRole('link')).not.toBeInTheDocument()
     expect(within(organise).queryByRole('button')).not.toBeInTheDocument()

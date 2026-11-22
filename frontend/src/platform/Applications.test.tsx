@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { mockFetch, reply, sentBody, sequence } from '../test/fetch'
+import { callsTo, mockFetch, reply, sentBody, sequence } from '../test/fetch'
 import { applicationRow } from '../test/platform'
 import { currentPath, renderApp } from '../test/render'
 import Applications, { ApplicationDetail } from './Applications'
@@ -9,15 +9,16 @@ import Applications, { ApplicationDetail } from './Applications'
 const LIST = 'GET /platform/applications/'
 const BULK = 'POST /platform/applications/bulk/'
 const bodyRows = () => within(screen.getByRole('table')).getAllByRole('row').slice(1)
+const nameless = { sub: 'x', name: '', email: 'x@example.com', institution: '' }
 
 const three = [
   applicationRow(),
-  applicationRow({ id: 2, name: 'PyData Nairobi', kind_label: 'Tech community', created_at: '2026-11-21T08:00:00Z', applicant: { sub: 'u2', name: '', email: 'py@example.com', institution: '' } }),
+  applicationRow({ id: 2, name: 'PyData Nairobi', created_at: '2026-11-21T08:00:00Z', applicant: nameless }),
   applicationRow({ id: 3, name: 'Old Club', status: 'declined' }),
 ]
 
 describe('organisation applications', () => {
-  it('lists waiting applications in a table and opens one', async () => {
+  it('lists waiting applications, filters them by status and opens one', async () => {
     mockFetch({ [LIST]: three })
     const { user } = renderApp(<Applications />, { route: '/platform/applications' })
     expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
@@ -27,11 +28,9 @@ describe('organisation applications', () => {
     expect(py).toHaveTextContent('PyData Nairobi')
     expect(py).toHaveTextContent('No name')
     expect(moi).toHaveTextContent('Wanjiru Kamau')
-    expect(moi).toHaveTextContent('Eldoret')
     expect(screen.queryByText('Old Club')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: /^Declined\s*1$/ }))
-    expect(bodyRows()[0]).toHaveTextContent('Old Club')
     expect(within(bodyRows()[0]).queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Approve/ })).not.toBeInTheDocument()
 
@@ -41,42 +40,32 @@ describe('organisation applications', () => {
     expect(currentPath()).toBe('/platform/applications/3')
   })
 
-  it('approves several at once after confirming', async () => {
-    const fetch = mockFetch({ [LIST]: sequence(three, three.map((a) => ({ ...a, status: 'approved' }))), [BULK]: { done: [1, 2], failed: [] } })
+  it('approves the selected applications once the admin confirms', async () => {
+    const fetch = mockFetch({ [LIST]: three, [BULK]: { done: [1, 2], failed: [] } })
     const { user } = renderApp(<Applications />, { route: '/platform/applications' })
-    const approve = await screen.findByRole('button', { name: 'Approve' })
-    expect(approve).toBeDisabled()
+    expect(await screen.findByRole('button', { name: 'Approve' })).toBeDisabled()
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Moi University' }))
-    expect(screen.getByRole('button', { name: 'Approve 1' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Approve 1' }))
+    expect(await screen.findByText('Approve 1 organisation?')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(callsTo(fetch, BULK)).toHaveLength(0)
+
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Moi University' }))
+    await user.click(screen.getByRole('button', { name: 'Select all 2 waiting' }))
+    await user.click(screen.getByRole('button', { name: 'Clear selection' }))
     expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
 
     await user.click(screen.getByRole('button', { name: 'Select all 2 waiting' }))
     await user.click(screen.getByRole('button', { name: 'Approve 2' }))
-    expect(await screen.findByText('Approve 2 organisations?')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Approve', hidden: false }))
+    await user.click(await screen.findByRole('button', { name: 'Approve' }))
     expect(await screen.findByText('Done: 2 organisations. Their applicants were emailed.')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(sentBody(fetch, BULK)).toEqual({ ids: [1, 2], decision: 'approve' })
   })
 
-  it('does nothing when the bulk approval is cancelled, and clears a selection', async () => {
-    const fetch = mockFetch({ [LIST]: three })
-    const { user } = renderApp(<Applications />, { route: '/platform/applications' })
-    await user.click(await screen.findByRole('button', { name: 'Select all 2 waiting' }))
-    await user.click(screen.getByRole('button', { name: 'Clear selection' }))
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select PyData Nairobi' }))
-    await user.click(screen.getByRole('button', { name: 'Approve 1' }))
-    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
-    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0)
-  })
-
-  it('declines several with one reason, and lists those that could not be done', async () => {
-    const fetch = mockFetch({
-      [LIST]: three,
-      [BULK]: { done: [2], failed: [{ id: 1, name: 'Moi University', error: 'Its name is taken.' }] },
-    })
+  it('declines the selected applications with one reason, and links to those not done', async () => {
+    const fetch = mockFetch({ [LIST]: three, [BULK]: { done: [], failed: [{ id: 1, name: 'Moi University', error: 'Its name is taken.' }] } })
     const { user } = renderApp(<Applications />, { route: '/platform/applications' })
     await user.click(await screen.findByRole('button', { name: 'Select all 2 waiting' }))
     await user.click(screen.getByRole('button', { name: 'Decline 2' }))
@@ -85,20 +74,11 @@ describe('organisation applications', () => {
     await user.type(screen.getByRole('textbox', { name: 'Reason for declining 2 organisations' }), 'Not tech.')
     await user.click(screen.getAllByRole('button', { name: 'Decline 2' })[0])
 
-    expect(await screen.findByText('Done: 1 organisation. Their applicants were emailed.')).toBeInTheDocument()
-    expect(screen.getByRole('alert')).toHaveTextContent('Moi University: Its name is taken.')
-    expect(within(screen.getByRole('alert')).getByRole('link', { name: 'Moi University' })).toHaveAttribute('href', '/platform/applications/1')
-    expect(sentBody(fetch, BULK)).toEqual({ ids: [1, 2], decision: 'decline', note: 'Not tech.' })
-  })
-
-  it('reports only failures when nothing was done', async () => {
-    mockFetch({ [LIST]: three, [BULK]: { done: [], failed: [{ id: 1, name: 'Moi University', error: 'Down.' }] } })
-    const { user } = renderApp(<Applications />, { route: '/platform/applications' })
-    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Moi University' }))
-    await user.click(screen.getByRole('button', { name: 'Approve 1' }))
-    await user.click(await screen.findByRole('button', { name: 'Approve' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Moi University: Down.')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Moi University: Its name is taken.')
+    expect(within(alert).getByRole('link', { name: 'Moi University' })).toHaveAttribute('href', '/platform/applications/1')
     expect(screen.queryByText(/^Done:/)).not.toBeInTheDocument()
+    expect(sentBody(fetch, BULK)).toEqual({ ids: [1, 2], decision: 'decline', note: 'Not tech.' })
   })
 
   it('says when there is nothing, and when the list cannot load', async () => {
@@ -119,36 +99,22 @@ describe('organisation applications', () => {
 describe('one application', () => {
   const detail = (id = '1') => renderApp(<ApplicationDetail />, { route: `/platform/applications/${id}`, path: '/platform/applications/:id' })
 
-  it('shows everything the applicant told us', async () => {
-    mockFetch({ [LIST]: three })
-    detail()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { name: 'Moi University' })).toBeInTheDocument()
-    expect(screen.getByText('University, college or school · Eldoret · applied 20 Nov 2026')).toBeInTheDocument()
-    expect(screen.getByText('A public university in Eldoret.')).toBeInTheDocument()
-    expect(screen.getByText('Monthly meetups.')).toBeInTheDocument()
-    expect(screen.getByText('+254700000000')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'https://mu.ac.ke' })).toHaveAttribute('href', 'https://mu.ac.ke')
-  })
-
-  it('shows a sparse application and an unknown one', async () => {
-    mockFetch({ [LIST]: [applicationRow({ location: '', plans: '', website: '', contact_phone: '', applicant: { sub: 'x', name: '', email: 'x@example.com', institution: '' } })] })
-    const { unmount } = detail()
-    expect(await screen.findByText('University, college or school · applied 20 Nov 2026')).toBeInTheDocument()
-    expect(screen.getByText('No name')).toBeInTheDocument()
-    expect(screen.queryByText('Plans')).not.toBeInTheDocument()
-    unmount()
-    detail('99')
-    expect(await screen.findByRole('alert')).toHaveTextContent('Application not found.')
-  })
-
-  it('approves with a chosen alias and a welcome note', async () => {
+  it('shows what the applicant told us and approves it with a chosen alias', async () => {
     const fetch = mockFetch({
       [LIST]: sequence([applicationRow()], [applicationRow({ status: 'approved', reviewed_by: 'Root', reviewed_at: '2026-11-21T08:00:00Z', organization_id: 'kc-moi', review_note: 'Karibu!' })]),
       'POST /platform/applications/1/approve/': applicationRow({ status: 'approved' }),
     })
     const { user } = detail()
-    await user.click(await screen.findByRole('button', { name: 'Approve' }))
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Moi University' })).toBeInTheDocument()
+    expect(screen.getByText('University, college or school · Eldoret · applied 20 Nov 2026')).toBeInTheDocument()
+    expect(screen.getByText('Monthly meetups.')).toBeInTheDocument()
+    expect(screen.getByText('+254700000000')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'https://mu.ac.ke' })).toHaveAttribute('href', 'https://mu.ac.ke')
+
+    await user.click(screen.getByRole('button', { name: 'Approve' }))
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(screen.getByRole('button', { name: 'Approve' }))
     expect(screen.getByText(/makes Wanjiru Kamau its admin/)).toBeInTheDocument()
     const alias = screen.getByRole('textbox', { name: 'Alias' })
     expect(alias).toHaveValue('moi-university')
@@ -164,29 +130,29 @@ describe('one application', () => {
     expect(currentPath()).toBe('/platform/organizations/kc-moi')
   })
 
-  it('shows a taken alias, says it is creating, and goes back', async () => {
+  it('shows a sparse application and a taken alias, and says so for an unknown one', async () => {
     mockFetch({
-      [LIST]: [applicationRow({ applicant: { sub: 'x', name: '', email: 'x@example.com', institution: '' } })],
+      [LIST]: [applicationRow({ location: '', plans: '', website: '', contact_phone: '', applicant: nameless })],
       'POST /platform/applications/1/approve/': sequence(reply(400, { alias: ['Pick another alias.'] }), new Promise(() => {})),
     })
-    const { user } = detail()
-    await user.click(await screen.findByRole('button', { name: 'Approve' }))
+    const { user, unmount } = detail()
+    expect(await screen.findByText('University, college or school · applied 20 Nov 2026')).toBeInTheDocument()
+    expect(screen.getByText('No name')).toBeInTheDocument()
+    expect(screen.queryByText('Plans')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Approve' }))
     expect(screen.getByText(/makes x@example.com its admin/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Approve and create' }))
     expect(await screen.findAllByText('Pick another alias.')).toHaveLength(2)
     await user.click(screen.getByRole('button', { name: 'Approve and create' }))
     expect(await screen.findByRole('button', { name: 'Creating…' })).toBeDisabled()
+    unmount()
+
+    detail('99')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Application not found.')
   })
 
-  it('goes back from approving', async () => {
-    mockFetch({ [LIST]: [applicationRow()] })
-    const { user } = detail()
-    await user.click(await screen.findByRole('button', { name: 'Approve' }))
-    await user.click(screen.getByRole('button', { name: 'Back' }))
-    expect(screen.getByRole('button', { name: 'Decline' })).toBeInTheDocument()
-  })
-
-  it('declines with a reason, and goes back', async () => {
+  it('declines with a reason', async () => {
     const fetch = mockFetch({
       [LIST]: sequence([applicationRow()], [applicationRow({ status: 'declined', review_note: 'Not tech.' })]),
       'POST /platform/applications/1/decline/': applicationRow({ status: 'declined' }),

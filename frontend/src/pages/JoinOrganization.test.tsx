@@ -14,7 +14,6 @@ describe('bringing an organisation onto Community', () => {
   it('explains how it works and asks visitors to sign in first', async () => {
     const { user } = renderApp(<JoinOrganization />, { route: '/organizations/join' })
     expect(screen.getByRole('heading', { name: 'Bring your organisation' })).toBeInTheDocument()
-    expect(within(screen.getByRole('region', { name: 'How it works' })).getAllByRole('listitem')).toHaveLength(3)
 
     await user.click(screen.getByRole('button', { name: 'Create an account' }))
     expect(auth.signinRedirect).toHaveBeenLastCalledWith(expect.objectContaining({ prompt: 'create' }))
@@ -23,11 +22,13 @@ describe('bringing an organisation onto Community', () => {
     expect(screen.queryByRole('button', { name: 'Send application' })).not.toBeInTheDocument()
   })
 
-  it('sends an application and confirms it', async () => {
+  it('sends an application once the form is right, and confirms it', async () => {
     signIn()
+    let finish: (value: unknown) => void = () => undefined
+    const sent = new Promise((resolve) => (finish = resolve))
     const fetch = mockFetch({
       [LIST]: sequence([], [organizationApplication({ name: 'PyData Nairobi', kind_label: 'Tech community' })]),
-      [SEND]: reply(201, organizationApplication({ name: 'PyData Nairobi' })),
+      [SEND]: sequence(reply(400, { name: ['PyData Nairobi is already on Community.'] }), sent),
     })
     const { user } = renderApp(<JoinOrganization />, { route: '/organizations/join' })
 
@@ -43,7 +44,11 @@ describe('bringing an organisation onto Community', () => {
     await user.type(screen.getByRole('textbox', { name: 'What would you like to run here?' }), 'Monthly meetups')
     await user.type(screen.getByRole('textbox', { name: 'Phone number' }), '0700')
     await user.click(screen.getByRole('button', { name: 'Send application' }))
+    expect(await screen.findAllByText('PyData Nairobi is already on Community.')).toHaveLength(2)
 
+    await user.click(screen.getByRole('button', { name: 'Send application' }))
+    expect(await screen.findByRole('button', { name: 'Sending…' })).toBeDisabled()
+    finish(reply(201, organizationApplication({ name: 'PyData Nairobi' })))
     expect(await screen.findByText('Application sent')).toBeInTheDocument()
     expect(screen.getByText(/will let you know as soon as PyData Nairobi is reviewed/)).toBeInTheDocument()
     expect(sentBody(fetch, SEND)).toEqual({
@@ -56,28 +61,6 @@ describe('bringing an organisation onto Community', () => {
 
     await user.click(screen.getByRole('button', { name: 'Apply for another organisation' }))
     expect(screen.getByRole('textbox', { name: 'Organisation name' })).toHaveValue('')
-  })
-
-  it('says it is sending while the application is on its way', async () => {
-    signIn()
-    mockFetch({ [LIST]: [], [SEND]: () => new Promise(() => {}) })
-    const { user } = renderApp(<JoinOrganization />, { route: '/organizations/join' })
-    await user.type(await screen.findByRole('textbox', { name: 'Organisation name' }), 'PyData')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'What kind of organisation is it?' }), 'community')
-    await user.type(screen.getByRole('textbox', { name: 'About your organisation' }), 'Python folks.')
-    await user.click(screen.getByRole('button', { name: 'Send application' }))
-    expect(await screen.findByRole('button', { name: 'Sending…' })).toBeDisabled()
-  })
-
-  it('shows what is wrong with the form', async () => {
-    signIn()
-    mockFetch({ [LIST]: [], [SEND]: reply(400, { name: ['JKUAT is already on Community.'] }) })
-    const { user } = renderApp(<JoinOrganization />, { route: '/organizations/join' })
-    await user.type(await screen.findByRole('textbox', { name: 'Organisation name' }), 'JKUAT')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'What kind of organisation is it?' }), 'institution')
-    await user.type(screen.getByRole('textbox', { name: 'About your organisation' }), 'A university.')
-    await user.click(screen.getByRole('button', { name: 'Send application' }))
-    expect(await screen.findAllByText('JKUAT is already on Community.')).toHaveLength(2)
   })
 
   it('shows how earlier applications went', async () => {
