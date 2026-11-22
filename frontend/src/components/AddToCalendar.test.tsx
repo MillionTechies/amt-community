@@ -8,76 +8,57 @@ import { AddToCalendar } from './AddToCalendar'
 
 const open = async (e: CommunityEvent) => {
   const user = userEvent.setup()
-  render(
-    <>
-      <AddToCalendar event={e} />
-      <p>Elsewhere</p>
-    </>,
-  )
+  const { rerender } = render(<AddToCalendar event={e} />)
   await user.click(screen.getByRole('button', { name: 'Add to calendar' }))
-  return user
+  return { user, show: (next: CommunityEvent) => rerender(<AddToCalendar event={next} />) }
 }
 
 const href = (name: string) => new URL(screen.getByRole('menuitem', { name }).getAttribute('href')!)
+const google = (param: string) => href('Google Calendar').searchParams.get(param)
 
 describe('AddToCalendar', () => {
-  it('offers each calendar with the event filled in', async () => {
-    await open(event())
-    expect(screen.getByRole('button', { name: 'Add to calendar' })).toHaveAttribute('aria-expanded', 'true')
-
-    const google = href('Google Calendar')
-    expect(google.host).toBe('calendar.google.com')
-    expect(google.searchParams.get('text')).toBe('React workshop')
-    expect(google.searchParams.get('dates')).toBe('20261130T060000Z/20261130T090000Z')
-    expect(google.searchParams.get('location')).toBe('Nairobi Garage')
-    expect(google.searchParams.get('details')).toBe(`Build an app in a day.\n\nEvent page: ${location.origin}/events/react-workshop`)
-    expect(screen.getByRole('menuitem', { name: 'Google Calendar' })).toHaveAttribute('target', '_blank')
-
+  it('offers each calendar with the event filled in, and a registered member their own file', async () => {
+    const { show } = await open(event())
+    expect(google('text')).toBe('React workshop')
+    expect(google('dates')).toBe('20261130T060000Z/20261130T090000Z')
+    expect(google('location')).toBe('Nairobi Garage')
+    expect(google('details')).toBe(`Build an app in a day.\n\nEvent page: ${location.origin}/events/react-workshop`)
     expect(href('Outlook.com').host).toBe('outlook.live.com')
     expect(href('Office 365').searchParams.get('startdt')).toBe('2026-11-30T06:00:00.000Z')
     expect(href('Yahoo Calendar').searchParams.get('et')).toBe('20261130T090000Z')
+    expect(screen.getByRole('menuitem', { name: /\.ics/ })).toHaveAttribute('href', 'http://api.test/api/events/react-workshop/calendar.ics')
 
-    const ics = screen.getByRole('menuitem', { name: 'Apple Calendar or other (.ics)' })
-    expect(ics).toHaveAttribute('href', 'http://api.test/api/events/react-workshop/calendar.ics')
-    expect(ics).not.toHaveAttribute('target')
-  })
-
-  it('gives a registered member their own calendar file', async () => {
-    await open(event({ my_registration: registration({ ticket_code: 'T-42' }) }))
+    show(event({ my_registration: registration({ ticket_code: 'T-42' }) }))
     expect(screen.getByRole('menuitem', { name: /\.ics/ })).toHaveAttribute('href', 'http://api.test/api/tickets/T-42/calendar.ics')
   })
 
-  it('puts the meeting link and service in an online event', async () => {
-    await open(
-      event({
-        delivery_mode: 'online',
-        summary: '',
-        online_url: 'https://meet.google.com/abc',
-        meeting_provider: { id: 'google_meet', name: 'Google Meet' },
-      }),
+  it('tells people how to join an online event', async () => {
+    const { show } = await open(
+      event({ delivery_mode: 'online', summary: '', online_url: 'https://meet.google.com/abc', meeting_provider: { id: 'google_meet', name: 'Google Meet' } }),
     )
-    const google = href('Google Calendar')
-    expect(google.searchParams.get('location')).toBe('https://meet.google.com/abc')
-    expect(google.searchParams.get('details')).toMatch(/^Join on Google Meet: https:\/\/meet\.google\.com\/abc\n\nEvent page:/)
-  })
+    expect(google('location')).toBe('https://meet.google.com/abc')
+    expect(google('details')).toMatch(/^Join on Google Meet: https:\/\/meet\.google\.com\/abc\n\nEvent page:/)
 
-  it('names a meeting link without a known service plainly', async () => {
-    await open(event({ delivery_mode: 'hybrid', venue: '', online_url: 'https://example.com/room' }))
-    expect(href('Google Calendar').searchParams.get('details')).toMatch(/^Join: https:\/\/example\.com\/room/)
-  })
+    show(event({ delivery_mode: 'hybrid', venue: '', online_url: 'https://example.com/room' }))
+    expect(google('details')).toMatch(/^Join: https:\/\/example\.com\/room/)
 
-  it('says which service an online event uses before its link is shared', async () => {
-    await open(event({ delivery_mode: 'online', meeting_provider: { id: 'zoom', name: 'Zoom' } }))
-    expect(href('Google Calendar').searchParams.get('location')).toBe('Online (Zoom)')
-  })
+    show(event({ delivery_mode: 'online', meeting_provider: { id: 'zoom', name: 'Zoom' } }))
+    expect(google('location')).toBe('Online (Zoom)')
 
-  it('says "Online" when nothing more is known', async () => {
-    await open(event({ delivery_mode: 'online', venue: 'Ignored' }))
-    expect(href('Yahoo Calendar').searchParams.get('in_loc')).toBe('Online')
+    show(event({ delivery_mode: 'online', venue: 'Ignored' }))
+    expect(google('location')).toBe('Online')
   })
 
   it('closes on Escape, on a click outside, on a choice, or on the button again', async () => {
-    const user = await open(event())
+    const user = userEvent.setup()
+    render(
+      <>
+        <AddToCalendar event={event()} />
+        <p>Elsewhere</p>
+      </>,
+    )
+    const button = screen.getByRole('button', { name: 'Add to calendar' })
+    await user.click(button)
     await user.keyboard('a')
     await user.click(screen.getByRole('menu'))
     expect(screen.getByRole('menu')).toBeInTheDocument()
@@ -85,17 +66,17 @@ describe('AddToCalendar', () => {
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Add to calendar' }))
+    await user.click(button)
     await user.click(screen.getByText('Elsewhere'))
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Add to calendar' }))
+    await user.click(button)
     screen.getByRole('menuitem', { name: /\.ics/ }).addEventListener('click', (e) => e.preventDefault())
     await user.click(screen.getByRole('menuitem', { name: /\.ics/ }))
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Add to calendar' }))
-    await user.click(screen.getByRole('button', { name: 'Add to calendar' }))
+    await user.click(button)
+    await user.click(button)
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 })

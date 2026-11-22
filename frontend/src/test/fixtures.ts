@@ -13,6 +13,7 @@ import type {
   MyOrganization,
   MyRegistration,
   Organization,
+  OrganizationApplication,
   Submission,
 } from '../api'
 
@@ -148,5 +149,24 @@ export const leaderboardRow = (overrides: Partial<LeaderboardRow> = {}): Leaderb
   evaluations: 3,
   judges: 3,
   submission: submission(),
+  ...overrides,
+})
+
+// The member's own application to bring an organisation onto Community.
+export const organizationApplication = (overrides: Partial<OrganizationApplication> = {}): OrganizationApplication => ({
+  id: 1,
+  name: 'Moi University',
+  kind: 'institution',
+  kind_label: 'University, college or school',
+  website: '',
+  location: '',
+  about: 'A public university.',
+  plans: '',
+  contact_phone: '',
+  status: 'pending',
+  review_note: '',
+  organization_id: '',
+  created_at: '2026-11-20T08:00:00Z',
+  reviewed_at: null,
   ...overrides,
 })

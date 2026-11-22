@@ -115,6 +115,27 @@ export interface Me {
   organizations: MyOrganization[]
 }
 
+export type ApplicationStatus = 'pending' | 'approved' | 'declined'
+export type OrganizationKind = 'institution' | 'company' | 'community' | 'group' | 'nonprofit' | 'other'
+
+/** An application to bring an organisation onto Community (/api/organizations/applications/). */
+export interface OrganizationApplication {
+  id: number
+  name: string
+  kind: OrganizationKind
+  kind_label: string
+  website: string
+  location: string
+  about: string
+  plans: string
+  contact_phone: string
+  status: ApplicationStatus
+  review_note: string
+  organization_id: string
+  created_at: string
+  reviewed_at: string | null
+}
+
 export interface Person {
   sub: string
   name: string

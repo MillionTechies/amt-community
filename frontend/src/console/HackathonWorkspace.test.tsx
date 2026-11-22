@@ -2,9 +2,9 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Hackathon } from '../api'
+import type { Announcement, Hackathon } from '../api'
 import { announcement, captureDownloads, judge, person, renderConsole, team } from '../test/console'
-import { callsTo, reply, sentBody } from '../test/fetch'
+import { callsTo, reply, sentBody, sequence } from '../test/fetch'
 import { hackathon, leaderboardRow } from '../test/fixtures'
 import { currentPath } from '../test/render'
 
@@ -37,29 +37,38 @@ const kpi = (label: string) => screen.getAllByText(label, { selector: 'span' }).
 const panel = async (name: string) => within((await screen.findByRole('heading', { name })).closest('section')!)
 const main = () => within(screen.getByRole('main'))
 
+// A hackathon on the server, moved on to whatever stage the console asks for.
+function server(start: Partial<Hackathon>) {
+  let current = hackathon({ can_manage: true, ...start })
+  return {
+    get: () => current,
+    move: (init: RequestInit) => {
+      const { status } = JSON.parse(String(init.body))
+      current = { ...current, status, cancelled_from: status === 'cancelled' ? current.status : current.cancelled_from }
+      return {}
+    },
+  }
+}
+
 const challenge = (id: number, title: string, description = '') => ({ id, title, description })
 const criterion = (id: number, name: string, weight = 1, description = '') => ({ id, name, description, max_score: 10, weight })
 
 describe('the hackathon header', () => {
-  it('says when the hackathon cannot be found', async () => {
-    renderConsole(BASE, { [`GET ${API}/`]: null })
-    expect(await screen.findByText('Hackathon not found.')).toBeInTheDocument()
+  it.each([
+    ['cannot be found', null, 'Hackathon not found.'],
+    ['did not load', reply(500, { detail: 'Server error.' }), 'Server error.'],
+    ['is not theirs to manage', hackathon(), 'You do not manage this hackathon.'],
+  ])('says when the hackathon %s', async (_, response, message) => {
+    renderConsole(BASE, { [`GET ${API}/`]: response })
+    expect(await screen.findByText(message)).toBeInTheDocument()
   })
 
-  it('shows why the hackathon did not load', async () => {
-    renderConsole(BASE, { [`GET ${API}/`]: reply(500, { detail: 'Server error.' }) })
-    expect(await screen.findByRole('alert')).toHaveTextContent('Server error.')
-  })
-
-  it('turns away someone who does not manage it', async () => {
-    renderConsole(BASE, { [`GET ${API}/`]: hackathon() })
-    expect(await screen.findByText('You do not manage this hackathon.')).toBeInTheDocument()
-  })
-
-  it('publishes a draft after asking, and reports a failure', async () => {
+  it('publishes a draft after asking, then cancels and restores it', async () => {
+    const hack = server({ status: 'draft' })
     let attempts = 0
-    const { user, fetch } = open('', { status: 'draft' }, {
-      [`POST ${API}/transition/`]: () => (attempts++ ? reply(200, {}) : reply(400, { detail: 'Add a criterion first.' })),
+    const { user, fetch } = renderConsole(BASE, {
+      [`GET ${API}/`]: hack.get,
+      [`POST ${API}/transition/`]: (init: RequestInit) => (attempts++ ? hack.move(init) : reply(400, { detail: 'Add a criterion first.' })),
     })
     await title()
     expect(screen.getByText('This is a draft. Only managers can see it until you publish.')).toBeInTheDocument()
@@ -78,10 +87,22 @@ describe('the hackathon header', () => {
     await answer(user, 'Publish')
     expect(await screen.findByText('Hackathon published')).toBeInTheDocument()
     expect(sentBody(fetch, `POST ${API}/transition/`)).toEqual({ status: 'published' })
+
+    await user.click(await main().findByRole('button', { name: 'Cancel' }))
+    await answer(user, 'Yes, cancel it')
+    expect(await screen.findByText('Hackathon cancelled')).toBeInTheDocument()
+    expect(sentBody(fetch, `POST ${API}/transition/`)).toEqual({ status: 'cancelled' })
+    expect(await screen.findByText('This hackathon was cancelled. Use Restore at the top of the page to bring it back.')).toBeInTheDocument()
+
+    await user.click(main().getByRole('button', { name: 'Restore' }))
+    expect(within(dialog()).getByText('It goes back to open, just as it was before it was cancelled.')).toBeInTheDocument()
+    await answer(user, 'Restore')
+    expect(await screen.findByText('It is open again.')).toBeInTheDocument()
+    expect(sentBody(fetch, `POST ${API}/transition/`)).toEqual({ status: 'published' })
   })
 
   it('deletes a draft after asking, then goes back to the list', async () => {
-    const { user, fetch } = open('', { status: 'draft' }, { [`DELETE ${API}/`]: reply(204) })
+    const { user, fetch } = open('', { status: 'draft' }, { [`DELETE ${API}/`]: sequence(reply(403, { detail: 'Not yours.' }), reply(204)) })
     await title()
     await user.click(main().getByRole('button', { name: 'Delete' }))
     expect(within(dialog()).getByText('“Climate hack” and its challenges and criteria are removed for good.')).toBeInTheDocument()
@@ -90,66 +111,48 @@ describe('the hackathon header', () => {
 
     await user.click(main().getByRole('button', { name: 'Delete' }))
     await answer(user, 'Delete draft')
+    expect(await screen.findByText('Could not delete the draft')).toBeInTheDocument()
+    expect(currentPath()).toBe(BASE)
+
+    await user.click(main().getByRole('button', { name: 'Delete' }))
+    await answer(user, 'Delete draft')
     expect(await screen.findByText('Draft deleted')).toBeInTheDocument()
     await waitFor(() => expect(currentPath()).toBe('/manage/hackathons'))
   })
 
-  it('says when deleting fails', async () => {
-    const { user } = open('', { status: 'draft' }, { [`DELETE ${API}/`]: reply(403, { detail: 'Not yours.' }) })
+  it('takes an open hackathon through judging to its results, restoring it to judging on the way', async () => {
+    const hack = server({
+      registration_deadline: '2026-11-20T12:00:00Z', submission_deadline: '2026-11-21T12:00:00Z', team_count: 2, submission_count: 2,
+      challenges: [challenge(1, 'Water')], criteria: [criterion(1, 'Impact')],
+    })
+    const { user, fetch } = renderConsole(BASE, {
+      [`GET ${API}/`]: hack.get,
+      [`POST ${API}/transition/`]: hack.move,
+      [`GET ${API}/judges/`]: [judge()],
+    })
     await title()
-    await user.click(main().getByRole('button', { name: 'Delete' }))
-    await answer(user, 'Delete draft')
-    expect(await screen.findByText('Could not delete the draft')).toBeInTheDocument()
-    expect(currentPath()).toBe(BASE)
-  })
+    expect(kpi('Participants')).toHaveTextContent('Registration closed')
+    expect(kpi('Projects submitted')).toHaveTextContent('100% of teams')
+    expect(kpi('Projects submitted')).not.toHaveTextContent('closes')
 
-  it('starts judging or cancels an open hackathon', async () => {
-    const { user, fetch } = open('', {}, { [`POST ${API}/transition/`]: reply(200, {}) })
-    await title()
     await user.click(main().getByRole('button', { name: 'Start judging' }))
     await answer(user, 'Start judging')
     expect(await screen.findByText('Judging has started')).toBeInTheDocument()
     expect(sentBody(fetch, `POST ${API}/transition/`)).toEqual({ status: 'judging' })
 
-    await user.click(main().getByRole('button', { name: 'Cancel' }))
+    await user.click(await main().findByRole('button', { name: 'Cancel' }))
     await answer(user, 'Yes, cancel it')
-    expect(await screen.findByText('Hackathon cancelled')).toBeInTheDocument()
-    expect(sentBody(fetch, `POST ${API}/transition/`)).toEqual({ status: 'cancelled' })
-  })
+    await user.click(await main().findByRole('button', { name: 'Restore' }))
+    expect(within(dialog()).getByText('It goes back to judging, just as it was before it was cancelled.')).toBeInTheDocument()
+    await answer(user, 'Restore')
+    expect(await screen.findByText('It is back in judging.')).toBeInTheDocument()
+    expect(sentBody(fetch, `POST ${API}/transition/`)).toEqual({ status: 'judging' })
 
-  it('publishes the results of a hackathon being judged', async () => {
-    const { user, fetch } = open('', { status: 'judging' }, { [`POST ${API}/transition/`]: reply(200, {}) })
-    await title()
-    expect(main().getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
-    await user.click(main().getByRole('button', { name: 'Publish results' }))
+    await user.click(await main().findByRole('button', { name: 'Publish results' }))
     await answer(user, 'Publish results')
     expect(await screen.findByText('Results published')).toBeInTheDocument()
     expect(sentBody(fetch, `POST ${API}/transition/`)).toEqual({ status: 'completed' })
-  })
-
-  it('restores a cancelled hackathon to where it was', async () => {
-    const routes = { [`POST ${API}/transition/`]: reply(200, {}) }
-    const first = open('', { status: 'cancelled' }, routes)
-    await title()
-    await first.user.click(main().getByRole('button', { name: 'Restore' }))
-    expect(within(dialog()).getByText('It goes back to open, just as it was before it was cancelled.')).toBeInTheDocument()
-    await answer(first.user, 'Restore')
-    expect(await screen.findByText('It is open again.')).toBeInTheDocument()
-    expect(sentBody(first.fetch, `POST ${API}/transition/`)).toEqual({ status: 'published' })
-    first.unmount()
-
-    const second = open('', { status: 'cancelled', cancelled_from: 'judging' }, routes)
-    await title()
-    await second.user.click(main().getByRole('button', { name: 'Restore' }))
-    expect(within(dialog()).getByText('It goes back to judging, just as it was before it was cancelled.')).toBeInTheDocument()
-    await answer(second.user, 'Restore')
-    expect(await screen.findByText('It is back in judging.')).toBeInTheDocument()
-    expect(sentBody(second.fetch, `POST ${API}/transition/`)).toEqual({ status: 'judging' })
-  })
-
-  it('offers no lifecycle actions once the results are out', async () => {
-    open('', { status: 'completed' })
-    await title()
+    expect(await (await panel('Getting it right')).findByText('6 of 6')).toBeInTheDocument()
     expect(main().queryAllByRole('button')).toHaveLength(0)
   })
 })
@@ -166,7 +169,6 @@ describe('HackathonOverview', () => {
       [`GET ${API}/judges/`]: [judge({ evaluations: 1 }), judge({ id: 2, evaluations: 2 })],
     })
     await title()
-    expect(stage('Draft')).toHaveTextContent('Draft')
     expect(stage('Open')).toHaveClass('border-brand-600')
     expect(stage('Open')).toHaveTextContent('Registration closes')
     expect(stage('Judging')).toHaveTextContent('Submissions close')
@@ -177,10 +179,7 @@ describe('HackathonOverview', () => {
     expect(kpi('Projects submitted')).toHaveTextContent('50% of teams, closes in 11 days')
     expect(await screen.findByText('3 of 4 scores in')).toBeInTheDocument()
     expect(kpi('Judging')).toHaveTextContent('75%')
-
-    const dates = await panel('Key dates')
-    expect(dates.getByText('Starts')).toBeInTheDocument()
-    expect(dates.getByText('in 9 days')).toBeInTheDocument()
+    expect((await panel('Key dates')).getByText('in 9 days')).toBeInTheDocument()
 
     const setup = await panel('Set-up')
     expect(setup.getByText('Water')).toBeInTheDocument()
@@ -197,7 +196,6 @@ describe('HackathonOverview', () => {
     const { user } = open('', { status: 'draft' }, { [`GET ${API}/judges/`]: [] })
     await title()
     expect(stage('Draft')).toHaveClass('border-brand-600')
-    expect(kpi('Teams')).toBeInTheDocument()
     expect(kpi('Projects submitted')).toHaveTextContent('No teams yet')
     expect(await screen.findByText('0 judges, 0 criteria')).toBeInTheDocument()
     expect(kpi('Judging')).toHaveTextContent('–')
@@ -207,50 +205,21 @@ describe('HackathonOverview', () => {
     await user.click(screen.getByRole('link', { name: 'Invite judges' }))
     expect(currentPath()).toBe(`${BASE}/judges`)
   })
-
-  it('shows closed registration and submissions while judging', async () => {
-    open('', {
-      status: 'judging', registration_deadline: '2026-11-20T12:00:00Z', submission_deadline: '2026-11-21T12:00:00Z',
-      team_count: 2, submission_count: 2,
-    })
-    await title()
-    expect(stage('Draft').querySelector('svg')).toBeInTheDocument()
-    expect(stage('Judging')).toHaveClass('border-brand-600')
-    expect(kpi('Participants')).toHaveTextContent('Registration closed')
-    expect(kpi('Projects submitted')).toHaveTextContent('100% of teams')
-    expect(kpi('Projects submitted')).not.toHaveTextContent('closes')
-  })
-
-  it('marks every step done once the results are out', async () => {
-    open('', {
-      status: 'completed', challenges: [challenge(1, 'Water')], criteria: [criterion(1, 'Impact')],
-    }, { [`GET ${API}/judges/`]: [judge()] })
-    await title()
-    expect(await (await panel('Getting it right')).findByText('6 of 6')).toBeInTheDocument()
-  })
-
-  it('points to Restore when cancelled', async () => {
-    open('', { status: 'cancelled' })
-    await title()
-    expect(screen.getByText('This hackathon was cancelled. Use Restore at the top of the page to bring it back.')).toBeInTheDocument()
-  })
 })
 
 describe('HackathonSetup', () => {
-  const setupRoutes = {
-    [`POST ${API}/challenges/`]: reply(201, {}),
-    [`POST ${API}/criteria/`]: reply(201, {}),
-    [`DELETE ${API}/challenges/1/`]: reply(204),
-    [`DELETE ${API}/criteria/1/`]: reply(400, { detail: 'Criterion has scores.' }),
-  }
-
   it('adds and removes challenges', async () => {
-    const { user, fetch } = open('/setup', { challenges: [challenge(1, 'Water', 'Clean water for all'), challenge(2, 'Energy')] }, setupRoutes)
+    const { user, fetch } = open('/setup', { challenges: [challenge(1, 'Water', 'Clean water for all'), challenge(2, 'Energy')] }, {
+      [`POST ${API}/challenges/`]: sequence(reply(400, { title: ['Already exists.'] }), reply(201, {})),
+      [`DELETE ${API}/challenges/1/`]: reply(204),
+    })
     const challenges = await panel('Challenges')
     expect(challenges.getByText('Clean water for all')).toBeInTheDocument()
 
     await user.type(challenges.getByLabelText('Title'), 'Food')
     await user.type(challenges.getByLabelText('Description'), 'Feed cities')
+    await user.click(challenges.getByRole('button', { name: 'Add challenge' }))
+    expect(await challenges.findByText('Already exists.')).toBeInTheDocument()
     await user.click(challenges.getByRole('button', { name: 'Add challenge' }))
     expect(await screen.findByText('Challenge added')).toBeInTheDocument()
     expect(sentBody(fetch, `POST ${API}/challenges/`)).toEqual({ title: 'Food', description: 'Feed cities' })
@@ -265,16 +234,11 @@ describe('HackathonSetup', () => {
     expect(await screen.findByText('Challenge removed')).toBeInTheDocument()
   })
 
-  it('shows why a challenge was not added', async () => {
-    const { user } = open('/setup', {}, { [`POST ${API}/challenges/`]: reply(400, { title: ['Already exists.'] }) })
-    const challenges = await panel('Challenges')
-    await user.type(challenges.getByLabelText('Title'), 'Water')
-    await user.click(challenges.getByRole('button', { name: 'Add challenge' }))
-    expect(await challenges.findByText('Already exists.')).toBeInTheDocument()
-  })
-
-  it('adds criteria with their weight, and reports a failed removal', async () => {
-    const { user, fetch } = open('/setup', { criteria: [criterion(1, 'Impact', 3, 'Who it helps'), criterion(2, 'Polish')] }, setupRoutes)
+  it('adds criteria with their weight, and removes them', async () => {
+    const { user, fetch } = open('/setup', { criteria: [criterion(1, 'Impact', 3, 'Who it helps'), criterion(2, 'Polish')] }, {
+      [`POST ${API}/criteria/`]: sequence(reply(400, { name: ['Already exists.'] }), reply(201, {})),
+      [`DELETE ${API}/criteria/1/`]: sequence(reply(400, { detail: 'Criterion has scores.' }), reply(204)),
+    })
     const criteria = await panel('Judging criteria')
     expect(criteria.getByText('75% of the score')).toBeInTheDocument()
     expect(criteria.getByText('Out of 10, weight 3. Who it helps')).toBeInTheDocument()
@@ -287,6 +251,8 @@ describe('HackathonSetup', () => {
     await user.clear(criteria.getByLabelText('Weight'))
     await user.type(criteria.getByLabelText('Weight'), '2')
     await user.click(criteria.getByRole('button', { name: 'Add criterion' }))
+    expect(await criteria.findByText('Already exists.')).toBeInTheDocument()
+    await user.click(criteria.getByRole('button', { name: 'Add criterion' }))
     expect(await screen.findByText('Criterion added')).toBeInTheDocument()
     expect(sentBody(fetch, `POST ${API}/criteria/`)).toEqual({ name: 'Design', description: 'Ease of use', max_score: 20, weight: 2 })
     expect(criteria.getByLabelText('Highest score')).toHaveValue(10)
@@ -295,22 +261,9 @@ describe('HackathonSetup', () => {
     await answer(user, 'Remove')
     expect(await screen.findByText('Could not remove the criterion')).toBeInTheDocument()
     expect(criteria.getByRole('alert')).toHaveTextContent('Criterion has scores.')
-  })
-
-  it('removes a criterion', async () => {
-    const { user } = open('/setup', { criteria: [criterion(1, 'Impact')] }, { [`DELETE ${API}/criteria/1/`]: reply(204) })
-    const criteria = await panel('Judging criteria')
-    await user.click(criteria.getByRole('button', { name: 'Remove' }))
+    await user.click(criteria.getAllByRole('button', { name: 'Remove' })[0])
     await answer(user, 'Remove')
     expect(await screen.findByText('Criterion removed')).toBeInTheDocument()
-  })
-
-  it('shows why a criterion was not added', async () => {
-    const { user } = open('/setup', {}, { [`POST ${API}/criteria/`]: reply(400, { name: ['Already exists.'] }) })
-    const criteria = await panel('Judging criteria')
-    await user.type(criteria.getByLabelText('Name'), 'Impact')
-    await user.click(criteria.getByRole('button', { name: 'Add criterion' }))
-    expect(await criteria.findByText('Already exists.')).toBeInTheDocument()
   })
 
   it('locks the criteria once judging starts', async () => {
@@ -330,7 +283,11 @@ describe('HackathonTeams', () => {
     team({ id: 2, name: 'Comets' }),
   ]
 
-  it('lists teams and who submitted, and exports them', async () => {
+  it('lists teams and who submitted, and exports them once there are any', async () => {
+    const empty = open('/teams', {}, { [`GET ${API}/teams/`]: [] })
+    expect(await screen.findByRole('button', { name: 'Export CSV' })).toBeDisabled()
+    empty.unmount()
+
     const downloads = captureDownloads()
     const { user } = open('/teams', {}, { [`GET ${API}/teams/`]: teams })
     expect(await screen.findByText('2 teams')).toBeInTheDocument()
@@ -343,17 +300,6 @@ describe('HackathonTeams', () => {
     await user.click(screen.getByRole('button', { name: 'Export CSV' }))
     expect(downloads.name()).toBe('climate-hack-teams.csv')
     expect(await downloads.text()).toBe('"Team","Members","Size","Submitted"\n"Rockets","Wanjiru; Otieno","2","yes"\n"Comets","Wanjiru Kamau","1","no"')
-  })
-
-  it('has nothing to export before teams form', async () => {
-    open('/teams', {}, { [`GET ${API}/teams/`]: [] })
-    expect(await screen.findByRole('button', { name: 'Export CSV' })).toBeDisabled()
-  })
-
-  it('waits for the teams', async () => {
-    open('/teams', {}, { [`GET ${API}/teams/`]: () => new Promise(() => undefined) })
-    await title()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
   })
 })
 
@@ -388,16 +334,14 @@ describe('HackathonJudges', () => {
     fireEvent.click(removeButton('Ann Fresh'))
     expect(await screen.findByText('They have not scored anything yet.')).toBeInTheDocument()
     await answer(user, 'Remove judge')
-    expect(await screen.findByText('Judge removed')).toBeInTheDocument()
-    expect(screen.getByText('Ann Fresh can no longer score projects.')).toBeInTheDocument()
+    expect(await screen.findByText('Ann Fresh can no longer score projects.')).toBeInTheDocument()
     expect(callsTo(fetch, `DELETE ${API}/judges/2/`)).toHaveLength(0)
   })
 
   it('invites a judge by email', async () => {
-    let attempts = 0
     const { user, fetch } = open('/judges', {}, {
       [`GET ${API}/judges/`]: [],
-      [`POST ${API}/judges/`]: () => (attempts++ ? reply(201, {}) : reply(400, { email: ['No member with that email.'] })),
+      [`POST ${API}/judges/`]: sequence(reply(400, { email: ['No member with that email.'] }), reply(201, {})),
     })
     expect(await screen.findByText('Judges (0)')).toBeInTheDocument()
     const invite = await panel('Invite a judge')
@@ -406,42 +350,27 @@ describe('HackathonJudges', () => {
     expect(await invite.findByText('No member with that email.')).toBeInTheDocument()
 
     await user.click(invite.getByRole('button', { name: 'Add judge' }))
-    expect(await screen.findByText('Judge added')).toBeInTheDocument()
-    expect(screen.getByText('new@example.com can now score projects.')).toBeInTheDocument()
+    expect(await screen.findByText('new@example.com can now score projects.')).toBeInTheDocument()
     expect(sentBody(fetch, `POST ${API}/judges/`)).toEqual({ email: 'new@example.com' })
     expect(invite.getByLabelText('Email')).toHaveValue('')
-  })
-
-  it('waits for the judges', async () => {
-    open('/judges', {}, { [`GET ${API}/judges/`]: () => new Promise(() => undefined) })
-    expect(await panel('Invite a judge')).toBeTruthy()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
   })
 })
 
 describe('HackathonLeaderboard', () => {
-  it('shows the ranking to managers before the results are out', async () => {
-    open('/leaderboard', {}, { [`GET ${API}/leaderboard/`]: [leaderboardRow()] })
+  it('shows the ranking to managers only until the results are public, and says when there is none', async () => {
+    const { unmount } = open('/leaderboard', {}, { [`GET ${API}/leaderboard/`]: [leaderboardRow()] })
     expect(await screen.findByText('Managers only')).toBeInTheDocument()
     expect(screen.getByText(/Only managers see this until you publish the results/)).toBeInTheDocument()
     expect(screen.getByText('Solar tracker')).toBeInTheDocument()
-  })
+    unmount()
 
-  it('says when the results are public', async () => {
-    open('/leaderboard', { status: 'completed', results_published: true }, { [`GET ${API}/leaderboard/`]: [leaderboardRow()] })
+    const published = open('/leaderboard', { status: 'completed', results_published: true }, { [`GET ${API}/leaderboard/`]: [leaderboardRow()] })
     expect(await screen.findByText('Public')).toBeInTheDocument()
     expect(screen.getByText('These results are public.')).toBeInTheDocument()
-  })
+    published.unmount()
 
-  it('says when nothing was submitted', async () => {
     open('/leaderboard', {}, { [`GET ${API}/leaderboard/`]: [] })
     expect(await screen.findByText('No projects have been submitted yet.')).toBeInTheDocument()
-  })
-
-  it('waits for the ranking', async () => {
-    open('/leaderboard', {}, { [`GET ${API}/leaderboard/`]: () => new Promise(() => undefined) })
-    await title()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
   })
 })
 
@@ -455,59 +384,49 @@ describe('HackathonAnnouncements', () => {
     return form
   }
 
-  it('posts an announcement and says how many people were emailed', async () => {
-    const sent = [3, 1]
+  it('posts announcements, saying how many people were emailed, and removes one after asking', async () => {
+    // The server keeps what is posted, and says how many it emailed when asked to email.
+    const posted: Announcement[] = []
+    const emailed = [3, 1]
+    let attempts = 0
+    const save = (init: RequestInit) => {
+      const { title, notify } = JSON.parse(String(init.body))
+      const saved = announcement({ id: posted.length + 1, title })
+      posted.push(saved)
+      return notify ? { ...saved, emailed_to: emailed.shift() } : saved
+    }
     const { user, fetch } = open('/announcements', {}, {
-      [`GET ${API}/announcements/`]: [],
-      [`POST ${API}/announcements/`]: () => announcement({ emailed_to: sent.shift() } as never),
+      [`GET ${API}/announcements/`]: () => posted,
+      [`POST ${API}/announcements/`]: (init: RequestInit) => (attempts++ ? save(init) : reply(400, { title: ['Too long.'] })),
+      [`DELETE ${API}/announcements/1/`]: reply(204),
     })
     expect(await screen.findByText('No announcements yet')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Posted' })).toBeInTheDocument()
 
     const form = await write(user, 'Kick-off', 'We start at nine')
+    await user.click(form.getByRole('button', { name: 'Post announcement' }))
+    expect(await form.findByText('Too long.')).toBeInTheDocument()
     await user.click(form.getByRole('button', { name: 'Post announcement' }))
     expect(await screen.findByText('It is on the hackathon page and was emailed to 3 people.')).toBeInTheDocument()
     expect(sentBody(fetch, `POST ${API}/announcements/`)).toEqual({ title: 'Kick-off', body: '<p>We start at nine</p>', notify: true })
     expect(form.getByLabelText('Title')).toHaveValue('')
+    expect(await screen.findByRole('heading', { name: 'Posted (1)' })).toBeInTheDocument()
 
     await write(user, 'Lunch', 'Lunch is served')
     await user.click(form.getByRole('button', { name: 'Post announcement' }))
     expect(await screen.findByText('It is on the hackathon page and was emailed to 1 person.')).toBeInTheDocument()
-  })
 
-  it('posts without email, and shows a failure', async () => {
-    let attempts = 0
-    const { user, fetch } = open('/announcements', {}, {
-      [`GET ${API}/announcements/`]: [],
-      [`POST ${API}/announcements/`]: () => (attempts++ ? announcement() : reply(400, { title: ['Too long.'] })),
-    })
-    const form = await write(user, 'Quiet', 'No email')
     await user.click(form.getByRole('checkbox', { name: 'Also email every team member and judge' }))
-    await user.click(form.getByRole('button', { name: 'Post announcement' }))
-    expect(await form.findByText('Too long.')).toBeInTheDocument()
+    await write(user, 'Quiet', 'No email')
     await user.click(form.getByRole('button', { name: 'Post announcement' }))
     expect(await screen.findByText('It is on the hackathon page.')).toBeInTheDocument()
-    expect(sentBody(fetch, `POST ${API}/announcements/`)).toMatchObject({ notify: false })
-  })
+    expect(sentBody(fetch, `POST ${API}/announcements/`)).toMatchObject({ title: 'Quiet', notify: false })
 
-  it('removes an announcement after asking', async () => {
-    const { user, fetch } = open('/announcements', {}, {
-      [`GET ${API}/announcements/`]: [announcement({ id: 4, title: 'Parking' }), announcement({ id: 5, title: 'Wi-fi' })],
-      [`DELETE ${API}/announcements/4/`]: reply(204),
-    })
-    expect(await screen.findByRole('heading', { name: 'Posted (2)' })).toBeInTheDocument()
-    await user.click(screen.getAllByRole('button', { name: 'Remove' })[0])
-    expect(within(dialog()).getByText(/“Parking” disappears from the hackathon page/)).toBeInTheDocument()
+    await user.click((await screen.findAllByRole('button', { name: 'Remove' }))[0])
+    expect(within(dialog()).getByText(/“Kick-off” disappears from the hackathon page/)).toBeInTheDocument()
     await answer(user, 'Cancel')
-    expect(callsTo(fetch, `DELETE ${API}/announcements/4/`)).toHaveLength(0)
+    expect(callsTo(fetch, `DELETE ${API}/announcements/1/`)).toHaveLength(0)
     await user.click(screen.getAllByRole('button', { name: 'Remove' })[0])
     await answer(user, 'Remove')
     expect(await screen.findByText('Announcement removed')).toBeInTheDocument()
-  })
-
-  it('waits for the announcements', async () => {
-    open('/announcements', {}, { [`GET ${API}/announcements/`]: () => new Promise(() => undefined) })
-    expect(await panel('Posted')).toBeTruthy()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
   })
 })

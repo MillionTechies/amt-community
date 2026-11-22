@@ -72,14 +72,11 @@ def _usable_orgs(request) -> dict:
     """{organisation id: name} for the organisations whose apps this member may connect to."""
     from amt_auth.django.models import Organization
 
-    orgs = Organization.objects.filter(deleted_at=None)
-    if not access.is_platform_admin(request):
-        ids = (
-            access.managed_org_ids(request, access.Role.EVENT_ORGANISER)
-            | access.managed_org_ids(request, access.Role.HACKATHON_MANAGER)
-        )
-        orgs = orgs.filter(id__in=ids)
-    return dict(orgs.values_list("id", "name"))
+    ids = (
+        access.managed_org_ids(request, access.Role.EVENT_ORGANISER)
+        | access.managed_org_ids(request, access.Role.HACKATHON_MANAGER)
+    )
+    return dict(Organization.objects.filter(deleted_at=None, id__in=ids).values_list("id", "name"))
 
 
 def _app_entry(provider, app, app_name, connections):

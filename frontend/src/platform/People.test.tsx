@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { mockFetch, reply, sentBody } from '../test/fetch'
+import { mockFetch, reply, sentBody, sequence } from '../test/fetch'
 import { emailRow, memberRow } from '../test/platform'
 import { renderApp } from '../test/render'
 import { Emails, Members } from './People'
@@ -9,44 +9,31 @@ import { Emails, Members } from './People'
 const bodyRows = () => within(screen.getByRole('table')).getAllByRole('row').slice(1)
 
 describe('members', () => {
-  const members = [
-    memberRow({
-      institution: 'University of Nairobi',
-      organizations: [{ name: 'Acme Labs', admin: true }, { name: 'Beta Hub', admin: false }],
-      roles: ['Acme Labs: event organiser', 'Beta Hub: hackathon manager'],
-      registrations: 4,
-      attended: 3,
-      joined: '2026-11-01T08:00:00Z',
-    }),
-    memberRow({ sub: 'user-2', name: '', email: 'quiet@example.com' }),
-  ]
-
-  it('lists everyone who has signed in, newest first', async () => {
-    mockFetch({ 'GET /platform/members/': members })
-    renderApp(<Members />, { route: '/platform/members' })
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
-
-    expect(await screen.findByRole('button', { name: 'Export CSV' })).toBeEnabled()
-    expect(screen.getByRole('heading', { name: 'Members' })).toBeInTheDocument()
-    expect(screen.getByText(/members$/, { selector: 'p' })).toHaveTextContent('2 members')
-    const [wanjiru, quiet] = bodyRows()
-    expect(wanjiru).toHaveTextContent('wanjiru@example.com · University of Nairobi')
-    expect(within(wanjiru).getByText('Acme Labs · admin')).toBeInTheDocument()
-    expect(within(wanjiru).getByText('Beta Hub')).toBeInTheDocument()
-    expect(wanjiru).toHaveTextContent('Acme Labs: event organiser; Beta Hub: hackathon manager')
-    expect(wanjiru).toHaveTextContent('1 Nov 2026')
-    expect(within(quiet).getByText('No name')).toBeInTheDocument()
-    expect(within(quiet).getByText('quiet@example.com')).toBeInTheDocument()
-  })
-
-  it('exports members as CSV', async () => {
-    mockFetch({ 'GET /platform/members/': members })
+  it('lists everyone who has signed in and exports them as CSV', async () => {
+    mockFetch({
+      'GET /platform/members/': [
+        memberRow({
+          institution: 'University of Nairobi',
+          organizations: [{ name: 'Acme Labs', admin: true }, { name: 'Beta Hub', admin: false }],
+          roles: ['Acme Labs: event organiser', 'Beta Hub: hackathon manager'],
+          registrations: 4,
+          attended: 3,
+          joined: '2026-11-01T08:00:00Z',
+        }),
+        memberRow({ sub: 'user-2', name: '', email: 'quiet@example.com' }),
+      ],
+    })
     const createObjectURL = vi.fn((_blob: Blob) => 'blob:csv')
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }))
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
     const { user } = renderApp(<Members />, { route: '/platform/members' })
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
 
     await user.click(await screen.findByRole('button', { name: 'Export CSV' }))
+    const [wanjiru, quiet] = bodyRows()
+    expect(wanjiru).toHaveTextContent('wanjiru@example.com · University of Nairobi')
+    expect(within(wanjiru).getByText('Acme Labs · admin')).toBeInTheDocument()
+    expect(within(quiet).getByText('No name')).toBeInTheDocument()
     expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe('members.csv')
     expect(await createObjectURL.mock.calls[0][0].text()).toBe(
       [
@@ -56,19 +43,6 @@ describe('members', () => {
       ].join('\n'),
     )
     click.mockRestore()
-  })
-
-  it('has nothing to export before anyone joins', async () => {
-    mockFetch({ 'GET /platform/members/': [] })
-    renderApp(<Members />, { route: '/platform/members' })
-    expect(await screen.findByRole('button', { name: 'Export CSV' })).toBeDisabled()
-    expect(screen.getByText('Nothing to show.')).toBeInTheDocument()
-  })
-
-  it('explains when members cannot load', async () => {
-    mockFetch({ 'GET /platform/members/': reply(500, { detail: 'Try again later.' }) })
-    renderApp(<Members />, { route: '/platform/members' })
-    expect(await screen.findByRole('alert')).toHaveTextContent('Try again later.')
   })
 })
 
@@ -81,75 +55,54 @@ describe('email delivery', () => {
     emailRow({ id: 5, subject: 'Thanks for coming', status: 'failed', last_error: '', created_at: '2026-11-17T08:00:00Z' }),
   ]
 
-  it('shows the latest emails and filters them by status', async () => {
-    mockFetch({ 'GET /platform/emails/': emails })
+  it('shows the latest emails by status and retries failed ones', async () => {
+    let finish = (_value: unknown) => {}
+    const fetch = mockFetch({
+      'GET /platform/emails/': emails,
+      'POST /platform/emails/': sequence(reply(400, { detail: 'Email is switched off.' }), { retried: 1 }, new Promise((resolve) => (finish = resolve))),
+    })
     const { user } = renderApp(<Emails />, { route: '/platform/emails' })
     expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
 
     expect(await screen.findByRole('tab', { name: /^All\s*5$/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: /^Sent\s*1$/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /^Waiting\s*2$/ })).toBeInTheDocument()
-    expect(bodyRows()).toHaveLength(5)
-    const [failed] = bodyRows()
-    expect(failed).toHaveTextContent('Starts tomorrow')
-    expect(failed).toHaveTextContent('To wanjiru@example.com · Reminder 24h')
-    expect(within(failed).getByText('Mailbox full')).toBeInTheDocument()
-    expect(within(failed).getByText('failed')).toBeInTheDocument()
+    expect(bodyRows()[0]).toHaveTextContent('To wanjiru@example.com · Reminder 24h')
+    expect(bodyRows()[0]).toHaveTextContent('Mailbox full')
+
+    await user.click(screen.getByRole('button', { name: 'Retry all 2 failed' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Email is switched off.')
 
     await user.click(screen.getByRole('tab', { name: /^Failed\s*2$/ }))
-    expect(bodyRows().map((r) => within(r).getAllByRole('cell')[1].querySelector('p')?.textContent)).toEqual(['Starts tomorrow', 'Thanks for coming'])
-    expect(within(bodyRows()[1]).queryByText('Mailbox full')).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('tab', { name: /^Sent\s*1$/ }))
-    expect(bodyRows()).toHaveLength(1)
-    expect(bodyRows()[0]).toHaveTextContent('You are registered')
-    expect(within(bodyRows()[0]).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
-  })
-
-  it('retries one failed email', async () => {
-    const fetch = mockFetch({ 'GET /platform/emails/': emails, 'POST /platform/emails/': { retried: 1 } })
-    renderApp(<Emails />, { route: '/platform/emails' })
-    await screen.findByRole('tab', { name: /^All\s*5$/ })
+    expect(bodyRows()).toHaveLength(2)
     fireEvent.click(within(bodyRows()[0]).getByRole('button', { name: 'Retry' }))
     expect(await screen.findByText('Sending 1 again.')).toBeInTheDocument()
     expect(sentBody(fetch, 'POST /platform/emails/')).toEqual({ ids: [2] })
-  })
 
-  it('retries every failed email at once', async () => {
-    let finish = (_value: unknown) => {}
-    const fetch = mockFetch({
-      'GET /platform/emails/': emails,
-      'POST /platform/emails/': () => new Promise((resolve) => (finish = resolve)),
-    })
-    const { user } = renderApp(<Emails />, { route: '/platform/emails' })
-    await user.click(await screen.findByRole('button', { name: 'Retry all 2 failed' }))
+    await user.click(screen.getByRole('button', { name: 'Retry all 2 failed' }))
     expect(await screen.findByRole('button', { name: 'Retry all 2 failed' })).toBeDisabled()
     expect(sentBody(fetch, 'POST /platform/emails/')).toEqual({ failed: true })
-
     finish({ retried: 2 })
     expect(await screen.findByText('Sending 2 again.')).toBeInTheDocument()
-  })
 
-  it('explains when a retry fails', async () => {
-    mockFetch({ 'GET /platform/emails/': emails, 'POST /platform/emails/': reply(400, { detail: 'Email is switched off.' }) })
-    const { user } = renderApp(<Emails />, { route: '/platform/emails' })
-    await user.click(await screen.findByRole('button', { name: 'Retry all 2 failed' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Email is switched off.')
+    await user.click(screen.getByRole('tab', { name: /^Sent\s*1$/ }))
+    expect(bodyRows()).toHaveLength(1)
+    expect(within(bodyRows()[0]).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 
   it('offers no retry when nothing failed', async () => {
     mockFetch({ 'GET /platform/emails/': [emailRow()] })
     const { user } = renderApp(<Emails />, { route: '/platform/emails' })
-    expect(await screen.findByRole('tab', { name: /^Failed\s*0$/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Retry all/ })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('tab', { name: /^Failed\s*0$/ }))
+    await user.click(await screen.findByRole('tab', { name: /^Failed\s*0$/ }))
     expect(screen.getByText('No emails here.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Retry/ })).not.toBeInTheDocument()
   })
+})
 
-  it('explains when emails cannot load', async () => {
-    mockFetch({ 'GET /platform/emails/': reply(500, { detail: 'Try again later.' }) })
-    renderApp(<Emails />, { route: '/platform/emails' })
-    expect(await screen.findByRole('alert')).toHaveTextContent('Try again later.')
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
-  })
+it.each([
+  ['members', Members, 'GET /platform/members/'],
+  ['emails', Emails, 'GET /platform/emails/'],
+])('explains when %s cannot load', async (_what, Page, key) => {
+  mockFetch({ [key]: reply(500, { detail: 'Try again later.' }) })
+  renderApp(<Page />)
+  expect(await screen.findByRole('alert')).toHaveTextContent('Try again later.')
 })

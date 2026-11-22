@@ -11,17 +11,15 @@ function Page({ broken }: { broken: boolean }) {
 }
 
 describe('ErrorBoundary', () => {
-  it('shows the page when nothing goes wrong', () => {
-    render(<ErrorBoundary><Page broken={false} /></ErrorBoundary>)
-    expect(screen.getByText('All good')).toBeInTheDocument()
-  })
-
-  it('shows what went wrong, offers a reload, and clears on another page', async () => {
+  it('shows the page, or what went wrong with a reload, and clears on another page', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const reload = vi.fn()
     vi.stubGlobal('location', { ...window.location, reload })
 
-    const { rerender } = render(<ErrorBoundary resetKey="/events/a"><Page broken /></ErrorBoundary>)
+    const { rerender } = render(<ErrorBoundary><Page broken={false} /></ErrorBoundary>)
+    expect(screen.getByText('All good')).toBeInTheDocument()
+
+    rerender(<ErrorBoundary resetKey="/events/a"><Page broken /></ErrorBoundary>)
     expect(screen.getByRole('heading', { name: 'Something went wrong on this page' })).toBeInTheDocument()
     expect(screen.getByText('Cannot read the event')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/')

@@ -1,18 +1,66 @@
 from datetime import timedelta
 
 import pytest
+from django.core import mail
+from django.urls import reverse
 from django.utils import timezone
+from model_bakery import baker
 
-from apps.hackathons.models import Announcement, Challenge, Criterion, Hackathon, Submission, Team, TeamMember
+from apps.accounts.models import RoleAssignment
+from apps.hackathons.models import (
+    Announcement,
+    Challenge,
+    Criterion,
+    Evaluation,
+    Hackathon,
+    Judge,
+    Score,
+    Submission,
+    Team,
+    TeamMember,
+)
 from apps.hackathons.scoring import leaderboard
 from tests.conftest import in_days, sign_in
+
+Status = Hackathon.Status
+
+
+def make_hackathon(org, **fields):
+    now = timezone.now()
+    defaults = {
+        "title": "Build for Health",
+        "status": Status.PUBLISHED,
+        "starts_at": now + timedelta(days=10),
+        "ends_at": now + timedelta(days=12),
+        "registration_deadline": now + timedelta(days=9),
+        "submission_deadline": now + timedelta(days=12),
+        "min_team_size": 1,
+        "max_team_size": 2,
+    }
+    return baker.make(Hackathon, organization=org, **{**defaults, **fields})
+
+
+def make_team(hackathon, leader, *members, name="Byte Me"):
+    team = baker.make(Team, hackathon=hackathon, name=name)
+    baker.make(TeamMember, team=team, hackathon=hackathon, profile=leader.profile, is_leader=True)
+    TeamMember.objects.bulk_create(
+        [TeamMember(team=team, hackathon=hackathon, profile=member.profile) for member in members]
+    )
+    return team
+
+
+def url(name, hackathon, **kwargs):
+    return reverse(name, kwargs={"slug": hackathon.slug, **kwargs})
+
+
+def child_url(name, hackathon, **kwargs):
+    return reverse(name, kwargs={"hackathon_slug": hackathon.slug, **kwargs})
 
 
 def hackathon_data(org, **overrides):
     return {
         "organization_id": org.id,
         "title": "Build for Health",
-        "theme": "Digital health",
         "starts_at": in_days(10),
         "ends_at": in_days(12),
         "registration_deadline": in_days(9),
@@ -23,479 +71,414 @@ def hackathon_data(org, **overrides):
     }
 
 
-def create_hackathon(client, org, publish=True, **overrides):
-    response = client.post("/api/hackathons/", hackathon_data(org, **overrides), format="json")
-    assert response.status_code == 201, response.content
-    hackathon = response.json()
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    for name, weight in (("Innovation", 2), ("Execution", 1)):
-        created = client.post(
-            f"{url}criteria/", {"name": name, "max_score": 10, "weight": weight}, format="json"
-        )
-        assert created.status_code == 201, created.content
-    if publish:
-        move(client, hackathon["slug"], "published")
-    return client.get(url).json()
-
-
-def move(client, hackathon_slug, status):
-    response = client.post(
-        f"/api/hackathons/{hackathon_slug}/transition/", {"status": status}, format="json"
-    )
-    assert response.status_code == 200, response.content
-    return response.json()
-
-
 def submission_data(**overrides):
     return {
         "title": "ClinicQueue",
         "description": "Shorter queues at clinics.",
         "repository_url": "https://github.com/example/clinicqueue",
-        "demo_url": "https://clinicqueue.example.com",
         **overrides,
     }
 
 
-def test_only_managers_create_hackathons(admin, bob, org, other_org):
-    assert bob.post("/api/hackathons/", hackathon_data(org), format="json").status_code == 403
-    assert admin.post("/api/hackathons/", hackathon_data(other_org), format="json").status_code == 403
-    admin.post(
-        f"/api/organizations/{org.id}/roles/",
-        {"email": "bob@example.com", "role": "hackathon_manager"}, format="json",
-    )
-    assert bob.post("/api/hackathons/", hackathon_data(org), format="json").status_code == 201
-
-
-def test_dates_and_team_sizes_must_make_sense(admin, org):
-    late = admin.post(
-        "/api/hackathons/", hackathon_data(org, registration_deadline=in_days(13)), format="json"
-    )
-    assert "registration_deadline" in late.json()
-    sizes = admin.post(
-        "/api/hackathons/", hackathon_data(org, min_team_size=3, max_team_size=2), format="json"
-    )
-    assert "max_team_size" in sizes.json()
-
-
-def test_drafts_are_hidden(admin, bob, anonymous, org):
-    hackathon = create_hackathon(admin, org, publish=False)
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    assert anonymous.get(url).status_code == 404
-    assert bob.post(f"{url}teams/", {"name": "Solo"}, format="json").status_code == 404
-    move(admin, hackathon["slug"], "published")
-    assert [c["name"] for c in anonymous.get(url).json()["criteria"]] == ["Innovation", "Execution"]
-
-
-def test_team_formation(admin, bob, carol, org):
-    hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    dan = sign_in("dan")
-
-    team = bob.post(f"{url}teams/", {"name": "Byte Me"}, format="json")
-    assert team.status_code == 201
-    assert team.json()["members"][0]["is_leader"] is True
-    code = team.json()["invite_code"]
-    assert bob.post(f"{url}teams/", {"name": "Second"}, format="json").status_code == 400
-    assert carol.post(f"{url}teams/", {"name": "Byte Me"}, format="json").status_code == 400
-
-    assert carol.post(f"{url}teams/join/", {"invite_code": "wrong"}, format="json").status_code == 400
-    assert carol.post(f"{url}teams/join/", {"invite_code": code}, format="json").status_code == 201
-    full = dan.post(f"{url}teams/join/", {"invite_code": code}, format="json")  # max is 2
-    assert full.status_code == 400
-
-    detail = bob.get(url).json()
-    assert (detail["team_count"], detail["participant_count"]) == (1, 2)
-    assert detail["my_team_id"] == team.json()["id"]
-    # Other people see the team, but never its invite code.
-    listed = dan.get(f"{url}teams/").json()
-    assert listed[0]["name"] == "Byte Me" and "invite_code" not in listed[0]
-    assert dan.get(f"{url}my-team/").status_code == 404
-    assert bob.get("/api/hackathons/?scope=mine").json()["count"] == 1
-
-
-def test_leader_removes_members_and_leadership_passes_on(admin, bob, carol, org):
-    hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    code = bob.post(f"{url}teams/", {"name": "Byte Me"}, format="json").json()["invite_code"]
-    members = carol.post(f"{url}teams/join/", {"invite_code": code}, format="json").json()["members"]
-    bob_id, carol_id = members[0]["id"], members[1]["id"]
-
-    assert carol.delete(f"{url}my-team/members/{bob_id}/").status_code == 403
-    assert bob.delete(f"{url}my-team/members/{carol_id}/").status_code == 200
-    carol.post(f"{url}teams/join/", {"invite_code": code}, format="json")
-
-    assert bob.post(f"{url}my-team/leave/").status_code == 204
-    assert carol.get(f"{url}my-team/").json()["members"][0]["is_leader"] is True
-    assert carol.post(f"{url}my-team/leave/").status_code == 204
-    assert admin.get(f"{url}teams/").json() == []  # the empty team is gone
-
-
-def test_registration_closes_at_the_deadline(admin, bob, org):
-    hackathon = create_hackathon(admin, org)
-    Hackathon.objects.filter(slug=hackathon["slug"]).update(
-        registration_deadline=timezone.now() - timedelta(hours=1)
-    )
-    response = bob.post(f"/api/hackathons/{hackathon['slug']}/teams/", {"name": "Late"}, format="json")
-    assert response.status_code == 400
-
-
-def test_submission_rules(admin, bob, carol, org):
-    hackathon = create_hackathon(admin, org, min_team_size=2)
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    assert carol.put(f"{url}my-team/submission/", submission_data(), format="json").status_code == 404
-    code = bob.post(f"{url}teams/", {"name": "Byte Me"}, format="json").json()["invite_code"]
-    small = bob.put(f"{url}my-team/submission/", submission_data(), format="json")
-    assert small.status_code == 400  # needs two members
-    carol.post(f"{url}teams/join/", {"invite_code": code}, format="json")
-
-    missing = bob.put(f"{url}my-team/submission/", submission_data(repository_url=""), format="json")
-    assert "repository_url" in missing.json()
-    assert bob.put(f"{url}my-team/submission/", submission_data(), format="json").status_code == 200
-    # Any member can revise it before the deadline.
-    revised = carol.put(
-        f"{url}my-team/submission/", submission_data(title="ClinicQueue 2"), format="json"
-    )
-    assert revised.json()["submission"]["title"] == "ClinicQueue 2"
-    assert bob.get(url).json()["submission_count"] == 1
-
-    Hackathon.objects.filter(slug=hackathon["slug"]).update(
-        submission_deadline=timezone.now() - timedelta(minutes=1)
-    )
-    assert bob.put(f"{url}my-team/submission/", submission_data(), format="json").status_code == 400
-
-
-def test_judging_and_leaderboard(admin, bob, carol, anonymous, org):
-    hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    judge = sign_in("judy")
-    dan = sign_in("dan")
-    innovation, execution = (c["id"] for c in hackathon["criteria"])
-
-    for client, team, title in ((bob, "Byte Me", "ClinicQueue"), (carol, "Null Pointers", "MedTrack")):
-        client.post(f"{url}teams/", {"name": team}, format="json")
-        client.put(f"{url}my-team/submission/", submission_data(title=title), format="json")
-
-    # Judges are added by email; participants cannot judge and judges cannot take part.
-    assert bob.post(f"{url}judges/", {"email": "judy@example.com"}, format="json").status_code == 403
-    assert admin.post(f"{url}judges/", {"email": "bob@example.com"}, format="json").status_code == 400
-    assert admin.post(f"{url}judges/", {"email": "judy@example.com"}, format="json").status_code == 200
-    assert judge.post(f"{url}teams/", {"name": "Sneaky"}, format="json").status_code == 400
-    assert judge.get(url).json()["is_judge"] is True
-
-    submissions = {s["title"]: s["id"] for s in judge.get(f"{url}submissions/").json()}
-    assert set(submissions) == {"ClinicQueue", "MedTrack"}
-    assert dan.get(f"{url}submissions/").status_code == 403
-    assert dan.get(f"{url}leaderboard/").status_code == 403
-
-    def scores(a, b):
-        return {
-            "scores": [{"criterion": innovation, "value": a}, {"criterion": execution, "value": b}],
-            "comment": "Solid work.",
-        }
-
-    evaluate = f"{url}submissions/{submissions['ClinicQueue']}/evaluation/"
-    assert judge.put(evaluate, scores(9, 6), format="json").status_code == 400  # not judging yet
-    move(admin, hackathon["slug"], "judging")
-    assert bob.put(evaluate, scores(10, 10), format="json").status_code == 403
-    assert judge.put(evaluate, scores(11, 6), format="json").status_code == 400  # over the maximum
-    partial = {"scores": [{"criterion": innovation, "value": 9}]}
-    assert judge.put(evaluate, partial, format="json").status_code == 400
-    assert judge.put(evaluate, scores(9, 6), format="json").status_code == 200
-    judge.put(f"{url}submissions/{submissions['MedTrack']}/evaluation/", scores(6, 9), format="json")
-    # Teams and criteria are fixed once judging starts.
-    assert bob.post(f"{url}my-team/leave/").status_code == 400
-    assert admin.post(f"{url}criteria/", {"name": "Late"}, format="json").status_code == 400
-
-    board = admin.get(f"{url}leaderboard/").json()
-    # Innovation counts double: (9/10*2 + 6/10*1) / 3 = 80%, against 70%.
-    assert [(r["rank"], r["submission"]["title"], r["score"]) for r in board] == [
-        (1, "ClinicQueue", 80.0), (2, "MedTrack", 70.0),
-    ]
-    assert judge.get(f"{url}submissions/").json()[0]["my_evaluation"]["comment"] == "Solid work."
-
-    assert anonymous.get(f"{url}leaderboard/").status_code in (401, 403)
-    move(admin, hackathon["slug"], "completed")
-    assert anonymous.get(f"{url}leaderboard/").json()[0]["submission"]["title"] == "ClinicQueue"
-    assert len(anonymous.get(f"{url}submissions/").json()) == 2
-    assert judge.put(evaluate, scores(1, 1), format="json").status_code == 400  # results are final
-
-
-def test_judging_needs_criteria(admin, org):
-    response = admin.post("/api/hackathons/", hackathon_data(org), format="json")
-    hackathon_slug = response.json()["slug"]
-    move(admin, hackathon_slug, "published")
-    blocked = admin.post(
-        f"/api/hackathons/{hackathon_slug}/transition/", {"status": "judging"}, format="json"
-    )
-    assert blocked.status_code == 400
-
-
-def test_challenges_belong_to_their_hackathon(admin, bob, org):
-    first = create_hackathon(admin, org)
-    second = create_hackathon(admin, org, title="Other")
-    challenge = admin.post(
-        f"/api/hackathons/{second['slug']}/challenges/", {"title": "Telemedicine"}, format="json"
-    ).json()
-    assert bob.post(
-        f"/api/hackathons/{first['slug']}/challenges/", {"title": "Nope"}, format="json"
-    ).status_code == 403
-    bob.post(f"/api/hackathons/{first['slug']}/teams/", {"name": "Solo"}, format="json")
-    wrong = bob.put(
-        f"/api/hackathons/{first['slug']}/my-team/submission/",
-        submission_data(challenge_id=challenge["id"]), format="json",
-    )
-    assert wrong.status_code == 400
-
-
-def test_other_organizations_cannot_manage(admin, org, other_org):
-    rival = sign_in("rita", admin_of=[other_org])
-    hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    assert rival.patch(url, {"title": "Mine now"}, format="json").status_code == 403
-    assert rival.get(f"{url}judges/").status_code == 403
-    assert rival.post(f"{url}transition/", {"status": "cancelled"}, format="json").status_code == 403
-    assert rival.post(f"{url}criteria/", {"name": "X"}, format="json").status_code == 403
-
-
-def test_cancelled_hackathon_can_be_restored_to_open(admin, org):
-    hackathon = create_hackathon(admin, org)
-    cancelled = move(admin, hackathon["slug"], "cancelled")
-    assert cancelled["cancelled_from"] == "published"
-    restored = move(admin, hackathon["slug"], "published")
-    assert restored["status"] == "published"
-    assert restored["cancelled_from"] == ""
-    assert restored["registration_open"] is True
-
-
-def test_restore_returns_to_the_status_it_was_cancelled_from(admin, org):
-    hackathon = create_hackathon(admin, org)
-    move(admin, hackathon["slug"], "judging")
-    move(admin, hackathon["slug"], "cancelled")
-    url = f"/api/hackathons/{hackathon['slug']}/transition/"
-    wrong = admin.post(url, {"status": "published"}, format="json")
-    assert wrong.status_code == 400
-    assert move(admin, hackathon["slug"], "judging")["status"] == "judging"
-
-
-def test_only_managers_restore_a_hackathon(admin, bob, org):
-    hackathon = create_hackathon(admin, org)
-    move(admin, hackathon["slug"], "cancelled")
-    url = f"/api/hackathons/{hackathon['slug']}/transition/"
-    assert bob.post(url, {"status": "published"}, format="json").status_code == 403
-
-
-def test_prizes_are_a_list_of_titles_and_values(admin, org):
-    hackathon = create_hackathon(
-        admin, org, publish=False,
-        prizes=[
-            {"title": " Winner ", "value": "KES 60,000"},
-            {"title": "", "value": ""},
-            {"title": "Runner-up", "value": "KES 30,000"},
-        ],
-    )
-    assert hackathon["prizes"] == [
-        {"title": "Winner", "value": "KES 60,000"},
-        {"title": "Runner-up", "value": "KES 30,000"},
-    ]
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    updated = admin.patch(url, {"prizes": [{"title": "Best design", "value": "Laptop"}]}, format="json")
-    assert updated.json()["prizes"] == [{"title": "Best design", "value": "Laptop"}]
-
-
-def test_a_prize_needs_a_title(admin, org):
-    response = admin.post(
-        "/api/hackathons/", hackathon_data(org, prizes=[{"title": "", "value": "KES 10,000"}]), format="json"
-    )
-    assert response.status_code == 400
-    assert "prizes" in response.json()
-
-
-def test_hackathon_announcements(admin, bob, carol, anonymous, org):
-    from django.core import mail
-
-    hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    bob.post(f"{url}teams/", {"name": "Byte Me"}, format="json")
-    assert admin.post(f"{url}judges/", {"email": "carol@example.com"}, format="json").status_code == 200
-    mail.outbox.clear()
-
-    note = {"title": "Kick-off moved", "body": "<p>Now at <b>10:00</b></p>"}
-    assert bob.post(f"{url}announcements/", note, format="json").status_code == 403
-    quiet = admin.post(f"{url}announcements/", note, format="json")
-    assert quiet.status_code == 201 and mail.outbox == []
-
-    loud = admin.post(f"{url}announcements/", {**note, "notify": True}, format="json")
-    assert loud.json()["emailed_to"] == 2
-    assert sorted(m.to[0] for m in mail.outbox) == ["bob@example.com", "carol@example.com"]
-
-    listed = anonymous.get(f"{url}announcements/").json()
-    assert [a["title"] for a in listed] == ["Kick-off moved", "Kick-off moved"]
-    assert bob.delete(f"{url}announcements/{quiet.json()['id']}/").status_code == 403
-    assert admin.delete(f"{url}announcements/{quiet.json()['id']}/").status_code == 204
-    assert str(Announcement.objects.get()) == "Kick-off moved"
-
-
-def test_platform_admins_see_and_manage_every_hackathon(admin, org, other_org):
-    draft = create_hackathon(admin, org, publish=False)
-    rival = sign_in("rita", admin_of=[other_org])
-    theirs = create_hackathon(rival, other_org, title="Theirs")
-    root = sign_in("root", platform_admin=True)
-    listed = root.get("/api/hackathons/?scope=managed").json()["results"]
-    assert {h["slug"] for h in listed} == {draft["slug"], theirs["slug"]}
-    assert all(h["can_manage"] for h in listed)
-    # An organisation's admins manage only their own.
-    assert [h["slug"] for h in rival.get("/api/hackathons/?scope=managed").json()["results"]] == [theirs["slug"]]
-
-
-def test_mine_is_empty_for_visitors(admin, anonymous, org):
-    create_hackathon(admin, org)
-    assert anonymous.get("/api/hackathons/?scope=mine").json()["count"] == 0
-    assert anonymous.get("/api/hackathons/").json()["count"] == 1
-
-
-def test_only_drafts_can_be_deleted(admin, bob, org):
-    draft = create_hackathon(admin, org, publish=False)
-    live = create_hackathon(admin, org, title="Live")
-    assert bob.delete(f"/api/hackathons/{draft['slug']}/").status_code in (403, 404)
-    refused = admin.delete(f"/api/hackathons/{live['slug']}/")
-    assert refused.status_code == 400
-    assert refused.json() == ["Only drafts can be deleted. Cancel a published hackathon instead."]
-    assert admin.delete(f"/api/hackathons/{draft['slug']}/").status_code == 204
-    assert list(Hackathon.objects.values_list("slug", flat=True)) == [live["slug"]]
-
-
-def test_a_status_cannot_be_skipped(admin, org):
-    hackathon = create_hackathon(admin, org, publish=False)
-    response = admin.post(f"/api/hackathons/{hackathon['slug']}/transition/", {"status": "completed"}, format="json")
-    assert response.status_code == 400
-    assert response.json() == ["A hackathon that is draft cannot become completed."]
-    assert Hackathon.objects.get().status == "draft"
-
-
-def test_hackathon_details_are_checked(admin, org, other_org):
-    def refused(**overrides):
-        response = admin.post("/api/hackathons/", hackathon_data(org, **overrides), format="json")
-        assert response.status_code == 400
-        return response.json()
-
-    assert refused(organization_id="org-missing") == {"organization_id": ["Unknown organisation."]}
-    assert refused(ends_at=in_days(9)) == {"ends_at": ["The hackathon must end after it starts."]}
-    assert refused(submission_deadline=in_days(9.5), registration_deadline=in_days(9)) == {
-        "submission_deadline": ["Submissions cannot close before the hackathon starts."]
-    }
-    assert refused(prizes="KES 10,000") == {"prizes": ["Send prizes as a list."]}
-    assert refused(prizes=["Winner"]) == {"prizes": ["Each prize needs a title and a value."]}
-    assert refused(prizes=[{"title": "W" * 101, "value": "1"}]) == {
-        "prizes": ["Keep prize titles and values under 100 characters."]
-    }
-    assert refused(prizes=[{"title": f"Prize {i}", "value": "1"} for i in range(21)]) == {
-        "prizes": ["A hackathon can list at most 20 prizes."]
-    }
-    assert not Hackathon.objects.exists()
-
-    hackathon = create_hackathon(admin, org, description="<p>Build</p><script>x()</script>")
-    assert hackathon["description"] == "<p>Build</p>"
-    root = sign_in("root", platform_admin=True)
-    moved = root.patch(f"/api/hackathons/{hackathon['slug']}/", {"organization_id": other_org.id}, format="json")
-    assert moved.status_code == 400
-    assert moved.json() == {"organization_id": ["A hackathon cannot move to another organisation."]}
-    assert str(Hackathon.objects.get()) == "Build for Health"
-
-
-def test_a_member_leaves_and_the_leader_stays(admin, bob, carol, org):
-    hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    code = bob.post(f"{url}teams/", {"name": "Byte Me"}, format="json").json()["invite_code"]
-    carol.post(f"{url}teams/join/", {"invite_code": code}, format="json")
-    assert carol.post(f"{url}my-team/leave/").status_code == 204
-    members = bob.get(f"{url}my-team/").json()["members"]
-    assert [(m["person"]["name"], m["is_leader"]) for m in members] == [("Bob", True)]
-    assert str(Team.objects.get()) == "Byte Me"
-
-
-def test_leaders_leave_rather_than_remove_themselves(admin, bob, carol, org):
-    hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    code = bob.post(f"{url}teams/", {"name": "Byte Me"}, format="json").json()["invite_code"]
-    members = carol.post(f"{url}teams/join/", {"invite_code": code}, format="json").json()["members"]
-    bob_id, carol_id = members[0]["id"], members[1]["id"]
-    myself = bob.delete(f"{url}my-team/members/{bob_id}/")
-    assert myself.status_code == 400 and myself.json() == ["To go yourself, leave the team."]
-
-    move(admin, hackathon["slug"], "judging")
-    fixed = bob.delete(f"{url}my-team/members/{carol_id}/")
-    assert fixed.status_code == 400 and fixed.json() == ["Teams are fixed once judging starts."]
-    assert TeamMember.objects.count() == 2
-
-
-def test_managers_list_and_remove_judges(admin, bob, org):
-    hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['slug']}/judges/"
-    sign_in("judy")
-    admin.post(url, {"email": "judy@example.com"}, format="json")
-    judges = admin.get(url).json()
-    assert len(judges) == 1
-    assert bob.delete(f"{url}{judges[0]['id']}/").status_code == 403
-    assert admin.delete(f"{url}{judges[0]['id']}/").status_code == 204
-    assert admin.get(url).json() == []
-    assert admin.delete(f"{url}{judges[0]['id']}/").status_code == 404
-
-
-def test_managers_edit_and_remove_challenges_and_criteria(admin, bob, org):
-    hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    challenge = admin.post(f"{url}challenges/", {"title": "Telemedicine"}, format="json").json()
-    renamed = admin.patch(f"{url}challenges/{challenge['id']}/", {"title": "Remote care"}, format="json")
-    assert renamed.status_code == 200 and renamed.json()["title"] == "Remote care"
-    assert str(Challenge.objects.get()) == "Remote care"
-    assert bob.patch(f"{url}challenges/{challenge['id']}/", {"title": "Mine"}, format="json").status_code == 403
-    assert admin.delete(f"{url}challenges/{challenge['id']}/").status_code == 204
-    assert not Challenge.objects.exists()
-
-    criterion = hackathon["criteria"][0]
-    assert str(Criterion.objects.get(id=criterion["id"])) == "Innovation"
-    assert admin.delete(f"{url}criteria/{criterion['id']}/").status_code == 204
-    assert [c["name"] for c in admin.get(url).json()["criteria"]] == ["Execution"]
-
-
-def test_a_submission_can_name_its_challenge(admin, bob, org):
-    hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    challenge = admin.post(f"{url}challenges/", {"title": "Telemedicine"}, format="json").json()
-    bob.post(f"{url}teams/", {"name": "Solo"}, format="json")
-    submitted = bob.put(f"{url}my-team/submission/", submission_data(challenge_id=challenge["id"]), format="json")
-    assert submitted.status_code == 200
-    assert Submission.objects.get().challenge_id == challenge["id"]
-    assert str(Submission.objects.get()) == "ClinicQueue"
+@pytest.fixture
+def hackathon(org):
+    return make_hackathon(org)
 
 
 @pytest.fixture
-def judged(admin, bob, carol, org):
-    """A hackathon being judged, with two submissions and a judge."""
-    hackathon = create_hackathon(admin, org)
-    url = f"/api/hackathons/{hackathon['slug']}/"
-    for client, team, title in ((bob, "Byte Me", "ClinicQueue"), (carol, "Null Pointers", "MedTrack")):
-        client.post(f"{url}teams/", {"name": team}, format="json")
-        client.put(f"{url}my-team/submission/", submission_data(title=title), format="json")
-    judge = sign_in("judy")
-    admin.post(f"{url}judges/", {"email": "judy@example.com"}, format="json")
-    move(admin, hackathon["slug"], "judging")
-    criteria = [c["id"] for c in hackathon["criteria"]]
-    for submission in Submission.objects.all():
-        response = judge.put(
-            f"{url}submissions/{submission.id}/evaluation/",
-            {"scores": [{"criterion": c, "value": 7} for c in criteria], "comment": ""}, format="json",
-        )
-        assert response.status_code == 200, response.content
-    return Hackathon.objects.get(slug=hackathon["slug"])
+def dan():
+    return sign_in("dan")
 
 
-def test_equal_scores_share_a_rank(judged):
-    assert [(row["rank"], row["score"]) for row in leaderboard(judged)] == [(1, 70.0), (1, 70.0)]
+@pytest.fixture
+def judy():
+    return sign_in("judy")
 
 
-def test_without_weights_there_is_no_score(judged):
-    Criterion.objects.update(weight=0)
-    assert [(row["rank"], row["score"], row["evaluations"]) for row in leaderboard(judged)] == [
-        (None, None, 0), (None, None, 0),
+@pytest.fixture
+def rival(other_org):
+    return sign_in("rita", admin_of=[other_org])
+
+
+def test_an_organisations_managers_create_its_hackathons(admin, bob, org, other_org):
+    create = reverse("hackathon-list")
+    assert bob.post(create, hackathon_data(org), format="json").status_code == 403
+    assert admin.post(create, hackathon_data(other_org), format="json").status_code == 403
+
+    baker.make(RoleAssignment, profile=bob.profile, organization=org, role=RoleAssignment.Role.HACKATHON_MANAGER)
+    created = bob.post(
+        create,
+        hackathon_data(
+            org,
+            description="<p>Build</p><script>x()</script>",
+            prizes=[{"title": " Winner ", "value": "KES 60,000"}, {"title": "", "value": ""}],
+        ),
+        format="json",
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["description"] == "<p>Build</p>"
+    assert body["prizes"] == [{"title": "Winner", "value": "KES 60,000"}]
+    assert (body["status"], body["can_manage"], body["participant_preview"]) == ("draft", True, [])
+
+
+@pytest.mark.parametrize(
+    ("overrides", "errors"),
+    [
+        ({"organization_id": "org-missing"}, {"organization_id": ["Unknown organisation."]}),
+        ({"ends_at": in_days(9)}, {"ends_at": ["The hackathon must end after it starts."]}),
+        (
+            {"registration_deadline": in_days(13)},
+            {"registration_deadline": ["Registration must close before submissions do."]},
+        ),
+        (
+            {"submission_deadline": in_days(9.5), "registration_deadline": in_days(9)},
+            {"submission_deadline": ["Submissions cannot close before the hackathon starts."]},
+        ),
+        (
+            {"min_team_size": 3, "max_team_size": 2},
+            {"max_team_size": ["The largest team must be at least as big as the smallest."]},
+        ),
+        ({"prizes": "KES 10,000"}, {"prizes": ["Send prizes as a list."]}),
+        ({"prizes": ["Winner"]}, {"prizes": ["Each prize needs a title and a value."]}),
+        (
+            {"prizes": [{"title": "", "value": "KES 10,000"}]},
+            {"prizes": ["Give every prize a title, such as Winner."]},
+        ),
+        (
+            {"prizes": [{"title": "W" * 101, "value": "1"}]},
+            {"prizes": ["Keep prize titles and values under 100 characters."]},
+        ),
+        (
+            {"prizes": [{"title": "Prize", "value": "1"}] * 21},
+            {"prizes": ["A hackathon can list at most 20 prizes."]},
+        ),
+    ],
+)
+def test_hackathon_details_must_make_sense(admin, org, overrides, errors):
+    response = admin.post(reverse("hackathon-list"), hackathon_data(org, **overrides), format="json")
+    assert response.status_code == 400
+    assert response.json() == errors
+    assert not Hackathon.objects.exists()
+
+
+def test_only_its_organisations_managers_run_a_hackathon(admin, bob, rival, other_org, hackathon):
+    detail = url("hackathon-detail", hackathon)
+    prizes = {"prizes": [{"title": "Best design", "value": "Laptop"}]}
+    assert rival.patch(detail, prizes, format="json").status_code == 403
+    assert rival.get(url("hackathon-judges", hackathon)).status_code == 403
+    assert rival.post(child_url("hackathon-criteria", hackathon), {"name": "X"}, format="json").status_code == 403
+    assert bob.post(url("hackathon-transition", hackathon), {"status": "cancelled"}, format="json").status_code == 403
+    assert bob.post(child_url("hackathon-challenges", hackathon), {"title": "X"}, format="json").status_code == 403
+
+    assert admin.patch(detail, prizes, format="json").json()["prizes"] == prizes["prizes"]
+    moved = admin.patch(detail, {"organization_id": other_org.id}, format="json")
+    assert moved.json() == {"organization_id": ["A hackathon cannot move to another organisation."]}
+
+
+def test_hackathon_lists_show_what_each_person_may_see(admin, bob, judy, rival, anonymous, org, other_org):
+    draft = make_hackathon(org, status=Status.DRAFT)
+    theirs = make_hackathon(other_org, title="Theirs")
+    team = make_team(theirs, bob)
+    baker.make(Judge, hackathon=theirs, profile=judy.profile)
+    root = sign_in("root", platform_admin=True)
+
+    def slugs(client, **params):
+        return [h["slug"] for h in client.get(reverse("hackathon-list"), params).json()["results"]]
+
+    assert slugs(anonymous) == [theirs.slug]
+    assert slugs(anonymous, scope="mine") == []
+    assert slugs(bob, scope="mine") == slugs(judy, scope="mine") == [theirs.slug]
+    assert slugs(admin, scope="managed") == [draft.slug]
+    assert slugs(rival, scope="managed") == [theirs.slug]
+    assert slugs(root, scope="managed") == []
+
+    assert anonymous.get(url("hackathon-detail", draft)).status_code == 404
+    assert root.get(url("hackathon-detail", draft)).status_code == 404
+    assert bob.post(url("hackathon-teams", draft), {"name": "Solo"}, format="json").status_code == 404
+    seen_by_bob = bob.get(url("hackathon-detail", theirs)).json()
+    assert (seen_by_bob["my_team_id"], seen_by_bob["is_judge"], seen_by_bob["can_manage"]) == (team.id, False, False)
+    assert seen_by_bob["participant_preview"] == ["B"]
+    assert judy.get(url("hackathon-detail", theirs)).json()["is_judge"] is True
+
+
+def test_only_drafts_can_be_deleted(admin, bob, org):
+    draft = make_hackathon(org, status=Status.DRAFT)
+    live = make_hackathon(org, title="Live")
+    assert bob.delete(url("hackathon-detail", draft)).status_code == 404
+    refused = admin.delete(url("hackathon-detail", live))
+    assert refused.json() == ["Only drafts can be deleted. Cancel a published hackathon instead."]
+    assert admin.delete(url("hackathon-detail", draft)).status_code == 204
+    assert list(Hackathon.objects.all()) == [live]
+
+
+@pytest.mark.parametrize(
+    ("status", "cancelled_from", "criteria", "target", "code", "error", "ends_as"),
+    [
+        ("draft", "", 1, "published", 200, "", ("published", "")),
+        ("draft", "", 1, "completed", 400, "A hackathon that is draft cannot become completed.", ("draft", "")),
+        ("published", "", 1, "judging", 200, "", ("judging", "")),
+        ("published", "", 0, "judging", 400, "Add at least one judging criterion", ("published", "")),
+        ("judging", "", 1, "cancelled", 200, "", ("cancelled", "judging")),
+        ("cancelled", "published", 1, "published", 200, "", ("published", "")),
+        ("cancelled", "judging", 1, "judging", 200, "", ("judging", "")),
+        ("cancelled", "judging", 1, "published", 400, "can only be restored to that", ("cancelled", "judging")),
+    ],
+)
+def test_a_hackathon_moves_through_its_statuses(admin, org, status, cancelled_from, criteria, target, code, error, ends_as):
+    hackathon = make_hackathon(org, status=status, cancelled_from=cancelled_from)
+    Criterion.objects.bulk_create(baker.prepare(Criterion, hackathon=hackathon, _quantity=2)[:criteria])
+    response = admin.post(url("hackathon-transition", hackathon), {"status": target}, format="json")
+    assert response.status_code == code
+    assert error in response.content.decode()
+    hackathon.refresh_from_db()
+    assert (hackathon.status, hackathon.cancelled_from) == ends_as
+
+
+def test_members_form_teams_with_invite_codes(admin, bob, carol, dan, hackathon):
+    teams = url("hackathon-teams", hackathon)
+    join = url("hackathon-join-team", hackathon)
+    created = bob.post(teams, {"name": "Byte Me"}, format="json")
+    assert created.status_code == 201
+    assert created.json()["members"][0]["is_leader"] is True
+    code = created.json()["invite_code"]
+    assert bob.post(teams, {"name": "Second"}, format="json").json() == ["You are already in a team for this hackathon."]
+    assert carol.post(teams, {"name": "Byte Me"}, format="json").json() == {"name": "A team with this name already exists."}
+
+    assert carol.post(join, {"invite_code": "wrong"}, format="json").json() == {"invite_code": "No team has this invite code."}
+    assert carol.post(join, {"invite_code": code}, format="json").status_code == 201
+    assert dan.post(join, {"invite_code": code}, format="json").json() == ["This team is full."]
+
+    detail = bob.get(url("hackathon-detail", hackathon)).json()
+    assert (detail["team_count"], detail["participant_count"], detail["my_team_id"]) == (1, 2, created.json()["id"])
+    # Only its managers list the teams, and never see invite codes.
+    assert dan.get(teams).status_code == 403
+    listed = admin.get(teams).json()
+    assert listed[0]["name"] == "Byte Me" and "invite_code" not in listed[0]
+    assert dan.get(url("hackathon-my-team", hackathon)).status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("registration_closes_in", "person", "error"),
+    [
+        (-1, "bob", "Registration for this hackathon is closed."),
+        (1, "judy", "Judges cannot take part in the hackathon they judge."),
+    ],
+)
+def test_judges_and_late_comers_cannot_take_part(request, judy, org, registration_closes_in, person, error):
+    hackathon = make_hackathon(org, registration_deadline=timezone.now() + timedelta(days=registration_closes_in))
+    baker.make(Judge, hackathon=hackathon, profile=judy.profile)
+    response = request.getfixturevalue(person).post(url("hackathon-teams", hackathon), {"name": "Late"}, format="json")
+    assert response.json() == [error]
+
+
+def test_leadership_passes_on_and_an_empty_team_goes(admin, bob, carol, dan, org):
+    hackathon = make_hackathon(org, max_team_size=3)
+    make_team(hackathon, bob, carol, dan)
+    leave = url("hackathon-leave-team", hackathon)
+    my_team = url("hackathon-my-team", hackathon)
+
+    assert carol.post(leave).status_code == 204
+    assert [(m["person"]["name"], m["is_leader"]) for m in bob.get(my_team).json()["members"]] == [
+        ("Bob", True), ("Dan", False),
     ]
+    assert bob.post(leave).status_code == 204
+    assert dan.get(my_team).json()["members"][0]["is_leader"] is True
+    assert dan.post(leave).status_code == 204
+    assert not Team.objects.exists()
+
+
+def test_leaders_remove_members_until_judging_starts(bob, carol, hackathon):
+    team = make_team(hackathon, bob, carol)
+    bob_id, carol_id = team.members.values_list("id", flat=True)
+    remove_bob = url("hackathon-remove-member", hackathon, member_id=bob_id)
+    remove_carol = url("hackathon-remove-member", hackathon, member_id=carol_id)
+
+    assert carol.delete(remove_bob).status_code == 403
+    assert bob.delete(remove_bob).json() == ["To go yourself, leave the team."]
+    Hackathon.objects.filter(pk=hackathon.pk).update(status=Status.JUDGING)
+    assert bob.delete(remove_carol).json() == ["Teams are fixed once judging starts."]
+    assert carol.post(url("hackathon-leave-team", hackathon)).json() == ["Teams are fixed once judging starts."]
+    Hackathon.objects.filter(pk=hackathon.pk).update(status=Status.PUBLISHED)
+    assert [m["person"]["name"] for m in bob.delete(remove_carol).json()["members"]] == ["Bob"]
+
+
+def test_teams_submit_their_project_before_the_deadline(bob, carol, org):
+    hackathon = make_hackathon(org, min_team_size=2)
+    challenge = baker.make(Challenge, hackathon=hackathon, title="Telemedicine")
+    elsewhere = baker.make(Challenge, hackathon=make_hackathon(org, title="Other"))
+    submit = url("hackathon-submit", hackathon)
+
+    assert carol.put(submit, submission_data(), format="json").status_code == 404
+    team = make_team(hackathon, bob)
+    assert bob.put(submit, submission_data(), format="json").json() == ["Teams need at least 2 members to submit."]
+    baker.make(TeamMember, team=team, hackathon=hackathon, profile=carol.profile)
+    assert "repository_url" in bob.put(submit, submission_data(repository_url=""), format="json").json()
+    wrong = bob.put(submit, submission_data(challenge_id=elsewhere.id), format="json")
+    assert wrong.json() == {"challenge_id": ["This challenge belongs to another hackathon."]}
+
+    assert bob.get(url("hackathon-my-team", hackathon)).json()["submission"] is None
+    submitted = bob.put(submit, submission_data(challenge_id=challenge.id), format="json").json()
+    assert submitted["submission"]["challenge"]["title"] == "Telemedicine"
+    # Any member can revise it.
+    revised = carol.put(submit, submission_data(title="ClinicQueue 2"), format="json").json()
+    assert revised["submission"]["title"] == "ClinicQueue 2"
+    assert bob.get(url("hackathon-detail", hackathon)).json()["submission_count"] == 1
+
+    Hackathon.objects.filter(pk=hackathon.pk).update(submission_deadline=timezone.now() - timedelta(minutes=1))
+    assert bob.put(submit, submission_data(), format="json").json() == ["Submissions for this hackathon are closed."]
+
+
+def test_managers_add_and_remove_judges_by_email(admin, bob, judy, hackathon):
+    judges = url("hackathon-judges", hackathon)
+    make_team(hackathon, bob)
+    assert bob.post(judges, {"email": "judy@example.com"}, format="json").status_code == 403
+    taking_part = admin.post(judges, {"email": "bob@example.com"}, format="json")
+    assert taking_part.json() == {"email": "This member takes part in the hackathon."}
+    added = admin.post(judges, {"email": "judy@example.com"}, format="json").json()
+    assert [(j["email"], j["evaluations"]) for j in added] == [("judy@example.com", 0)]
+
+    remove = url("hackathon-remove-judge", hackathon, judge_id=added[0]["id"])
+    assert bob.delete(remove).status_code == 403
+    assert admin.delete(remove).status_code == 204
+    assert admin.get(judges).json() == []
+    assert admin.delete(remove).status_code == 404
+
+
+@pytest.fixture
+def entries(hackathon, bob, carol, judy):
+    """Two submissions, two criteria (Innovation counts double) and a judge."""
+    criteria = (
+        baker.make(Criterion, hackathon=hackathon, name="Innovation", max_score=10, weight=2),
+        baker.make(Criterion, hackathon=hackathon, name="Execution", max_score=10, weight=1),
+    )
+    submissions = (
+        baker.make(Submission, team=make_team(hackathon, bob), title="ClinicQueue"),
+        baker.make(Submission, team=make_team(hackathon, carol, name="Null Pointers"), title="MedTrack"),
+    )
+    judge = baker.make(Judge, hackathon=hackathon, profile=judy.profile)
+    return criteria, submissions, judge
+
+
+def scores(criteria, *values, comment="Solid work."):
+    return {
+        "scores": [{"criterion": c.id, "value": v} for c, v in zip(criteria, values, strict=False)],
+        "comment": comment,
+    }
+
+
+def test_judges_score_submissions_while_judging(admin, bob, judy, dan, hackathon, entries):
+    criteria, (clinic_queue, _), _ = entries
+    evaluate = url("hackathon-evaluate", hackathon, submission_id=clinic_queue.id)
+    submissions = url("hackathon-submissions", hackathon)
+
+    assert judy.put(evaluate, scores(criteria, 9, 6), format="json").json() == [
+        "Scoring is open only while the hackathon is being judged."
+    ]
+    Hackathon.objects.filter(pk=hackathon.pk).update(status=Status.JUDGING)
+    assert bob.put(evaluate, scores(criteria, 10, 10), format="json").status_code == 403
+    assert judy.put(evaluate, scores(criteria, 11, 6), format="json").json() == {"scores": "Innovation is out of 10."}
+    assert judy.put(evaluate, scores(criteria, 9), format="json").json() == {"scores": "Give one score for every criterion."}
+    assert judy.put(evaluate, scores(criteria, 1, 1), format="json").status_code == 200
+    revised = judy.put(evaluate, scores(criteria, 9, 6), format="json").json()
+    assert revised["scores"] == [{"criterion": criteria[0].id, "value": 9}, {"criterion": criteria[1].id, "value": 6}]
+    assert Score.objects.count() == 2
+    # Criteria are fixed once judging starts.
+    assert admin.post(child_url("hackathon-criteria", hackathon), {"name": "Late"}, format="json").json() == [
+        "Criteria are fixed once judging starts."
+    ]
+
+    assert dan.get(submissions).status_code == 403
+    assert [s["my_evaluation"] for s in admin.get(submissions).json()] == [None, None]
+    seen_by_judge = judy.get(submissions).json()
+    assert [(s["title"], s["members"]) for s in seen_by_judge] == [("ClinicQueue", ["Bob"]), ("MedTrack", ["Carol"])]
+    assert seen_by_judge[0]["my_evaluation"]["comment"] == "Solid work."
+
+    Hackathon.objects.filter(pk=hackathon.pk).update(status=Status.COMPLETED)
+    assert judy.put(evaluate, scores(criteria, 1, 1), format="json").status_code == 400  # results are final
+
+
+def test_the_leaderboard_is_public_once_results_are_published(admin, dan, anonymous, hackathon, entries):
+    criteria, (clinic_queue, med_track), judge = entries
+    evaluation = baker.make(Evaluation, submission=clinic_queue, judge=judge)
+    baker.make(Score, evaluation=evaluation, criterion=iter(criteria), value=iter([9, 6]), _quantity=2)
+    board = url("hackathon-leaderboard", hackathon)
+
+    assert dan.get(board).status_code == 403
+    assert anonymous.get(board).status_code == 403
+    assert [(r["rank"], r["submission"]["title"], r["score"], r["judges"]) for r in admin.get(board).json()] == [
+        (1, "ClinicQueue", 80.0, 1), (None, "MedTrack", None, 1),
+    ]
+    Hackathon.objects.filter(pk=hackathon.pk).update(status=Status.COMPLETED)
+    assert anonymous.get(board).json()[0]["submission"]["title"] == "ClinicQueue"
+    assert len(anonymous.get(url("hackathon-submissions", hackathon)).json()) == 2
+
+
+@pytest.mark.parametrize(
+    ("weights", "marks", "ranks"),
+    [
+        # Innovation counts double: (9/10*2 + 6/10*1) / 3 = 80%, against 70%.
+        ((2, 1), ((9, 6), (6, 9)), [(1, 80.0, 1), (2, 70.0, 1)]),
+        ((2, 1), ((7, 7), (7, 7)), [(1, 70.0, 1), (1, 70.0, 1)]),
+        ((0, 0), ((7, 7), (7, 7)), [(None, None, 0), (None, None, 0)]),
+    ],
+)
+def test_leaderboard_ranks_by_weighted_score(hackathon, entries, weights, marks, ranks):
+    criteria, submissions, judge = entries
+    Criterion.objects.filter(pk=criteria[0].pk).update(weight=weights[0])
+    Criterion.objects.filter(pk=criteria[1].pk).update(weight=weights[1])
+    evaluations = baker.make(Evaluation, submission=iter(submissions), judge=judge, _quantity=2)
+    baker.make(
+        Score,
+        evaluation=iter([evaluations[0], evaluations[0], evaluations[1], evaluations[1]]),
+        criterion=iter(criteria * 2),
+        value=iter(marks[0] + marks[1]),
+        _quantity=4,
+    )
+    assert [(row["rank"], row["score"], row["evaluations"]) for row in leaderboard(hackathon)] == ranks
+
+
+def test_managers_edit_and_remove_challenges_and_criteria(admin, bob, hackathon):
+    created = admin.post(child_url("hackathon-challenges", hackathon), {"title": "Telemedicine"}, format="json").json()
+    challenge = child_url("hackathon-challenge", hackathon, pk=created["id"])
+    assert admin.patch(challenge, {"title": "Remote care"}, format="json").json()["title"] == "Remote care"
+    assert bob.patch(challenge, {"title": "Mine"}, format="json").status_code == 403
+    assert admin.delete(challenge).status_code == 204
+    assert not Challenge.objects.exists()
+
+    criterion = admin.post(child_url("hackathon-criteria", hackathon), {"name": "Innovation"}, format="json").json()
+    assert (criterion["max_score"], criterion["weight"]) == (10, 1)
+    assert admin.delete(child_url("hackathon-criterion", hackathon, pk=criterion["id"])).status_code == 204
+    assert admin.get(url("hackathon-detail", hackathon)).json()["criteria"] == []
+
+
+def test_managers_post_announcements_and_may_email_them(admin, bob, carol, anonymous, hackathon):
+    make_team(hackathon, bob)
+    baker.make(Judge, hackathon=hackathon, profile=carol.profile)
+    announcements = child_url("hackathon-announcements", hackathon)
+    note = {"title": "Kick-off moved", "body": "<p>Now at <b>10:00</b></p><script>x()</script>"}
+
+    assert bob.post(announcements, note, format="json").status_code == 403
+    quiet = admin.post(announcements, note, format="json").json()
+    assert quiet["body"] == "<p>Now at <b>10:00</b></p>" and mail.outbox == []
+    loud = admin.post(announcements, {**note, "notify": True}, format="json")
+    assert loud.json()["emailed_to"] == 2
+    assert sorted(m.to[0] for m in mail.outbox) == ["bob@example.com", "carol@example.com"]
+
+    assert [a["title"] for a in anonymous.get(announcements).json()] == ["Kick-off moved", "Kick-off moved"]
+    remove = child_url("hackathon-announcement", hackathon, pk=quiet["id"])
+    assert bob.delete(remove).status_code == 403
+    assert admin.delete(remove).status_code == 204
+    assert Announcement.objects.count() == 1
+
+
+def test_records_read_as_their_names(hackathon, bob):
+    team = make_team(hackathon, bob)
+    assert [
+        str(hackathon),
+        str(baker.make(Challenge, title="Telemedicine")),
+        str(baker.make(Criterion, name="Innovation")),
+        str(team),
+        str(baker.make(Submission, team=team, title="ClinicQueue")),
+        str(baker.make(Announcement, title="Kick-off moved")),
+    ] == ["Build for Health", "Telemedicine", "Innovation", "Byte Me", "ClinicQueue", "Kick-off moved"]

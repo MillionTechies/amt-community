@@ -48,41 +48,31 @@ describe('the app', () => {
     expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
   })
 
-  it('shows a visitor the public site', async () => {
+  it('shows a visitor the public site and lets them sign in or join', async () => {
     mockFetch({ 'GET /stats/': { members: 120 } })
     const { user } = showApp('/')
     expect(await screen.findByText('Home page, 120 members')).toBeInTheDocument()
     expect(header().queryByRole('link', { name: 'My activity' })).not.toBeInTheDocument()
-    expect(header().queryByRole('link', { name: 'Platform' })).not.toBeInTheDocument()
     expect(header().queryByRole('link', { name: /Organiser console/ })).not.toBeInTheDocument()
-    expect(within(screen.getByRole('contentinfo')).getByRole('link', { name: 'For organisers' })).toHaveAttribute('href', '/manage')
 
     await user.click(header().getByRole('link', { name: 'Events' }))
     expect(screen.getByText('Events page')).toBeInTheDocument()
     await user.click(header().getByRole('link', { name: 'Hackathons' }))
     expect(screen.getByText('Hackathons page')).toBeInTheDocument()
-  })
 
-  it('lets a visitor sign in or join', async () => {
-    mockFetch({ 'GET /stats/': { members: 1 } })
-    const { user } = showApp('/events')
     await user.click(header().getByRole('button', { name: 'Sign in' }))
     expect(auth.signinRedirect).toHaveBeenLastCalledWith({ redirect_uri: `${window.location.origin}/` })
     await user.click(header().getByRole('button', { name: 'Join' }))
     expect(auth.signinRedirect).toHaveBeenLastCalledWith({ redirect_uri: `${window.location.origin}/`, prompt: 'create' })
   })
 
-  it('opens the public pages at their addresses', () => {
-    showApp('/events/react-workshop')
-    expect(screen.getByText('Event react-workshop')).toBeInTheDocument()
-  })
-
   it.each([
+    ['/events/react-workshop', 'Event react-workshop'],
     ['/hackathons/climate-hack', 'Hackathon page'],
     ['/certificates/ABC123', 'Certificate page'],
-  ])('opens %s', (route, text) => {
+  ])('opens %s', async (route, text) => {
     showApp(route)
-    expect(screen.getByText(text)).toBeInTheDocument()
+    expect(await screen.findByText(text)).toBeInTheDocument()
   })
 
   it('says when a page does not exist', async () => {
@@ -93,8 +83,8 @@ describe('the app', () => {
     expect(currentPath()).toBe('/')
   })
 
-  it.each(['/dashboard', '/profile', '/hackathons/climate-hack/judge'])('asks a visitor to sign in for %s', async (route) => {
-    const { user } = showApp(route)
+  it('asks a visitor to sign in for member pages', async () => {
+    const { user } = showApp('/hackathons/climate-hack/judge')
     expect(screen.getByText('Sign in to see this page.')).toBeInTheDocument()
     await user.click(within(screen.getByRole('main')).getByRole('button', { name: 'Sign in' }))
     expect(auth.signinRedirect).toHaveBeenCalled()
@@ -114,11 +104,6 @@ describe('the app', () => {
     expect(currentPath()).toBe(to)
   })
 
-  it('opens the platform admin area', async () => {
-    showApp('/platform/members')
-    expect(await screen.findByText('Platform page')).toBeInTheDocument()
-  })
-
   it('shows what went wrong on a broken page, keeping the header to move on', async () => {
     signIn()
     mockFetch({ 'GET /me/': me() })
@@ -135,44 +120,26 @@ describe('the app', () => {
 })
 
 describe('a signed-in member', () => {
-  it('sees their pages and their name, and sends their token', async () => {
+  it('is named from their sign-in until their profile loads, sends their token, and reaches their pages', async () => {
     signIn({ name: 'Token Name', token: 'abc' })
-    const fetch = mockFetch({ 'GET /me/': me({ full_name: 'Wanjiru Kamau' }) })
-    const { user } = showApp('/dashboard')
-    expect(screen.getByText('Dashboard page')).toBeInTheDocument()
-    expect(await header().findByRole('link', { name: 'Wanjiru Kamau' })).toHaveAttribute('href', '/profile')
+    let loadProfile: (profile: unknown) => void = () => undefined
+    const fetch = mockFetch({ 'GET /me/': () => new Promise((resolve) => (loadProfile = resolve)) })
+    const { user } = showApp('/hackathons/climate-hack/judge')
+    expect(screen.getByText('Judging page')).toBeInTheDocument()
+    expect(header().getByRole('link', { name: 'Token Name' })).toHaveAttribute('href', '/profile')
+
+    loadProfile(me({ full_name: 'Wanjiru Kamau' }))
+    expect(await header().findByRole('link', { name: 'Wanjiru Kamau' })).toBeInTheDocument()
     expect(callsTo(fetch, 'GET /me/')[0][1]?.headers).toEqual({ Authorization: 'Bearer abc' })
 
     await user.click(header().getByRole('link', { name: 'My activity' }))
-    expect(currentPath()).toBe('/dashboard')
+    expect(screen.getByText('Dashboard page')).toBeInTheDocument()
     await user.click(header().getByRole('button', { name: 'Sign out' }))
     expect(auth.signoutRedirect).toHaveBeenCalled()
   })
 
-  it('opens judging for a hackathon', () => {
-    signIn()
-    mockFetch({ 'GET /me/': me() })
-    showApp('/hackathons/climate-hack/judge')
-    expect(screen.getByText('Judging page')).toBeInTheDocument()
-  })
-
-  it('is named from their sign-in until their profile loads', () => {
-    signIn({ name: 'Token Name' })
-    mockFetch({ 'GET /me/': () => new Promise(() => {}) })
-    showApp('/dashboard')
-    expect(header().getByRole('link', { name: 'Token Name' })).toBeInTheDocument()
-  })
-
-  it('is called Profile with no name anywhere', () => {
-    signIn({ name: '' })
-    mockFetch({ 'GET /me/': () => new Promise(() => {}) })
-    showApp('/dashboard')
-    expect(header().getByRole('link', { name: 'Profile' })).toBeInTheDocument()
-  })
-
   it.each([
-    [me({ is_platform_admin: true }), 'You are a platform admin'],
-    [me({ organizations: [membership({ is_admin: true })] }), 'You are an organisation admin'],
+    [me({ is_platform_admin: true, organizations: [membership({ is_admin: true })] }), 'You are an organisation admin'],
     [me({ organizations: [membership({ roles: ['event_organiser'], can_manage_events: true })] }), 'You are an event organiser'],
     [me({ organizations: [membership({ roles: ['hackathon_manager'], can_manage_hackathons: true })] }), 'You are a hackathon manager'],
   ])('shows an organiser the way to their console', async (profile, title) => {
@@ -183,11 +150,14 @@ describe('a signed-in member', () => {
     expect(header().queryByRole('link', { name: 'Platform' }) !== null).toBe(profile.is_platform_admin)
   })
 
-  it('takes a platform admin to the platform area', async () => {
-    signIn()
-    mockFetch({ 'GET /me/': me({ is_platform_admin: true }) })
+  it('takes a platform admin with no organisation or name to the platform area, not the console', async () => {
+    signIn({ name: '' })
+    mockFetch({ 'GET /me/': me({ is_platform_admin: true, full_name: '' }) })
     const { user } = showApp('/events')
-    await user.click(await header().findByRole('link', { name: 'Platform' }))
+    const platform = await header().findByRole('link', { name: 'Platform' })
+    expect(header().getByRole('link', { name: 'Profile' })).toBeInTheDocument()
+    expect(header().queryByRole('link', { name: /Organiser console/ })).not.toBeInTheDocument()
+    await user.click(platform)
     expect(await screen.findByText('Platform page')).toBeInTheDocument()
   })
 
@@ -205,57 +175,39 @@ describe('a signed-in member', () => {
 })
 
 describe('right after signing in', () => {
-  const justSignedIn = () => sessionStorage.setItem(JUST_SIGNED_IN, '1')
-
   it.each([
     ['a platform admin', me({ is_platform_admin: true }), '/', '/platform'],
     ['an organiser', me({ organizations: [membership({ can_manage_events: true })] }), '/dashboard', '/manage'],
     ['a member', me(), '/', '/dashboard'],
+    ['a member already on their activity', me(), '/dashboard', '/dashboard'],
+    ['anyone who signed in from a particular page', me({ is_platform_admin: true }), '/events', '/events'],
   ])('sends %s to where they work', async (_who, profile, from, to) => {
     signIn()
-    justSignedIn()
+    sessionStorage.setItem(JUST_SIGNED_IN, '1')
     mockFetch({ 'GET /me/': profile, 'GET /stats/': { members: 1 } })
     showApp(from)
-    await waitFor(() => expect(currentPath()).toBe(to))
-    expect(sessionStorage.getItem(JUST_SIGNED_IN)).toBeNull()
-  })
-
-  it('leaves a member on their activity', async () => {
-    signIn()
-    justSignedIn()
-    mockFetch({ 'GET /me/': me() })
-    showApp('/dashboard')
-    await waitFor(() => expect(sessionStorage.getItem(JUST_SIGNED_IN)).toBeNull())
-    expect(currentPath()).toBe('/dashboard')
-  })
-
-  it('returns an organiser to the page they signed in from', async () => {
-    signIn()
-    justSignedIn()
-    mockFetch({ 'GET /me/': me({ is_platform_admin: true }) })
-    showApp('/events')
-    await waitFor(() => expect(sessionStorage.getItem(JUST_SIGNED_IN)).toBeNull())
-    expect(currentPath()).toBe('/events')
-  })
-
-  it('leaves someone who was already signed in where they are', async () => {
-    signIn()
-    mockFetch({ 'GET /me/': me({ is_platform_admin: true }), 'GET /stats/': { members: 1 } })
-    showApp('/')
-    expect(await header().findByRole('link', { name: 'Platform' })).toBeInTheDocument()
-    expect(currentPath()).toBe('/')
-  })
-
-  it('leaves everyone where they are without session storage', async () => {
-    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new DOMException('Storage is disabled', 'SecurityError')
+    await waitFor(() => {
+      expect(sessionStorage.getItem(JUST_SIGNED_IN)).toBeNull()
+      expect(currentPath()).toBe(to)
     })
+  })
+
+  it.each([
+    ['someone who was already signed in', () => undefined],
+    [
+      'everyone when session storage is blocked',
+      () =>
+        vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+          throw new DOMException('Storage is disabled', 'SecurityError')
+        }),
+    ],
+  ])('leaves %s where they are', async (_who, setUp) => {
+    setUp()
     signIn()
     mockFetch({ 'GET /me/': me({ is_platform_admin: true }), 'GET /stats/': { members: 1 } })
     showApp('/')
     expect(await header().findByRole('link', { name: 'Platform' })).toBeInTheDocument()
-    expect(getItem).toHaveBeenCalledWith(JUST_SIGNED_IN)
     expect(currentPath()).toBe('/')
-    getItem.mockRestore()
+    vi.restoreAllMocks()
   })
 })

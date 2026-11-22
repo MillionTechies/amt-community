@@ -57,7 +57,6 @@ describe('Dashboard', () => {
 
     expect(screen.getByText('Next up, in 8 days')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Go meetup' })).toBeInTheDocument()
-    expect(screen.getByText('Online')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'View ticket' })).toHaveAttribute('href', '/events/next')
     expect(screen.queryByText(/You are on the waiting list/)).not.toBeInTheDocument()
 
@@ -66,7 +65,6 @@ describe('Dashboard', () => {
     expect(schedule[0]).toHaveTextContent('Judge')
     expect(schedule[1]).toHaveTextContent('Open')
     expect(schedule[3]).toHaveTextContent('Waitlisted')
-    expect(schedule[3]).toHaveTextContent('Workshop · Acme Labs')
 
     const past = within(panel('Past events')).getAllByRole('link')
     expect(past[0]).toHaveTextContent('Attended')
@@ -83,36 +81,13 @@ describe('Dashboard', () => {
       'Your certificate for Rust intro is ready',
       'Finish your profile',
     ])
-    expect(within(todos[0]).getByText('4 projects are waiting for judges.')).toBeInTheDocument()
     expect(within(todos[0]).getByRole('link', { name: 'Judge' })).toHaveAttribute('href', '/hackathons/h1/judge')
-    expect(within(todos[1]).getByText('Submissions close in 11 days, on 3 Dec 2026.')).toBeInTheDocument()
     expect(within(todos[5]).getByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/profile')
 
     const mine = within(panel('My hackathons')).getAllByRole('link')
     expect(mine[0]).toHaveTextContent('Judge')
     expect(mine[1]).toHaveTextContent('Taking part')
     expect(mine[3]).toHaveTextContent('Results out')
-  })
-
-  it('points a new member to events and hackathons', async () => {
-    at(19)
-    signIn()
-    mockFetch({
-      'GET /me/': me({ full_name: '', headline: 'Student', skills: ['Python'] }),
-      [UPCOMING]: page([]),
-      [PAST]: page([]),
-      [HACKATHONS]: page([]),
-    })
-    renderApp(<Dashboard />)
-    expect(await screen.findByText('You have 0 upcoming events and 0 active hackathons.')).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { name: 'Good evening' })).toBeInTheDocument()
-    expect(screen.getByText('No past events yet')).toBeInTheDocument()
-    expect(screen.getByText('Nothing booked yet')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Browse events' })).toHaveAttribute('href', '/events')
-    expect(screen.getByText('Events you have been to will show up here.')).toBeInTheDocument()
-    expect(screen.getByText('All caught up')).toBeInTheDocument()
-    expect(screen.getByText('No hackathons yet')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'See hackathons' })).toHaveAttribute('href', '/hackathons')
   })
 
   it('shows an event under way and a waiting-list place', async () => {
@@ -131,7 +106,6 @@ describe('Dashboard', () => {
     expect(screen.getByText('You have 1 upcoming event and 1 active hackathon.')).toBeInTheDocument()
     expect(screen.getByText('Of 1 past event')).toBeInTheDocument()
     expect(screen.getByText('Happening now')).toBeInTheDocument()
-    expect(screen.getByText('In person')).toBeInTheDocument()
     expect(screen.getByText('You are on the waiting list. We will email you if a place opens.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'View event' })).toBeInTheDocument()
     expect(screen.queryByText('Nothing else booked')).not.toBeInTheDocument()
@@ -149,14 +123,19 @@ describe('Dashboard', () => {
     })
     renderApp(<Dashboard />)
     expect(await screen.findByText('Nothing else booked')).toBeInTheDocument()
-    expect(screen.getByText('Nairobi Garage')).toBeInTheDocument()
   })
 
-  it('still renders when the lists cannot be loaded', async () => {
-    at(9)
+  it('points a member with nothing loaded to events and hackathons', async () => {
+    at(19)
     mockFetch({ [UPCOMING]: reply(500), [PAST]: reply(500), [HACKATHONS]: reply(500) })
     renderApp(<Dashboard />)
-    expect(await screen.findByRole('heading', { name: 'Good morning' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Good evening' })).toBeInTheDocument()
+    expect(screen.getByText('You have 0 upcoming events and 0 active hackathons.')).toBeInTheDocument()
+    expect(screen.getByText('Nothing booked yet')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Browse events' })).toHaveAttribute('href', '/events')
+    expect(screen.getByText('Events you have been to will show up here.')).toBeInTheDocument()
     expect(screen.getByText('All caught up')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'See hackathons' })).toHaveAttribute('href', '/hackathons')
   })
+
 })

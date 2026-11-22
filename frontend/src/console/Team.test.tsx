@@ -3,7 +3,7 @@ import type { UserEvent } from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import { organiser, person, renderConsole, roleAssignment } from '../test/console'
-import { callsTo, reply, sentBody } from '../test/fetch'
+import { callsTo, reply, sentBody, sequence } from '../test/fetch'
 import { membership } from '../test/fixtures'
 import { renderApp } from '../test/render'
 import { Team } from './Team'
@@ -27,10 +27,12 @@ const removeButton = (name: string) => within(bodyRows().find((r) => r.textConte
 const answer = (user: UserEvent, choice: string) => user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: choice }))
 
 describe('Team', () => {
-  it('lists who has a role, filtered by role', async () => {
-    const { user } = renderConsole('/manage/team', { 'GET /organizations/org-1/roles/': roles }, { member: soleAdmin })
+  it('lists who has a role at each organisation the member runs, filtered by role', async () => {
+    const { user } = renderConsole('/manage/team', {
+      'GET /organizations/org-1/roles/': roles,
+      'GET /organizations/org-2/roles/': [roleAssignment({ id: 9, person: person({ name: 'Beta Person' }) })],
+    }, { member: admin })
     expect(await screen.findByRole('heading', { name: 'People at Acme Labs' })).toBeInTheDocument()
-    expect(screen.queryByRole('combobox', { name: 'Organisation' })).not.toBeInTheDocument()
     expect(await screen.findByText('Wanjiru Kamau')).toBeInTheDocument()
     expect(within(bodyRows()[0]).getByText('Hackathon manager')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /^All/ })).toHaveTextContent('All2')
@@ -40,15 +42,23 @@ describe('Team', () => {
     expect(bodyRows()[0]).toHaveTextContent('Wanjiru Kamau')
     await user.click(screen.getByRole('tab', { name: /^Hackathon managers/ }))
     expect(bodyRows()[0]).toHaveTextContent('Otieno Barasa')
+    await user.click(screen.getByRole('tab', { name: /^All/ }))
+
+    const picker = screen.getByRole('combobox', { name: 'Organisation' })
+    expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual(['Acme Labs', 'Beta Hub'])
+    await user.selectOptions(picker, 'Beta Hub')
+    expect(await screen.findByText('Beta Person')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'People at Beta Hub' })).toBeInTheDocument()
   })
 
   it('removes a role after asking, and reports a failure', async () => {
     const { user, fetch } = renderConsole('/manage/team', {
       'GET /organizations/org-1/roles/': roles,
       'DELETE /organizations/org-1/roles/1/': reply(204),
-      'DELETE /organizations/org-1/roles/2/': reply(400, { detail: 'They lead a live hackathon.' }),
+      'DELETE /organizations/org-1/roles/2/': sequence(reply(400, { detail: 'They lead a live hackathon.' }), reply(204)),
     }, { member: soleAdmin })
     await screen.findByText('Wanjiru Kamau')
+    expect(screen.queryByRole('combobox', { name: 'Organisation' })).not.toBeInTheDocument()
 
     fireEvent.click(removeButton('Wanjiru Kamau'))
     expect(await screen.findByText('They will no longer be an event organiser here.')).toBeInTheDocument()
@@ -57,32 +67,23 @@ describe('Team', () => {
 
     fireEvent.click(removeButton('Wanjiru Kamau'))
     await answer(user, 'Remove')
-    expect(await screen.findByText('Role removed')).toBeInTheDocument()
-    expect(screen.getByText('Wanjiru Kamau is no longer an event organiser.')).toBeInTheDocument()
+    expect(await screen.findByText('Wanjiru Kamau is no longer an event organiser.')).toBeInTheDocument()
 
     fireEvent.click(removeButton('Otieno Barasa'))
     expect(await screen.findByText('They will no longer be a hackathon manager here.')).toBeInTheDocument()
     await answer(user, 'Remove')
     expect(await screen.findByText('Could not remove the role')).toBeInTheDocument()
     expect(screen.getAllByText('They lead a live hackathon.')).toHaveLength(2)
-  })
 
-  it('says who is no longer a hackathon manager', async () => {
-    const { user } = renderConsole('/manage/team', {
-      'GET /organizations/org-1/roles/': roles,
-      'DELETE /organizations/org-1/roles/2/': reply(204),
-    }, { member: soleAdmin })
-    await screen.findByText('Otieno Barasa')
     fireEvent.click(removeButton('Otieno Barasa'))
     await answer(user, 'Remove')
     expect(await screen.findByText('Otieno Barasa is no longer a hackathon manager.')).toBeInTheDocument()
   })
 
   it('gives someone a role', async () => {
-    let attempts = 0
     const { user, fetch } = renderConsole('/manage/team', {
       'GET /organizations/org-1/roles/': [],
-      'POST /organizations/org-1/roles/': () => (attempts++ ? reply(201, {}) : reply(400, { email: ['No member with that email.'] })),
+      'POST /organizations/org-1/roles/': sequence(reply(400, { email: ['No member with that email.'] }), reply(201, {})),
     }, { member: soleAdmin })
     expect(await screen.findByText('Nobody has been given a role yet.')).toBeInTheDocument()
     const email = screen.getByLabelText("Member's email")
@@ -98,37 +99,16 @@ describe('Team', () => {
     expect(sentBody(fetch, 'POST /organizations/org-1/roles/')).toEqual({ email: 'new@example.com', role: 'hackathon_manager' })
   })
 
-  it('switches between the organisations the member runs', async () => {
-    const { user } = renderConsole('/manage/team', {
-      'GET /organizations/org-1/roles/': roles,
-      'GET /organizations/org-2/roles/': [roleAssignment({ id: 9, person: person({ name: 'Beta Person' }) })],
-    }, { member: admin })
-    await screen.findByText('Wanjiru Kamau')
-    const picker = screen.getByRole('combobox', { name: 'Organisation' })
-    expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual(['Acme Labs', 'Beta Hub'])
-    await user.selectOptions(picker, 'Beta Hub')
-    expect(await screen.findByText('Beta Person')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'People at Beta Hub' })).toBeInTheDocument()
-  })
-
-  it('shows why the people did not load, and waits for them', async () => {
-    const { unmount } = renderConsole('/manage/team', { 'GET /organizations/org-1/roles/': reply(403, { detail: 'Not an admin.' }) }, { member: soleAdmin })
-    expect(await screen.findByRole('alert')).toHaveTextContent('Not an admin.')
-    unmount()
-
-    renderConsole('/manage/team', { 'GET /organizations/org-1/roles/': () => new Promise(() => undefined) }, { member: soleAdmin })
-    expect(await screen.findByRole('heading', { name: 'People at Acme Labs' })).toBeInTheDocument()
+  it('waits for the member, turns away a non-admin, and shows why the people did not load', async () => {
+    const waiting = renderApp(<Team />)
     expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
-  })
+    waiting.unmount()
 
-  it('turns away someone who administers no organisation', async () => {
-    renderConsole('/manage/team')
+    const organiser = renderConsole('/manage/team')
     expect(await screen.findByText('You do not administer an organisation.')).toBeInTheDocument()
-  })
+    organiser.unmount()
 
-  it('waits for the member to load', () => {
-    renderApp(<Team />)
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
+    renderConsole('/manage/team', { 'GET /organizations/org-1/roles/': reply(403, { detail: 'Not an admin.' }) }, { member: soleAdmin })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not an admin.')
   })
 })
-

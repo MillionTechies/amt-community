@@ -9,14 +9,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts import access
-from apps.accounts.models import Profile, RoleAssignment
+from apps.accounts.models import OrganizationApplication, Profile, RoleAssignment
 from apps.accounts.serializers import (
     GrantRoleSerializer,
+    OrganizationApplicationSerializer,
     OrganizationSerializer,
     ProfileSerializer,
     RoleAssignmentSerializer,
 )
 from apps.accounts.sync import locked_sync_all
+from apps.notifications import emails
 
 
 def find_profile_by_email(email: str) -> Profile:
@@ -45,7 +47,6 @@ class MeView(APIView):
     def _payload(self, request):
         claims = access.claims_of(request)
         profile = access.profile_of(request)
-        platform_admin = access.is_platform_admin(request)
         # The mirror normally learns of organizations from Keycloak's webhook or
         # `amt_sync`. A token can arrive first, so make sure its organizations exist.
         known = {
@@ -62,30 +63,24 @@ class MeView(APIView):
 
         def entry(org, is_admin):
             held = roles.get(org.id, [])
-            manages_all = is_admin or platform_admin
             return {
                 "id": org.id,
                 "name": org.name,
                 "alias": org.alias,
-                "is_admin": manages_all,
+                "is_admin": is_admin,
                 "roles": held,
-                "can_manage_events": manages_all or RoleAssignment.Role.EVENT_ORGANISER in held,
-                "can_manage_hackathons": manages_all
-                or RoleAssignment.Role.HACKATHON_MANAGER in held,
+                "can_manage_events": is_admin or RoleAssignment.Role.EVENT_ORGANISER in held,
+                "can_manage_hackathons": is_admin or RoleAssignment.Role.HACKATHON_MANAGER in held,
             }
 
         member_of = {m.id: m for m in claims.memberships}
         organizations = [entry(known[m.id], m.is_admin) for m in claims.memberships]
         # Roles can be granted in organizations the user is not a Keycloak member of.
-        extra_ids = set(roles) - set(member_of)
-        if platform_admin:
-            extra = Organization.objects.filter(deleted_at=None).exclude(id__in=member_of)
-        else:
-            extra = Organization.objects.filter(deleted_at=None, id__in=extra_ids)
+        extra = Organization.objects.filter(deleted_at=None, id__in=set(roles) - set(member_of))
         organizations += [entry(org, False) for org in extra]
         return {
             **ProfileSerializer(profile).data,
-            "is_platform_admin": platform_admin,
+            "is_platform_admin": access.is_platform_admin(request),
             "organizations": organizations,
         }
 
@@ -152,3 +147,21 @@ class OrganizationRolesView(APIView):
         organization = self._organization(request, organization_id)
         get_object_or_404(RoleAssignment, id=role_id, organization=organization).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class OrganizationApplicationsView(APIView):
+    """A member applies to bring their organization onto Community, and follows their applications."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        applications = OrganizationApplication.objects.filter(applicant=access.profile_of(request))
+        return Response(OrganizationApplicationSerializer(applications, many=True).data)
+
+    def post(self, request):
+        applicant = access.profile_of(request)
+        serializer = OrganizationApplicationSerializer(data=request.data, context={"applicant": applicant})
+        serializer.is_valid(raise_exception=True)
+        application = serializer.save(applicant=applicant)
+        emails.application_received(application)
+        return Response(OrganizationApplicationSerializer(application).data, status=status.HTTP_201_CREATED)

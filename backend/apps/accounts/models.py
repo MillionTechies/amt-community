@@ -58,3 +58,53 @@ class RoleAssignment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.profile} is {self.get_role_display()} at {self.organization}"
+
+
+class OrganizationApplication(models.Model):
+    """A request to bring an organization onto Community.
+
+    Any member can apply for their university, company, tech community or group. A
+    platform admin reviews it; approving creates the organization in Keycloak and
+    makes the applicant its first admin (see `onboarding.provision`).
+    """
+
+    class Kind(models.TextChoices):
+        INSTITUTION = "institution", "University, college or school"
+        COMPANY = "company", "Company"
+        COMMUNITY = "community", "Tech community"
+        GROUP = "group", "Club or student group"
+        NONPROFIT = "nonprofit", "Non-profit or foundation"
+        OTHER = "other", "Something else"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Waiting for review"
+        APPROVED = "approved", "Approved"
+        DECLINED = "declined", "Declined"
+
+    applicant = models.ForeignKey(
+        Profile, on_delete=models.CASCADE, related_name="organization_applications"
+    )
+    name = models.CharField(max_length=255)
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    website = models.URLField(blank=True)
+    location = models.CharField(max_length=255, blank=True)
+    about = models.TextField()
+    plans = models.TextField(blank=True)
+    contact_phone = models.CharField(max_length=40, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    review_note = models.TextField(blank=True)
+    reviewed_by = models.ForeignKey(
+        Profile, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    # The Keycloak organization created on approval. Saved as soon as Keycloak
+    # answers, so an approval that fails part-way can be retried without a duplicate.
+    keycloak_id = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.get_status_display()})"

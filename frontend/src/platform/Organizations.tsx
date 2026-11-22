@@ -1,5 +1,6 @@
 /** Every organisation, with its people and activity, and one organisation in detail. */
 import { useQuery } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { api } from '../api'
@@ -12,6 +13,11 @@ import { useAct } from '../hooks'
 import type { OrgDetail, OrgRow } from './types'
 
 const num = (n: number) => <span className="font-mono tabular-nums">{n}</span>
+
+/** A row that opens the public page; drafts have none, so they are not links. */
+export function PublicLink({ to, status, className, children }: { to: string; status: string; className: string; children: ReactNode }) {
+  return status === 'draft' ? <div className={className}>{children}</div> : <Link to={to} className={className}>{children}</Link>
+}
 
 export function Organizations() {
   const navigate = useNavigate()
@@ -73,7 +79,7 @@ export function Organizations() {
             order={[0, 'asc']}
             onOpen={(o) => navigate(`/platform/organizations/${encodeURIComponent(o.id)}`)}
             searchPlaceholder="Search organisations"
-            empty="No organisations yet. Create them in Keycloak, then refresh."
+            empty="No organisations yet. Approve an application, or create one in Keycloak and refresh."
             toolbar={
               <>
                 <p className="text-sm text-stone-600"><span className="font-semibold text-ink">{orgs.data.length}</span> organisations</p>
@@ -126,13 +132,13 @@ export function OrganizationDetail() {
               <ul className="divide-y divide-stone-100">
                 {o.event_list.map((e) => (
                   <li key={e.slug}>
-                    <Link to={`/manage/events/${e.slug}`} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-stone-50">
+                    <PublicLink to={`/events/${e.slug}`} status={e.status} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-stone-50">
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold">{e.title}</span>
                         <span className="block text-xs text-stone-500">{formatDate(e.starts_at)} · {e.registered} registered</span>
                       </span>
                       <StatusBadge status={e.status} />
-                    </Link>
+                    </PublicLink>
                   </li>
                 ))}
               </ul>
@@ -143,10 +149,10 @@ export function OrganizationDetail() {
               <ul className="divide-y divide-stone-100">
                 {o.hackathon_list.map((h) => (
                   <li key={h.slug}>
-                    <Link to={`/manage/hackathons/${h.slug}`} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-stone-50">
+                    <PublicLink to={`/hackathons/${h.slug}`} status={h.status} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-stone-50">
                       <span className="truncate text-sm font-semibold">{h.title}</span>
                       <StatusBadge status={h.status} />
-                    </Link>
+                    </PublicLink>
                   </li>
                 ))}
               </ul>

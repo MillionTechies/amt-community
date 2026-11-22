@@ -11,10 +11,10 @@ item = {"patch": "partial_update", "delete": "destroy"}
 prefix = "hackathons/<slug:hackathon_slug>"
 
 urlpatterns = router.urls + [
-    path(f"{prefix}/challenges/", views.ChallengeViewSet.as_view(collection)),
-    path(f"{prefix}/challenges/<int:pk>/", views.ChallengeViewSet.as_view(item)),
-    path(f"{prefix}/criteria/", views.CriterionViewSet.as_view(collection)),
-    path(f"{prefix}/criteria/<int:pk>/", views.CriterionViewSet.as_view(item)),
-    path(f"{prefix}/announcements/", views.AnnouncementViewSet.as_view({"get": "list", "post": "create"})),
-    path(f"{prefix}/announcements/<int:pk>/", views.AnnouncementViewSet.as_view({"delete": "destroy"})),
+    path(f"{prefix}/challenges/", views.ChallengeViewSet.as_view(collection), name="hackathon-challenges"),
+    path(f"{prefix}/challenges/<int:pk>/", views.ChallengeViewSet.as_view(item), name="hackathon-challenge"),
+    path(f"{prefix}/criteria/", views.CriterionViewSet.as_view(collection), name="hackathon-criteria"),
+    path(f"{prefix}/criteria/<int:pk>/", views.CriterionViewSet.as_view(item), name="hackathon-criterion"),
+    path(f"{prefix}/announcements/", views.AnnouncementViewSet.as_view({"get": "list", "post": "create"}), name="hackathon-announcements"),
+    path(f"{prefix}/announcements/<int:pk>/", views.AnnouncementViewSet.as_view({"delete": "destroy"}), name="hackathon-announcement"),
 ]

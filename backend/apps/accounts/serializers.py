@@ -1,7 +1,7 @@
 from amt_auth.django.models import Organization
 from rest_framework import serializers
 
-from apps.accounts.models import Profile, RoleAssignment
+from apps.accounts.models import OrganizationApplication, Profile, RoleAssignment
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -47,6 +47,35 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
 class GrantRoleSerializer(serializers.Serializer):
     email = serializers.EmailField()
     role = serializers.ChoiceField(choices=RoleAssignment.Role.choices)
+
+
+class OrganizationApplicationSerializer(serializers.ModelSerializer):
+    """An application as its applicant sees it, and the form they send."""
+
+    kind_label = serializers.CharField(source="get_kind_display", read_only=True)
+    organization_id = serializers.CharField(source="keycloak_id", read_only=True)
+
+    class Meta:
+        model = OrganizationApplication
+        fields = [
+            "id", "name", "kind", "kind_label", "website", "location", "about", "plans",
+            "contact_phone", "status", "review_note", "organization_id", "created_at", "reviewed_at",
+        ]
+        read_only_fields = ["status", "review_note", "created_at", "reviewed_at"]
+
+    def validate_name(self, value):
+        name = value.strip()
+        if Organization.objects.filter(name__iexact=name, deleted_at=None).exists():
+            raise serializers.ValidationError(
+                f"{name} is already on Community. Ask its admins to add you, or give us your own organisation's name."
+            )
+        pending = OrganizationApplication.objects.filter(
+            applicant=self.context["applicant"], name__iexact=name,
+            status=OrganizationApplication.Status.PENDING,
+        )
+        if pending.exists():
+            raise serializers.ValidationError(f"You already applied for {name}. We will email you once it is reviewed.")
+        return name
 
 
 # How many faces a card shows: "AM", "JK", "WN" and 166 more.

@@ -66,8 +66,6 @@ def visible_hackathons(request):
             to_attr="preview_participants",
         )
     ).order_by("-starts_at", "-id")
-    if access.is_platform_admin(request):
-        return hackathons
     return hackathons.filter(
         Q(status__in=PUBLIC_STATUSES)
         | Q(organization_id__in=access.managed_org_ids(request, ROLE))
@@ -81,10 +79,7 @@ def hackathon_context(request, hackathons) -> dict:
     if profile is None:
         return context
     ids = [h.id for h in hackathons]
-    if access.is_platform_admin(request):
-        context["managed_org_ids"] = {h.organization_id for h in hackathons}
-    else:
-        context["managed_org_ids"] = access.managed_org_ids(request, ROLE)
+    context["managed_org_ids"] = access.managed_org_ids(request, ROLE)
     context["judging_ids"] = set(
         Judge.objects.filter(profile=profile, hackathon__in=ids).values_list(
             "hackathon_id", flat=True
@@ -116,7 +111,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
             mine = TeamMember.objects.filter(profile=profile).values("hackathon_id")
             judging = Judge.objects.filter(profile=profile).values("hackathon_id")
             hackathons = hackathons.filter(Q(id__in=mine) | Q(id__in=judging))
-        elif scope == "managed" and not access.is_platform_admin(self.request):
+        elif scope == "managed":
             hackathons = hackathons.filter(
                 organization_id__in=access.managed_org_ids(self.request, ROLE)
             )
@@ -222,9 +217,10 @@ class HackathonViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get", "post"])
     def teams(self, request, slug=None):
-        """GET lists the teams. POST registers the member by creating a team they lead."""
+        """GET lists the teams, for its managers. POST registers the member by creating a team they lead."""
         hackathon = self.get_object()
         if request.method == "GET":
+            access.require_manage(request, hackathon.organization_id, ROLE)
             teams = hackathon.teams.prefetch_related("members__profile").select_related(
                 "submission"
             )

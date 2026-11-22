@@ -11,15 +11,13 @@ describe('oidcConfig', () => {
     expect(settings.scope).toContain('organization')
   })
 
-  it('drops the code from the address bar and remembers the sign-in', () => {
+  it('drops the code from the address bar and remembers the sign-in, even when storage is blocked', () => {
     window.history.replaceState({}, '', '/events?code=abc&state=xyz')
     oidcConfig.onSigninCallback?.(undefined)
     expect(window.location.search).toBe('')
     expect(window.location.pathname).toBe('/events')
     expect(sessionStorage.getItem(JUST_SIGNED_IN)).toBe('1')
-  })
 
-  it('still finishes signing in when storage is blocked', () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('blocked')
     })
@@ -31,12 +29,9 @@ describe('oidcConfig', () => {
 })
 
 describe('signInArgs', () => {
-  it('returns to the current page by default', () => {
+  it('returns to the current page, or to the given path', () => {
     window.history.replaceState({}, '', '/hackathons/demo')
     expect(signInArgs()).toEqual({ redirect_uri: `${window.location.origin}/hackathons/demo` })
-  })
-
-  it('returns to the given path', () => {
     expect(signInArgs('/console')).toEqual({ redirect_uri: `${window.location.origin}/console` })
   })
 })

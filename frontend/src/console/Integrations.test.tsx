@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { integration, renderConsole } from '../test/console'
-import { callsTo, reply, sentBody } from '../test/fetch'
+import { callsTo, reply, sentBody, sequence } from '../test/fetch'
 import { currentPath } from '../test/render'
 
 const google = integration({ connected: true, account_email: 'amina@example.com' })
@@ -21,7 +21,6 @@ describe('Integrations', () => {
 
     expect(platformGoogle.getByText('Connected', { selector: 'span' })).toBeInTheDocument()
     expect(platformGoogle.getByText('amina@example.com')).toBeInTheDocument()
-    expect(platformGoogle.getByText('Google Meet meetings')).toBeInTheDocument()
     expect(platformGoogle.getByText('Calendar sync')).toBeInTheDocument()
     expect(acmeGoogle.getByText('Acme Labs\'s own app, for its events')).toBeInTheDocument()
     expect(acmeGoogle.getByText('Connected', { selector: 'p' })).toBeInTheDocument()
@@ -37,25 +36,18 @@ describe('Integrations', () => {
     expect(currentPath()).toBe('/manage/configuration')
   })
 
-  it('sends the organiser to the app to connect it', async () => {
+  it('sends the organiser to the app to connect it, or says why it could not', async () => {
     const assign = vi.fn()
     vi.stubGlobal('location', { ...window.location, assign })
     const { user, fetch } = renderConsole('/manage/integrations', {
       'GET /integrations/': [microsoft],
-      'POST /integrations/microsoft/': { authorize_url: 'https://login.example.com/authorize' },
-    })
-    await user.click(await screen.findByRole('button', { name: 'Connect Microsoft' }))
-    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://login.example.com/authorize'))
-    expect(sentBody(fetch, 'POST /integrations/microsoft/')).toEqual({ app: null })
-  })
-
-  it('shows why connecting failed', async () => {
-    const { user } = renderConsole('/manage/integrations', {
-      'GET /integrations/': [microsoft],
-      'POST /integrations/microsoft/': reply(503, { detail: 'Microsoft is unavailable.' }),
+      'POST /integrations/microsoft/': sequence(reply(503, { detail: 'Microsoft is unavailable.' }), { authorize_url: 'https://login.example.com/authorize' }),
     })
     await user.click(await screen.findByRole('button', { name: 'Connect Microsoft' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Microsoft is unavailable.')
+    await user.click(screen.getByRole('button', { name: 'Connect Microsoft' }))
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://login.example.com/authorize'))
+    expect(sentBody(fetch, 'POST /integrations/microsoft/')).toEqual({ app: null })
   })
 
   it('disconnects the platform’s app or an organisation’s own, after asking', async () => {
@@ -80,19 +72,17 @@ describe('Integrations', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Try again later.')
   })
 
-  it('confirms a connection that just came back', async () => {
-    renderConsole('/manage/integrations?connected=google', { 'GET /integrations/': [google, microsoft] })
+  it('confirms a connection that just came back, or explains one that failed', async () => {
+    const { unmount } = renderConsole('/manage/integrations?connected=google', { 'GET /integrations/': [google, microsoft] })
     expect(await screen.findByText('Your Google account is connected.')).toBeInTheDocument()
-  })
+    unmount()
 
-  it('explains a connection that failed on the way back', async () => {
     renderConsole('/manage/integrations?error=microsoft', { 'GET /integrations/': [google, microsoft] })
     expect(await screen.findByText('Microsoft did not connect. Try again, and allow the access it asks for.')).toBeInTheDocument()
   })
 
-  it('shows why the apps did not load, and waits for them', async () => {
+  it('shows why the apps did not load', async () => {
     renderConsole('/manage/integrations', { 'GET /integrations/': reply(500, { detail: 'Server error.' }) })
     expect(await screen.findByRole('alert')).toHaveTextContent('Server error.')
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
   })
 })

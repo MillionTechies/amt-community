@@ -23,6 +23,7 @@ import Events from './pages/Events'
 import HackathonDetail from './pages/HackathonDetail'
 import Hackathons from './pages/Hackathons'
 import Home from './pages/Home'
+import JoinOrganization from './pages/JoinOrganization'
 import Judging from './pages/Judging'
 import Profile from './pages/Profile'
 
@@ -159,6 +160,7 @@ function PublicLayout() {
             <Link className="hover:text-ink" to="/events">Events</Link>
             <Link className="hover:text-ink" to="/hackathons">Hackathons</Link>
             <Link className="hover:text-ink" to="/manage">For organisers</Link>
+            <Link className="hover:text-ink" to="/organizations/join">Bring your organisation</Link>
           </nav>
         </div>
       </footer>
@@ -197,6 +199,7 @@ export default function App() {
         <Route path="/hackathons/:slug" element={<HackathonDetail />} />
         <Route path="/hackathons/:slug/judge" element={<Private><Judging /></Private>} />
         <Route path="/certificates/:code" element={<CertificatePage />} />
+        <Route path="/organizations/join" element={<JoinOrganization />} />
         <Route path="/dashboard" element={<Private><Dashboard /></Private>} />
         <Route path="/profile" element={<Private><Profile /></Private>} />
         <Route path="*" element={<Empty>This page does not exist. <Link className="font-semibold text-brand-700" to="/">Go home</Link></Empty>} />
