@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { auth, signIn } from '../test/auth'
+import { mockFetch } from '../test/fetch'
+import { me } from '../test/fixtures'
 import { currentPath, renderApp } from '../test/render'
 import { BottomNav, ReadMore, StickyAction, TicketSheet, useScrolledPast } from './mobile'
 
@@ -17,7 +19,9 @@ describe('BottomNav', () => {
 
   it('offers activity and profile to members', async () => {
     signIn()
+    mockFetch({ 'GET /me/': me({ judges_anything: true }) })
     const { user } = renderApp(<BottomNav />)
+    expect(await screen.findByRole('link', { name: 'Judging' })).toHaveAttribute('href', '/judging')
     expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/profile')
     await user.click(screen.getByRole('link', { name: 'My activity' }))

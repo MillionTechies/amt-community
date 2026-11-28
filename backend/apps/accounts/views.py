@@ -81,6 +81,8 @@ class MeView(APIView):
         return {
             **ProfileSerializer(profile).data,
             "is_platform_admin": access.is_platform_admin(request),
+            # Judges get their own area in the header.
+            "judges_anything": profile.judging.exists(),
             "organizations": organizations,
         }
 

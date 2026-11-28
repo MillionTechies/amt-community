@@ -8,7 +8,20 @@ from apps.slugs import MAX_LENGTH, make_slug
 
 
 def new_invite_code() -> str:
+    """Kept for old migrations; team codes now come from `new_code`."""
     return secrets.token_urlsafe(9)
+
+
+def _six_digits() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def new_code() -> str:
+    """Six digits no hackathon or team uses, so one "enter your code" box finds either."""
+    code = _six_digits()
+    while Hackathon.objects.filter(join_code=code).exists() or Team.objects.filter(invite_code=code).exists():
+        code = _six_digits()
+    return code
 
 
 class Hackathon(models.Model):
@@ -42,6 +55,10 @@ class Hackathon(models.Model):
     min_team_size = models.PositiveSmallIntegerField(default=1)  # 1 allows individuals
     max_team_size = models.PositiveSmallIntegerField(default=4)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    # Six digits that register a member for the hackathon (see `new_code`), set on save.
+    join_code = models.CharField(max_length=6, unique=True, null=True, editable=False)
+    # Unlisted hackathons stay off the public list; their page and code still work.
+    listed = models.BooleanField(default=True)
     # Where a cancelled hackathon was (open or judging), so restoring puts it back there.
     cancelled_from = models.CharField(max_length=20, choices=Status.choices, blank=True)
     created_by = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, related_name="+")
@@ -57,6 +74,11 @@ class Hackathon(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = make_slug(self.title, Hackathon)
+        if not self.join_code:
+            # Hackathons from before join codes get theirs the next time they are saved.
+            self.join_code = new_code()
+            if kwargs.get("update_fields"):
+                kwargs["update_fields"] = [*kwargs["update_fields"], "join_code"]
         super().save(*args, **kwargs)
 
     @property
@@ -108,7 +130,9 @@ class Team(models.Model):
 
     hackathon = models.ForeignKey(Hackathon, on_delete=models.CASCADE, related_name="teams")
     name = models.CharField(max_length=100)
-    invite_code = models.CharField(max_length=24, unique=True, default=new_invite_code)
+    invite_code = models.CharField(max_length=24, unique=True, default=new_code)
+    # Open teams let any registered participant join with one click while there is room.
+    is_open = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -121,10 +145,26 @@ class Team(models.Model):
         return self.name
 
 
+class Participant(models.Model):
+    """Someone registered for a hackathon. They take part in a team, which they can find later."""
+
+    hackathon = models.ForeignKey(Hackathon, on_delete=models.CASCADE, related_name="participants")
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="hackathon_registrations")
+    # Shown to team leaders, who can invite them.
+    looking_for_team = models.BooleanField(default=False)
+    registered_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["registered_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["hackathon", "profile"], name="unique_participant")
+        ]
+
+
 class TeamMember(models.Model):
     team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="members")
     # Repeats team.hackathon so the database can keep a person to one team per hackathon.
-    hackathon = models.ForeignKey(Hackathon, on_delete=models.CASCADE, related_name="participants")
+    hackathon = models.ForeignKey(Hackathon, on_delete=models.CASCADE, related_name="team_members")
     profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="team_memberships")
     is_leader = models.BooleanField(default=False)
     joined_at = models.DateTimeField(auto_now_add=True)

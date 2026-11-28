@@ -66,6 +66,7 @@ describe('Hackathon form', () => {
     await user.type(screen.getByRole('spinbutton', { name: 'Smallest team' }), '2')
     await user.clear(screen.getByRole('spinbutton', { name: 'Largest team' }))
     await user.type(screen.getByRole('spinbutton', { name: 'Largest team' }), '5')
+    await user.click(screen.getByRole('checkbox', { name: /Listed publicly/ }))
     await user.click(screen.getByRole('button', { name: 'Save draft' }))
 
     expect(await screen.findByText('/manage/hackathons/new-hack', { selector: 'output' })).toBeInTheDocument()
@@ -80,6 +81,7 @@ describe('Hackathon form', () => {
       eligibility: 'Students',
       venue: 'iHub',
       prizes: [{ title: 'Winner', value: 'KES 50,000' }, { title: 'Best design', value: '' }],
+      listed: false,
       starts_at: local('2026-12-01T09:00'),
       ends_at: local('2026-12-03T17:00'),
       registration_deadline: local('2026-11-30T23:00'),
@@ -119,7 +121,7 @@ describe('Hackathon form', () => {
     signIn()
     const fetch = mockFetch({
       'GET /me/': manager(),
-      'GET /hackathons/climate-hack/': hackathon({ description: '<p>Build it.</p>', prizes: [{ title: 'First', value: 'KES 10' }] }),
+      'GET /hackathons/climate-hack/': hackathon({ description: '<p>Build it.</p>', prizes: [{ title: 'First', value: 'KES 10' }], listed: false }),
       'PATCH /hackathons/climate-hack/': hackathon(),
     })
     const { user } = edit()
@@ -131,6 +133,7 @@ describe('Hackathon form', () => {
     expect(sentBody(fetch, 'PATCH /hackathons/climate-hack/')).toMatchObject({
       description: expect.stringContaining('<strong>Build it.</strong>'),
       prizes: [{ title: 'First', value: 'KES 10' }],
+      listed: false,
       min_team_size: 1,
       max_team_size: 4,
       starts_at: '2026-12-01T06:00:00.000Z',

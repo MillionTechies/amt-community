@@ -29,6 +29,13 @@ class PersonSerializer(serializers.ModelSerializer):
         fields = ["sub", "name", "headline", "institution"]
 
 
+class TeammateSerializer(PersonSerializer):
+    """A member as other hackers see them: enough to pick a teammate."""
+
+    class Meta(PersonSerializer.Meta):
+        fields = PersonSerializer.Meta.fields + ["skills", "github_url", "linkedin_url"]
+
+
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization

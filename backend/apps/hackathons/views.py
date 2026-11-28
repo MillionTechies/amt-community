@@ -2,7 +2,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, permissions, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 
@@ -16,11 +16,13 @@ from apps.hackathons.models import (
     Evaluation,
     Hackathon,
     Judge,
+    Participant,
     Score,
     Submission,
     Team,
     TeamMember,
 )
+from apps.hackathons import participation
 from apps.hackathons.scoring import leaderboard
 from apps.hackathons.serializers import (
     AddJudgeSerializer,
@@ -31,11 +33,15 @@ from apps.hackathons.serializers import (
     EvaluationInputSerializer,
     EvaluationSerializer,
     HackathonSerializer,
+    JoinByCodeSerializer,
     JoinTeamSerializer,
     JudgeSerializer,
     MyTeamSerializer,
+    ParticipantSerializer,
+    RegistrationSerializer,
     SubmissionSerializer,
     TeamSerializer,
+    TeamSettingsSerializer,
     TransitionSerializer,
 )
 from apps.notifications import emails
@@ -62,7 +68,7 @@ def visible_hackathons(request):
     ).prefetch_related(
         Prefetch(
             "participants",
-            queryset=TeamMember.objects.select_related("profile").order_by("joined_at")[:PREVIEW_SIZE],
+            queryset=Participant.objects.select_related("profile").order_by("registered_at")[:PREVIEW_SIZE],
             to_attr="preview_participants",
         )
     ).order_by("-starts_at", "-id")
@@ -74,7 +80,10 @@ def visible_hackathons(request):
 
 def hackathon_context(request, hackathons) -> dict:
     """Per-request lookups the HackathonSerializer needs, fetched once for a list."""
-    context = {"managed_org_ids": set(), "judging_ids": set(), "my_teams": {}}
+    context = {
+        "managed_org_ids": set(), "judging_ids": set(), "my_teams": {}, "registered_ids": set(),
+        "judge_scored": {},
+    }
     profile = access.profile_of(request)
     if profile is None:
         return context
@@ -90,6 +99,15 @@ def hackathon_context(request, hackathons) -> dict:
             "hackathon_id", "team_id"
         )
     )
+    context["registered_ids"] = set(
+        Participant.objects.filter(profile=profile, hackathon__in=ids).values_list("hackathon_id", flat=True)
+    )
+    context["judge_scored"] = dict(
+        Evaluation.objects.filter(judge__profile=profile, judge__hackathon__in=ids)
+        .values("judge__hackathon_id")
+        .annotate(scored=Count("id"))
+        .values_list("judge__hackathon_id", "scored")
+    )
     return context
 
 
@@ -102,20 +120,20 @@ class HackathonViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         hackathons = visible_hackathons(self.request).prefetch_related("challenges", "criteria")
-        scope = self.request.query_params.get("scope")
         profile = access.profile_of(self.request)
-        if scope == "mine":
+        managed = access.managed_org_ids(self.request, ROLE)
+        # Signed out, the profile is None and these match nobody.
+        registered = Participant.objects.filter(profile=profile).values("hackathon_id")
+        judging = Judge.objects.filter(profile=profile).values("hackathon_id")
+        scopes = {
             # Hackathons the member takes part in or judges.
-            if profile is None:
-                return hackathons.none()
-            mine = TeamMember.objects.filter(profile=profile).values("hackathon_id")
-            judging = Judge.objects.filter(profile=profile).values("hackathon_id")
-            hackathons = hackathons.filter(Q(id__in=mine) | Q(id__in=judging))
-        elif scope == "managed":
-            hackathons = hackathons.filter(
-                organization_id__in=access.managed_org_ids(self.request, ROLE)
-            )
-        return hackathons
+            "mine": Q(id__in=registered) | Q(id__in=judging),
+            "judging": Q(id__in=judging),
+            "managed": Q(organization_id__in=managed),
+            # The public list leaves out unlisted hackathons; their pages still open.
+            None: Q(listed=True) | Q(organization_id__in=managed) if self.action == "list" else Q(),
+        }
+        return hackathons.filter(scopes.get(self.request.query_params.get("scope"), Q()))
 
     def get_serializer_context(self):
         return {**super().get_serializer_context(), **getattr(self, "_hackathon_context", {})}
@@ -158,7 +176,7 @@ class HackathonViewSet(viewsets.ModelViewSet):
         return membership
 
     def _my_team_response(self, team, status_code=status.HTTP_200_OK):
-        team = Team.objects.prefetch_related("members__profile").get(pk=team.pk)
+        team = Team.objects.select_related("hackathon").prefetch_related("members__profile").get(pk=team.pk)
         return Response(MyTeamSerializer(team).data, status=status_code)
 
     # --- the hackathon itself --------------------------------------------
@@ -205,71 +223,111 @@ class HackathonViewSet(viewsets.ModelViewSet):
         hackathon.save(update_fields=["status", "cancelled_from", "updated_at"])
         return Response(self.get_serializer(hackathon).data)
 
-    # --- teams -----------------------------------------------------------
+    # --- registration and teams -----------------------------------------
 
-    def _require_free_to_join(self, hackathon, profile):
-        if not hackathon.registration_open:
-            raise ValidationError("Registration for this hackathon is closed.")
-        if hackathon.judges.filter(profile=profile).exists():
-            raise ValidationError("Judges cannot take part in the hackathon they judge.")
-        if hackathon.participants.filter(profile=profile).exists():
-            raise ValidationError("You are already in a team for this hackathon.")
+    def _registration(self, hackathon):
+        registration = hackathon.participants.filter(profile=access.profile_of(self.request)).first()
+        if registration is None:
+            raise NotFound("You are not registered for this hackathon.")
+        return registration
+
+    def _require_participant_or_manager(self, hackathon):
+        if not (self._can_manage(hackathon) or hackathon.participants.filter(profile=access.profile_of(self.request)).exists()):
+            raise PermissionDenied("Register for this hackathon to see who is taking part.")
+
+    @action(detail=True, methods=["post", "patch", "delete"], permission_classes=[permissions.IsAuthenticated])
+    def registration(self, request, slug=None):
+        """POST registers the member, PATCH says whether they are looking for a team, DELETE withdraws."""
+        hackathon = self.get_object()
+        profile = access.profile_of(request)
+        if request.method == "POST":
+            if hackathon.participants.filter(profile=profile).exists():
+                raise ValidationError("You are already registered for this hackathon.")
+            registration = participation.register(hackathon, profile)
+            return Response(RegistrationSerializer(registration).data, status=status.HTTP_201_CREATED)
+        registration = self._registration(hackathon)
+        if request.method == "PATCH":
+            data = RegistrationSerializer(registration, data=request.data, partial=True)
+            data.is_valid(raise_exception=True)
+            data.save()
+            return Response(data.data)
+        if hackathon.status != Status.PUBLISHED:
+            raise ValidationError("You can only withdraw while the hackathon is open.")
+        if hackathon.team_members.filter(profile=profile).exists():
+            raise ValidationError("Leave your team before you withdraw.")
+        registration.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get"], permission_classes=[permissions.IsAuthenticated])
+    def participants(self, request, slug=None):
+        """Who is registered, with their team. Leaders use it to find people looking for a team."""
+        hackathon = self.get_object()
+        self._require_participant_or_manager(hackathon)
+        teams = dict(hackathon.team_members.values_list("profile_id", "team__name"))
+        registrations = hackathon.participants.select_related("profile")
+        return Response(ParticipantSerializer(registrations, many=True, context={"teams": teams}).data)
 
     @action(detail=True, methods=["get", "post"])
     def teams(self, request, slug=None):
-        """GET lists the teams, for its managers. POST registers the member by creating a team they lead."""
+        """GET lists the teams, for its managers and participants. POST creates a team the member leads."""
         hackathon = self.get_object()
         if request.method == "GET":
-            access.require_manage(request, hackathon.organization_id, ROLE)
+            self._require_participant_or_manager(hackathon)
             teams = hackathon.teams.prefetch_related("members__profile").select_related(
-                "submission"
+                "submission", "hackathon"
             )
             return Response(TeamSerializer(teams, many=True).data)
-        profile = access.profile_of(request)
         data = CreateTeamSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        self._require_free_to_join(hackathon, profile)
-        try:
-            with transaction.atomic():
-                team = Team.objects.create(hackathon=hackathon, name=data.validated_data["name"])
-                TeamMember.objects.create(
-                    team=team, hackathon=hackathon, profile=profile, is_leader=True
-                )
-        except IntegrityError as exc:
-            raise ValidationError({"name": "A team with this name already exists."}) from exc
+        team = participation.create_team(hackathon, access.profile_of(request), data.validated_data["name"])
         return self._my_team_response(team, status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], url_path="teams/join")
     def join_team(self, request, slug=None):
-        """Join a team with the invite code its leader shared."""
+        """Join a team with the code its leader shared."""
         hackathon = self.get_object()
-        profile = access.profile_of(request)
         data = JoinTeamSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        self._require_free_to_join(hackathon, profile)
-        with transaction.atomic():
-            team = (
-                Team.objects.select_for_update()
-                .filter(hackathon=hackathon, invite_code=data.validated_data["invite_code"])
-                .first()
-            )
-            if team is None:
-                raise ValidationError({"invite_code": "No team has this invite code."})
-            if team.members.count() >= hackathon.max_team_size:
-                raise ValidationError("This team is full.")
-            TeamMember.objects.create(team=team, hackathon=hackathon, profile=profile)
+        team = hackathon.teams.filter(invite_code=data.validated_data["invite_code"]).first()
+        if team is None:
+            raise ValidationError({"invite_code": "No team has this invite code."})
+        participation.join(team, access.profile_of(request))
+        return self._my_team_response(team, status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path=r"teams/(?P<team_id>\d+)/join")
+    def join_open_team(self, request, slug=None, team_id=None):
+        """Join an open team with one click."""
+        team = get_object_or_404(self.get_object().teams, id=team_id)
+        if not team.is_open:
+            raise PermissionDenied("This team is invite only. Ask its leader for the code.")
+        participation.join(team, access.profile_of(request))
         return self._my_team_response(team, status.HTTP_201_CREATED)
 
     @action(
-        detail=True, methods=["get"], url_path="my-team",
+        detail=True, methods=["get", "patch"], url_path="my-team",
         permission_classes=[permissions.IsAuthenticated],
     )
     def my_team(self, request, slug=None):
-        return self._my_team_response(self._my_membership(self.get_object()).team)
+        """GET shows the member's team. PATCH lets its leader rename it or open it to anyone."""
+        hackathon = self.get_object()
+        membership = self._my_membership(hackathon)
+        if request.method == "PATCH":
+            if not membership.is_leader:
+                raise PermissionDenied("Only the team leader changes the team.")
+            if hackathon.status != Status.PUBLISHED:
+                raise ValidationError("Teams are fixed once judging starts.")
+            data = TeamSettingsSerializer(membership.team, data=request.data, partial=True)
+            data.is_valid(raise_exception=True)
+            try:
+                with transaction.atomic():
+                    data.save()
+            except IntegrityError as exc:
+                raise ValidationError({"name": "A team with this name already exists."}) from exc
+        return self._my_team_response(membership.team)
 
     @action(detail=True, methods=["post"], url_path="my-team/leave")
     def leave_team(self, request, slug=None):
-        """Leave the team. Leadership passes on; an empty team is removed."""
+        """Leave the team, staying registered. Leadership passes on; an empty team is removed."""
         hackathon = self.get_object()
         membership = self._my_membership(hackathon)
         if hackathon.status != Status.PUBLISHED:
@@ -417,6 +475,16 @@ class HackathonViewSet(viewsets.ModelViewSet):
         hackathon = self._manageable()
         get_object_or_404(hackathon.judges, id=judge_id).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def join_by_code(request):
+    """One box for every 6-digit code: a hackathon's registers you, a team's also puts you in it."""
+    data = JoinByCodeSerializer(data=request.data)
+    data.is_valid(raise_exception=True)
+    hackathon, team = participation.join_by_code(data.validated_data["code"], access.profile_of(request))
+    return Response({"hackathon": hackathon.slug, "team_id": team.id if team else None})
 
 
 class HackathonChildViewSet(

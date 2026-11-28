@@ -296,6 +296,8 @@ export function HackathonOverview() {
             </div>
           </Panel>
         </div>
+        <div className="space-y-6">
+        {h.join_code && (h.status === 'draft' || h.status === 'published') && <JoinCode hackathon={h} />}
         <Panel title="Getting it right" action={<span className="text-xs font-semibold tabular-nums text-stone-500">{doneCount} of {steps.length}</span>}>
           <div className="mb-4"><Meter value={doneCount} max={steps.length} label="Steps done" /></div>
           <ul className="space-y-2.5">
@@ -313,8 +315,26 @@ export function HackathonOverview() {
             ))}
           </ul>
         </Panel>
+        </div>
       </div>
     </div>
+  )
+}
+
+/** The 6-digit code and link that register people, for posters, chats and private hackathons. */
+function JoinCode({ hackathon: h }: { hackathon: Hackathon }) {
+  const [copied, setCopied] = useState(false)
+  const link = `${window.location.origin}/join?code=${h.join_code}`
+  return (
+    <Panel title="Join code">
+      <p className="text-center font-mono text-3xl font-bold tracking-[0.3em]">{h.join_code}</p>
+      <p className="mt-2 text-sm text-stone-600">
+        {h.listed ? 'People register on the hackathon page, or with this code.' : 'Unlisted: people find this hackathon only through this code or link.'}
+      </p>
+      <Button variant="secondary" className="mt-3 w-full" onClick={() => void navigator.clipboard.writeText(link).then(() => setCopied(true))}>
+        {copied ? 'Link copied' : 'Copy join link'}
+      </Button>
+    </Panel>
   )
 }
 

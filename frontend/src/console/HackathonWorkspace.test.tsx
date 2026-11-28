@@ -3,7 +3,7 @@ import type { UserEvent } from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Announcement, Hackathon } from '../api'
-import { announcement, captureDownloads, judge, person, renderConsole, team } from '../test/console'
+import { announcement, captureDownloads, judge, person, renderConsole, team, teammate } from '../test/console'
 import { callsTo, reply, sentBody, sequence } from '../test/fetch'
 import { hackathon, leaderboardRow } from '../test/fixtures'
 import { currentPath } from '../test/render'
@@ -162,7 +162,7 @@ describe('HackathonOverview', () => {
 
   it('shows the stage, numbers, dates and set-up of an open hackathon', async () => {
     const { user } = open('', {
-      participant_count: 14, team_count: 4, submission_count: 2,
+      participant_count: 14, team_count: 4, submission_count: 2, join_code: '482913',
       challenges: [challenge(1, 'Water')],
       criteria: [criterion(1, 'Impact', 2), criterion(2, 'Polish')],
     }, {
@@ -186,6 +186,13 @@ describe('HackathonOverview', () => {
     expect(setup.getByText('out of 10, ×2')).toBeInTheDocument()
     expect(setup.getByText('out of 10')).toBeInTheDocument()
 
+    const code = await panel('Join code')
+    expect(code.getByText('482913')).toBeInTheDocument()
+    expect(code.getByText('People register on the hackathon page, or with this code.')).toBeInTheDocument()
+    await user.click(code.getByRole('button', { name: 'Copy join link' }))
+    expect(await code.findByRole('button', { name: 'Link copied' })).toBeInTheDocument()
+    expect(await navigator.clipboard.readText()).toBe(`${window.location.origin}/join?code=482913`)
+
     const steps = await panel('Getting it right')
     expect(steps.getByText('4 of 6')).toBeInTheDocument()
     await user.click(steps.getByRole('link', { name: 'Start judging after submissions close' }))
@@ -193,8 +200,9 @@ describe('HackathonOverview', () => {
   })
 
   it('guides a new draft through set-up', async () => {
-    const { user } = open('', { status: 'draft' }, { [`GET ${API}/judges/`]: [] })
+    const { user } = open('', { status: 'draft', listed: false, join_code: '111222' }, { [`GET ${API}/judges/`]: [] })
     await title()
+    expect(await screen.findByText('Unlisted: people find this hackathon only through this code or link.')).toBeInTheDocument()
     expect(stage('Draft')).toHaveClass('border-brand-600')
     expect(kpi('Projects submitted')).toHaveTextContent('No teams yet')
     expect(await screen.findByText('0 judges, 0 criteria')).toBeInTheDocument()
@@ -277,8 +285,8 @@ describe('HackathonSetup', () => {
 describe('HackathonTeams', () => {
   const teams = [
     team({ id: 1, name: 'Rockets', has_submission: true, members: [
-      { id: 1, person: person({ name: 'Wanjiru' }), is_leader: true },
-      { id: 2, person: person({ name: 'Otieno' }), is_leader: false },
+      { id: 1, person: teammate({ name: 'Wanjiru' }), is_leader: true },
+      { id: 2, person: teammate({ name: 'Otieno' }), is_leader: false },
     ] }),
     team({ id: 2, name: 'Comets' }),
   ]

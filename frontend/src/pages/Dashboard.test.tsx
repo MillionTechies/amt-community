@@ -39,8 +39,8 @@ describe('Dashboard', () => {
       ]),
       [HACKATHONS]: page([
         hackathon({ slug: 'h1', title: 'Judge hack', is_judge: true, status: 'judging', submission_count: 4 }),
-        hackathon({ slug: 'h2', title: 'Team hack', my_team_id: 5, submissions_open: true }),
-        hackathon({ slug: 'h3', title: 'Open hack', registration_open: true }),
+        hackathon({ slug: 'h2', title: 'Team hack', is_registered: true, my_team_id: 5, submissions_open: true }),
+        hackathon({ slug: 'h3', title: 'Open hack', is_registered: true, registration_open: true }),
         hackathon({ slug: 'h4', title: 'Done hack', status: 'completed', results_published: true }),
         hackathon({ slug: 'h5', title: 'Old hack', ends_at: '2026-11-01T06:00:00Z' }),
       ]),
@@ -61,7 +61,7 @@ describe('Dashboard', () => {
     expect(screen.queryByText(/You are on the waiting list/)).not.toBeInTheDocument()
 
     const schedule = within(panel('Your schedule')).getAllByRole('link')
-    expect(schedule.map((l) => l.getAttribute('href'))).toEqual(['/hackathons/h1', '/hackathons/h2', '/hackathons/h3', '/events/later', '/events/last'])
+    expect(schedule.map((l) => l.getAttribute('href'))).toEqual(['/hackathons/h1', '/hackathons/h2/workspace', '/hackathons/h3/workspace', '/events/later', '/events/last'])
     expect(schedule[0]).toHaveTextContent('Judge')
     expect(schedule[1]).toHaveTextContent('Open')
     expect(schedule[3]).toHaveTextContent('Waitlisted')

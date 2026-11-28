@@ -27,7 +27,7 @@ def test_me_shows_who_is_signed_in_and_what_they_manage(anonymous, admin, bob, o
     assert anonymous.get(reverse("me")).status_code in (401, 403)
     me = admin.get(reverse("me")).json()
     assert me["email"] == "alice@example.com"
-    assert me["is_platform_admin"] is False
+    assert (me["is_platform_admin"], me["judges_anything"]) == (False, False)
     assert me["organizations"] == [
         {
             "id": org.id, "name": "JKUAT", "alias": "jkuat", "is_admin": True, "roles": [],
