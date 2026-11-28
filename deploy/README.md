@@ -44,8 +44,9 @@ amt-community-worker: emails, reminders, organisation sync    amt-community-db: 
    cd amt-community && git switch main
    cp deploy/.env.example deploy/.env && chmod 600 deploy/.env
    ```
-   Fill in `deploy/.env`: `DB_PASSWORD`, `DJANGO_SECRET_KEY`, `INTEGRATIONS_ENCRYPTION_KEY`
-   (generate each with `openssl rand -base64 48`), `AMT_CLIENT_SECRET` (admin console,
+   Fill in `deploy/.env`: `DB_PASSWORD` and `DJANGO_SECRET_KEY` (`openssl rand -hex 32`
+   each), `INTEGRATIONS_ENCRYPTION_KEY` (`openssl rand -base64 32 | tr '+/' '-_'`, the
+   Fernet format it needs), `AMT_CLIENT_SECRET` (admin console,
    realm A Million Techies, Clients > community-backend > Credentials) and the SMTP login.
    `PROXY_NETWORK` is the same as in the identity server's `.env`.
 3. **Start**: `deploy/deploy.sh --no-pull`. It builds, migrates and starts everything,
