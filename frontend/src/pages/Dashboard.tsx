@@ -122,6 +122,8 @@ export default function Dashboard() {
     (h) => (h.status === 'published' || h.status === 'judging') && new Date(h.ends_at).getTime() >= now - 7 * 86_400_000,
   )
   const [next, ...later] = coming
+  // Participants work in their workspace; judges and others see the hackathon page.
+  const hackathonLink = (h: Hackathon) => (h.is_registered ? `/hackathons/${h.slug}/workspace` : `/hackathons/${h.slug}`)
 
   const todos: Todo[] = []
   for (const h of allHackathons) {
@@ -134,12 +136,12 @@ export default function Dashboard() {
       todos.push({
         key: `submit-${h.slug}`, icon: 'clock', tone: 'amber', title: `Submit your project for ${h.title}`,
         detail: `Submissions close ${relative(h.submission_deadline)}, on ${formatDate(h.submission_deadline)}.`,
-        to: `/hackathons/${h.slug}`, action: 'Open',
+        to: hackathonLink(h), action: 'Open',
       })
-    if (!h.my_team_id && !h.is_judge && h.registration_open)
+    if (h.is_registered && !h.my_team_id && h.registration_open)
       todos.push({
         key: `team-${h.slug}`, icon: 'users', tone: 'blue', title: `Join a team for ${h.title}`,
-        detail: 'Create a team or join one with an invite code.', to: `/hackathons/${h.slug}`, action: 'Open',
+        detail: 'Start a team, join an open one, or enter a team code.', to: hackathonLink(h), action: 'Open',
       })
   }
   for (const e of attended) {
@@ -208,7 +210,7 @@ export default function Dashboard() {
                     badge: e.my_registration?.status === 'waitlisted' ? <StatusBadge status="waitlisted" /> : null,
                   })),
                   ...activeHackathons.map((h) => ({
-                    key: `h-${h.slug}`, date: h.starts_at, title: h.title, to: `/hackathons/${h.slug}`,
+                    key: `h-${h.slug}`, date: h.starts_at, title: h.title, to: hackathonLink(h),
                     meta: `Hackathon · ${formatDate(h.starts_at)} to ${formatDate(h.ends_at)}`,
                     badge: h.is_judge ? <Badge tone="amber">Judge</Badge> : <StatusBadge status={h.status} />,
                   })),
@@ -307,14 +309,14 @@ export default function Dashboard() {
               <ul className="divide-y divide-stone-100">
                 {allHackathons.slice(0, 5).map((h) => (
                   <li key={h.slug}>
-                    <Link to={`/hackathons/${h.slug}`} className="group block px-5 py-3.5 transition hover:bg-stone-50">
+                    <Link to={hackathonLink(h)} className="group block px-5 py-3.5 transition hover:bg-stone-50">
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate text-sm font-semibold group-hover:text-brand-700">{h.title}</span>
                         <StatusBadge status={h.status} />
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
                         <span>{formatDate(h.starts_at)} to {formatDate(h.ends_at)}</span>
-                        {h.my_team_id && <span className="font-semibold text-brand-700">Taking part</span>}
+                        {h.is_registered && <span className="font-semibold text-brand-700">{h.my_team_id ? 'Taking part' : 'Registered, no team yet'}</span>}
                         {h.is_judge && <span className="font-semibold text-amber-700">Judge</span>}
                         {h.results_published && <span>Results out</span>}
                       </div>

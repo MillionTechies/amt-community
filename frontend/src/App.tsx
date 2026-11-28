@@ -23,8 +23,11 @@ import Events from './pages/Events'
 import HackathonDetail from './pages/HackathonDetail'
 import Hackathons from './pages/Hackathons'
 import Home from './pages/Home'
+import JoinByCode from './pages/JoinByCode'
 import JoinOrganization from './pages/JoinOrganization'
+import JudgeDesk from './pages/JudgeDesk'
 import Judging from './pages/Judging'
+import MyHackathon from './pages/MyHackathon'
 import Profile from './pages/Profile'
 
 /** Old addresses for organiser pages now live in the console. */
@@ -59,6 +62,7 @@ function Header() {
       <NavLink to="/events" className={link}>Events</NavLink>
       <NavLink to="/hackathons" className={link}>Hackathons</NavLink>
       {auth.isAuthenticated && <NavLink to="/dashboard" className={link}>My activity</NavLink>}
+      {me?.judges_anything && <NavLink to="/judging" className={link}>Judging</NavLink>}
     </>
   )
   return (
@@ -198,6 +202,9 @@ export default function App() {
         <Route path="/hackathons" element={<Hackathons />} />
         <Route path="/hackathons/:slug" element={<HackathonDetail />} />
         <Route path="/hackathons/:slug/judge" element={<Private><Judging /></Private>} />
+        <Route path="/hackathons/:slug/workspace" element={<Private><MyHackathon /></Private>} />
+        <Route path="/join" element={<JoinByCode />} />
+        <Route path="/judging" element={<Private><JudgeDesk /></Private>} />
         <Route path="/certificates/:code" element={<CertificatePage />} />
         <Route path="/organizations/join" element={<JoinOrganization />} />
         <Route path="/dashboard" element={<Private><Dashboard /></Private>} />

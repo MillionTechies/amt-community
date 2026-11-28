@@ -5,13 +5,14 @@ import type { ReactNode } from 'react'
 import { useAuth } from 'react-oidc-context'
 import { NavLink } from 'react-router-dom'
 
-import { useSignIn } from '../hooks'
+import { useMe, useSignIn } from '../hooks'
 import { Icon } from './icons'
 import type { IconName } from './icons'
 
 /** App-style tabs along the bottom of the screen on phones. */
 export function BottomNav() {
   const auth = useAuth()
+  const me = useMe()
   const signIn = useSignIn()
   const tab = ({ isActive }: { isActive: boolean }) =>
     `flex flex-1 flex-col items-center gap-0.5 pb-1.5 pt-2 text-[11px] font-semibold transition ${
@@ -33,6 +34,7 @@ export function BottomNav() {
       {auth.isAuthenticated ? (
         <>
           <NavLink to="/dashboard" className={tab}>{item('home', 'My activity')}</NavLink>
+          {me?.judges_anything && <NavLink to="/judging" className={tab}>{item('gavel', 'Judging')}</NavLink>}
           <NavLink to="/profile" className={tab}>{item('user', 'Profile')}</NavLink>
         </>
       ) : (

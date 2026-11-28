@@ -112,6 +112,8 @@ export interface Me {
   github_url: string
   linkedin_url: string
   is_platform_admin: boolean
+  /** Judges at least one hackathon, so the header shows the judging area. */
+  judges_anything: boolean
   organizations: MyOrganization[]
 }
 
@@ -141,6 +143,13 @@ export interface Person {
   name: string
   headline: string
   institution: string
+}
+
+/** A person as fellow hackers see them, to pick teammates. */
+export interface Teammate extends Person {
+  skills: string[]
+  github_url: string
+  linkedin_url: string
 }
 
 export type EventStatus = 'draft' | 'published' | 'completed' | 'cancelled'
@@ -291,13 +300,36 @@ export interface Hackathon {
   can_manage: boolean
   is_judge: boolean
   my_team_id: number | null
+  is_registered: boolean
+  /** The 6-digit code that registers people; only its managers see it. */
+  join_code: string | null
+  /** Projects the member has scored, when they judge this hackathon. */
+  my_scores: number | null
+  /** Off the public list when false; the page and code still work. */
+  listed: boolean
   /** Initials of the first few people taking part. */
   participant_preview: string[]
 }
 
+/** The member's own registration for a hackathon. */
+export interface HackathonRegistration {
+  id: number
+  looking_for_team: boolean
+  registered_at: string
+}
+
+/** Someone registered for a hackathon, as other participants see them. */
+export interface Participant {
+  id: number
+  person: Teammate
+  looking_for_team: boolean
+  team_name: string | null
+  registered_at: string
+}
+
 export interface TeamMember {
   id: number
-  person: Person
+  person: Teammate
   is_leader: boolean
 }
 
@@ -319,6 +351,9 @@ export interface Team {
   name: string
   members: TeamMember[]
   has_submission: boolean
+  /** Anyone registered may join with one click while there is room. */
+  is_open: boolean
+  spots_left: number
 }
 
 export interface MyTeam extends Team {

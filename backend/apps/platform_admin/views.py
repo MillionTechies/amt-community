@@ -23,7 +23,7 @@ from apps.accounts.models import OrganizationApplication, Profile, RoleAssignmen
 from apps.configuration import config
 from apps.configuration.registry import GROUPS
 from apps.events.models import Event, Registration
-from apps.hackathons.models import Hackathon, Submission, TeamMember
+from apps.hackathons.models import Hackathon, Participant, Submission
 from apps.integrations.providers import PROVIDERS
 from apps.notifications import emails, sender
 from apps.notifications.models import OutboundEmail
@@ -85,7 +85,7 @@ class OverviewView(APIView):
                 "active_hackathons": Hackathon.objects.filter(status__in=[Hackathon.Status.PUBLISHED, Hackathon.Status.JUDGING]).count(),
                 "registrations": registrations.count(),
                 "check_ins": Registration.objects.exclude(checked_in_at=None).count(),
-                "hackers": TeamMember.objects.values("profile").distinct().count(),
+                "hackers": Participant.objects.values("profile").distinct().count(),
                 "projects": Submission.objects.count(),
             },
             "events_by_status": _status_counts(Event.objects),
