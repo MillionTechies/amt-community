@@ -1,15 +1,17 @@
 /** The member's home: what is next, what needs doing, and what they have taken part in. */
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { api } from '../api'
-import type { CommunityEvent, Hackathon, Paginated } from '../api'
+import type { CommunityEvent, Hackathon, Invitation, Paginated } from '../api'
 import { DateBlock } from '../components/cards'
 import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
-import { Badge, LinkButton, Spinner, StatusBadge, formatDate, formatRange, label } from '../components/ui'
+import { useToast } from '../components/feedback'
+import { Badge, Button, ErrorNote, LinkButton, Spinner, StatusBadge, formatDate, formatRange, label } from '../components/ui'
 import { Kpi, Panel, relative } from '../console/shared'
-import { useMe } from '../hooks'
+import { useAct, useMe } from '../hooks'
+import { destination } from '../invitations'
 
 const list = <T,>(path: string) => () => api<Paginated<T>>(path)
 
@@ -44,6 +46,48 @@ function EmptyState({ icon, title, text, to, action }: { icon: IconName; title: 
       <p className="mb-4 text-sm text-stone-600">{text}</p>
       <LinkButton to={to} variant="secondary">{action}</LinkButton>
     </div>
+  )
+}
+
+/** Invitations sent to the member's address, including those sent before they had an account. */
+function Invitations() {
+  const navigate = useNavigate()
+  const toast = useToast()
+  const invitations = useQuery({ queryKey: ['me', 'invitations'], queryFn: () => api<Invitation[]>('/me/invitations/') })
+  const answer = useAct(({ invitation, verb }: { invitation: Invitation; verb: 'accept' | 'decline' }) =>
+    api<Invitation>(`/invitations/${invitation.token}/${verb}/`, { method: 'POST' }),
+  )
+  const list = invitations.data ?? []
+  return (
+    list.length > 0 && (
+      <Panel title={`Invitations (${list.length})`} flush>
+        <div className="px-5 empty:hidden"><ErrorNote error={answer.error} /></div>
+        <ul className="divide-y divide-stone-100">
+          {list.map((i) => (
+            <li key={i.token} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700"><Icon name="inbox" className="h-5 w-5" /></span>
+              <p className="min-w-0 flex-1 text-sm">
+                <span className="font-semibold">{i.invited_by}</span> invited you to {i.summary}
+              </p>
+              <Button
+                disabled={answer.isPending}
+                onClick={() =>
+                  answer.mutate({ invitation: i, verb: 'accept' }, {
+                    onSuccess: (done) => {
+                      toast({ title: 'Invitation accepted', message: `You can now ${done.summary}.` })
+                      navigate(destination(done))
+                    },
+                  })
+                }
+              >
+                Accept
+              </Button>
+              <Button variant="ghost" disabled={answer.isPending} onClick={() => answer.mutate({ invitation: i, verb: 'decline' })}>Decline</Button>
+            </li>
+          ))}
+        </ul>
+      </Panel>
+    )
   )
 }
 
@@ -181,8 +225,11 @@ export default function Dashboard() {
         <div className="flex flex-wrap gap-2">
           <LinkButton to="/events">Find events</LinkButton>
           <LinkButton to="/hackathons" variant="secondary">Hackathons</LinkButton>
+          <LinkButton to="/join" variant="secondary">Enter a code</LinkButton>
         </div>
       </div>
+
+      <Invitations />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Kpi label="Upcoming" value={coming.length} icon="calendar" note="Events you are going to" />

@@ -15,6 +15,7 @@ from apps.accounts import sync
 from apps.accounts.authentication import ProfileAuthentication
 from apps.accounts.models import Profile, RoleAssignment
 from apps.accounts.serializers import initials
+from apps.invitations.models import Invitation
 from tests.conftest import make_org, sign_in
 
 
@@ -57,13 +58,18 @@ def test_members_edit_their_profile_but_not_their_identity(bob):
     assert bob.patch(reverse("me"), {"skills": ["Python", 3]}, format="json").status_code == 400
 
 
-def test_org_admins_grant_and_revoke_roles_in_their_own_organization(admin, bob, org, other_org):
+def test_org_admins_invite_people_to_roles_and_revoke_them(admin, bob, org, other_org):
     roles = reverse("organization-roles", kwargs={"organization_id": org.id})
-    unknown = admin.post(roles, {"email": "nobody@example.com", "role": "event_organiser"}, format="json")
-    assert unknown.status_code == 400  # they have to sign in once first
+    invited = admin.post(roles, {"email": "Bob@Example.com", "role": "event_organiser"}, format="json")
+    assert invited.status_code == 201
+    assert (invited.json()["email"], invited.json()["status"]) == ("bob@example.com", "pending")
+    # Nothing is granted until they accept.
+    assert admin.get(roles).json() == []
+    pending = admin.get(reverse("organization-invitations", kwargs={"organization_id": org.id})).json()
+    assert [i["email"] for i in pending] == ["bob@example.com"]
 
-    granted = admin.post(roles, {"email": "bob@example.com", "role": "event_organiser"}, format="json")
-    assert granted.status_code == 201
+    token = Invitation.objects.get().token
+    assert bob.post(reverse("invitation-accept", kwargs={"token": token})).status_code == 200
     assert str(RoleAssignment.objects.get()) == "Bob is Event organiser at JKUAT"
     assert [r["email"] for r in admin.get(roles).json()] == ["bob@example.com"]
     assert bob.get(reverse("me")).json()["organizations"] == [
@@ -72,12 +78,14 @@ def test_org_admins_grant_and_revoke_roles_in_their_own_organization(admin, bob,
             "can_manage_events": True, "can_manage_hackathons": False,
         }
     ]
+    again = admin.post(roles, {"email": "bob@example.com", "role": "event_organiser"}, format="json")
+    assert again.json() == {"email": "They already have this role."}
 
     # Neither the role nor being an admin reaches into another organization.
     assert bob.get(roles).status_code == 403
     assert admin.get(reverse("organization-roles", kwargs={"organization_id": other_org.id})).status_code == 403
 
-    revoke = reverse("organization-role", kwargs={"organization_id": org.id, "role_id": granted.json()["id"]})
+    revoke = reverse("organization-role", kwargs={"organization_id": org.id, "role_id": RoleAssignment.objects.get().id})
     assert admin.delete(revoke).status_code == 204
     assert bob.get(reverse("me")).json()["organizations"] == []
 

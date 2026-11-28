@@ -21,6 +21,7 @@ import Dashboard from './pages/Dashboard'
 import EventDetail from './pages/EventDetail'
 import Events from './pages/Events'
 import HackathonDetail from './pages/HackathonDetail'
+import InvitationPage from './pages/Invitation'
 import Hackathons from './pages/Hackathons'
 import Home from './pages/Home'
 import JoinByCode from './pages/JoinByCode'
@@ -204,6 +205,7 @@ export default function App() {
         <Route path="/hackathons/:slug/judge" element={<Private><Judging /></Private>} />
         <Route path="/hackathons/:slug/workspace" element={<Private><MyHackathon /></Private>} />
         <Route path="/join" element={<JoinByCode />} />
+        <Route path="/invitations/:token" element={<InvitationPage />} />
         <Route path="/judging" element={<Private><JudgeDesk /></Private>} />
         <Route path="/certificates/:code" element={<CertificatePage />} />
         <Route path="/organizations/join" element={<JoinOrganization />} />

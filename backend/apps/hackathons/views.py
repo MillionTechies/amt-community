@@ -8,7 +8,6 @@ from rest_framework.response import Response
 
 from apps.accounts import access
 from apps.accounts.serializers import PREVIEW_SIZE
-from apps.accounts.views import find_profile_by_email
 from apps.hackathons.models import (
     Announcement,
     Challenge,
@@ -25,7 +24,6 @@ from apps.hackathons.models import (
 from apps.hackathons import participation
 from apps.hackathons.scoring import leaderboard
 from apps.hackathons.serializers import (
-    AddJudgeSerializer,
     AnnouncementSerializer,
     ChallengeSerializer,
     CreateTeamSerializer,
@@ -41,9 +39,13 @@ from apps.hackathons.serializers import (
     RegistrationSerializer,
     SubmissionSerializer,
     TeamSerializer,
+    TeammateInviteSerializer,
     TeamSettingsSerializer,
     TransitionSerializer,
 )
+from apps.invitations import services as invitations
+from apps.invitations.models import Invitation
+from apps.invitations.serializers import BulkInviteSerializer, InvitationSerializer
 from apps.notifications import emails
 
 ROLE = access.Role.HACKATHON_MANAGER
@@ -176,7 +178,14 @@ class HackathonViewSet(viewsets.ModelViewSet):
         return membership
 
     def _my_team_response(self, team, status_code=status.HTTP_200_OK):
-        team = Team.objects.select_related("hackathon").prefetch_related("members__profile").get(pk=team.pk)
+        team = Team.objects.select_related("hackathon").prefetch_related(
+            "members__profile",
+            Prefetch(
+                "invitations",
+                queryset=Invitation.objects.filter(status=Invitation.Status.PENDING).select_related("profile"),
+                to_attr="pending_invitations",
+            ),
+        ).get(pk=team.pk)
         return Response(MyTeamSerializer(team).data, status=status_code)
 
     # --- the hackathon itself --------------------------------------------
@@ -325,6 +334,23 @@ class HackathonViewSet(viewsets.ModelViewSet):
                 raise ValidationError({"name": "A team with this name already exists."}) from exc
         return self._my_team_response(membership.team)
 
+    @action(detail=True, methods=["post"], url_path="my-team/invitations")
+    def invite_teammate(self, request, slug=None):
+        """The leader invites someone by email, or a participant looking for a team by their `sub`."""
+        hackathon = self.get_object()
+        membership = self._my_membership(hackathon)
+        if not membership.is_leader:
+            raise PermissionDenied("Only the team leader invites people.")
+        if not hackathon.registration_open:
+            raise ValidationError("Registration has closed, so teams can no longer grow.")
+        data = TeammateInviteSerializer(data=request.data, context={"hackathon": hackathon})
+        data.is_valid(raise_exception=True)
+        invitations.invite(
+            Invitation.Kind.TEAM, data.validated_data["email"], access.profile_of(request),
+            profile=data.validated_data.get("profile"), team=membership.team, hackathon=hackathon,
+        )
+        return self._my_team_response(membership.team, status.HTTP_201_CREATED)
+
     @action(detail=True, methods=["post"], url_path="my-team/leave")
     def leave_team(self, request, slug=None):
         """Leave the team, staying registered. Leadership passes on; an empty team is removed."""
@@ -457,18 +483,35 @@ class HackathonViewSet(viewsets.ModelViewSet):
             ]
         )
 
-    @action(detail=True, methods=["get", "post"])
+    @action(detail=True, methods=["get"])
     def judges(self, request, slug=None):
         hackathon = self._manageable()
-        if request.method == "POST":
-            data = AddJudgeSerializer(data=request.data)
-            data.is_valid(raise_exception=True)
-            profile = find_profile_by_email(data.validated_data["email"])
-            if hackathon.participants.filter(profile=profile).exists():
-                raise ValidationError({"email": "This member takes part in the hackathon."})
-            Judge.objects.get_or_create(hackathon=hackathon, profile=profile)
         judges = hackathon.judges.select_related("profile")
         return Response(JudgeSerializer(judges, many=True).data)
+
+    @action(detail=True, methods=["get", "post"])
+    def invitations(self, request, slug=None):
+        """Managers invite judges and participants by email, whether or not they have an account yet.
+
+        GET lists the invitations still waiting for an answer. POST sends one per address;
+        an address that cannot be invited is reported, and the others are still sent.
+        """
+        hackathon = self._manageable()
+        if request.method == "POST":
+            data = BulkInviteSerializer(data=request.data)
+            data.is_valid(raise_exception=True)
+            kind = data.validated_data["kind"]
+            refused = {}
+            for email in dict.fromkeys(e.lower() for e in data.validated_data["emails"]):
+                try:
+                    invitations.invite(kind, email, access.profile_of(request), hackathon=hackathon)
+                except ValidationError as exc:
+                    refused[email] = exc.detail["email"]
+            return Response({"refused": refused}, status=status.HTTP_201_CREATED)
+        pending = hackathon.invitations.filter(
+            kind__in=[Invitation.Kind.JUDGE, Invitation.Kind.PARTICIPANT], status=Invitation.Status.PENDING
+        ).select_related("profile")
+        return Response(InvitationSerializer(pending, many=True).data)
 
     @action(detail=True, methods=["delete"], url_path=r"judges/(?P<judge_id>\d+)")
     def remove_judge(self, request, slug=None, judge_id=None):

@@ -13,6 +13,7 @@ import {
   StatusBadge, Textarea, formatDateTime,
 } from '../components/ui'
 import { useConfirm, useToast } from '../components/feedback'
+import { PendingInvitations } from '../components/invitations'
 import { useAct } from '../hooks'
 
 export default function MyHackathon() {
@@ -174,17 +175,21 @@ function TeamSettings({ hackathon: h, team }: { hackathon: Hackathon; team: MyTe
 }
 
 function InviteTeammates({ hackathon: h, team }: { hackathon: Hackathon; team: MyTeam }) {
+  const toast = useToast()
   const [copied, setCopied] = useState(false)
+  const [email, setEmail] = useState('')
   const link = `${window.location.origin}/join?code=${team.invite_code}`
   const participants = useQuery({
     queryKey: ['hackathon', h.slug, 'participants'],
     queryFn: () => api<Participant[]>(`/hackathons/${h.slug}/participants/`),
   })
+  const invite = useAct((body: { email: string } | { sub: string }) => api(`/hackathons/${h.slug}/my-team/invitations/`, { method: 'POST', body }))
   const looking = (participants.data ?? []).filter((p) => p.looking_for_team && !p.team_name)
+  const room = h.max_team_size - team.members.length - team.pending_invitations.length
   return (
     <Section title="Grow your team">
       <p className="text-sm text-stone-600">
-        Room for {h.max_team_size - team.members.length} more. Share your team code <span className="font-mono font-bold text-ink">{team.invite_code}</span> or this link:
+        Room for {room} more. Share your team code <span className="font-mono font-bold text-ink">{team.invite_code}</span> or this link:
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
         <Input readOnly value={link} aria-label="Invite link" className="min-w-0 flex-1" onFocus={(e) => e.target.select()} />
@@ -192,10 +197,42 @@ function InviteTeammates({ hackathon: h, team }: { hackathon: Hackathon; team: M
           {copied ? 'Link copied' : 'Copy invite link'}
         </Button>
       </div>
+      <form
+        className="mt-5 flex flex-wrap items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          invite.mutate({ email }, {
+            onSuccess: () => {
+              toast({ title: 'Invitation sent', message: `${email} joins your team once they accept.` })
+              setEmail('')
+            },
+          })
+        }}
+      >
+        <div className="min-w-48 flex-1">
+          <Field label="Invite by email" hint="They do not need an account yet.">
+            <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          </Field>
+        </div>
+        <Button type="submit" disabled={invite.isPending}>Send invitation</Button>
+      </form>
+      <div className="mt-3 empty:hidden"><ErrorNote error={invite.error} /></div>
+      <div className="mt-5 empty:hidden"><PendingInvitations invitations={team.pending_invitations} /></div>
       <p className="mb-2 mt-5 text-sm font-semibold">Looking for a team</p>
       {looking.length ? (
         <ul className="divide-y divide-stone-200">
-          {looking.map((p) => <li key={p.id} className="py-3"><Person person={p.person} /></li>)}
+          {looking.map((p) => (
+            <li key={p.id} className="flex items-start gap-3 py-3">
+              <Person person={p.person} />
+              <Button
+                variant="secondary"
+                disabled={invite.isPending || room < 1}
+                onClick={() => invite.mutate({ sub: p.person.sub }, { onSuccess: () => toast({ title: `${p.person.name} is invited`, message: 'They join your team once they accept.' }) })}
+              >
+                Invite
+              </Button>
+            </li>
+          ))}
         </ul>
       ) : (
         <p className="text-sm text-stone-500">Nobody is looking right now.</p>

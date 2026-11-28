@@ -15,6 +15,7 @@ from apps.hackathons.models import (
     Team,
     TeamMember,
 )
+from apps.invitations.serializers import TeamInvitationSerializer
 
 MAX_PRIZES = 20
 
@@ -204,12 +205,16 @@ class TeamSettingsSerializer(serializers.ModelSerializer):
 
 
 class MyTeamSerializer(TeamSerializer):
-    """The team as its own members see it, with the invite code and submission."""
+    """The team as its own members see it, with the invite code, submission and invitations sent."""
 
     submission = serializers.SerializerMethodField()
+    pending_invitations = serializers.SerializerMethodField()
 
     class Meta(TeamSerializer.Meta):
-        fields = TeamSerializer.Meta.fields + ["invite_code", "submission"]
+        fields = TeamSerializer.Meta.fields + ["invite_code", "submission", "pending_invitations"]
+
+    def get_pending_invitations(self, team) -> list[dict]:
+        return TeamInvitationSerializer(team.pending_invitations, many=True).data
 
     def get_submission(self, team):
         return SubmissionSerializer(team.submission).data if hasattr(team, "submission") else None
@@ -264,8 +269,23 @@ class JudgeSerializer(serializers.ModelSerializer):
         fields = ["id", "person", "email", "evaluations", "created_at"]
 
 
-class AddJudgeSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+class TeammateInviteSerializer(serializers.Serializer):
+    """An email address, or the `sub` of a participant from the looking-for-team list."""
+
+    email = serializers.EmailField(required=False)
+    sub = serializers.CharField(required=False)
+
+    def validate(self, attrs):
+        if "sub" in attrs:
+            participant = (
+                self.context["hackathon"].participants.select_related("profile").filter(profile_id=attrs["sub"]).first()
+            )
+            if participant is None:
+                raise serializers.ValidationError({"sub": "This person is not registered for the hackathon."})
+            return {"email": participant.profile.email, "profile": participant.profile}
+        if "email" in attrs:
+            return attrs
+        raise serializers.ValidationError({"email": "Give an email address."})
 
 
 class ScoreInputSerializer(serializers.Serializer):

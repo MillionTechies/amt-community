@@ -4,12 +4,12 @@ from amt_auth.exceptions import AdminAPIError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
-from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
+from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts import access
-from apps.accounts.models import OrganizationApplication, Profile, RoleAssignment
+from apps.accounts.models import OrganizationApplication, RoleAssignment
 from apps.accounts.serializers import (
     GrantRoleSerializer,
     OrganizationApplicationSerializer,
@@ -18,16 +18,10 @@ from apps.accounts.serializers import (
     RoleAssignmentSerializer,
 )
 from apps.accounts.sync import locked_sync_all
+from apps.invitations import services as invitations
+from apps.invitations.models import Invitation
+from apps.invitations.serializers import InvitationSerializer
 from apps.notifications import emails
-
-
-def find_profile_by_email(email: str) -> Profile:
-    profile = Profile.objects.filter(email__iexact=email).first()
-    if profile is None:
-        raise ValidationError(
-            {"email": "No member has this email yet. Ask them to sign in to Community once first."}
-        )
-    return profile
 
 
 class MeView(APIView):
@@ -113,42 +107,48 @@ class OrganizationSyncView(APIView):
         return Response({"organizations": count})
 
 
+def administered_organization(request, organization_id):
+    organization = get_object_or_404(Organization, id=organization_id, deleted_at=None)
+    if not access.is_org_admin(request, organization.id):
+        raise PermissionDenied("Only this organisation's admins manage its roles.")
+    return organization
+
+
 class OrganizationRolesView(APIView):
-    """An organization's admins grant and list event organiser and hackathon manager roles."""
+    """An organization's admins list roles, invite people to them by email, and take them away."""
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def _organization(self, request, organization_id):
-        organization = get_object_or_404(Organization, id=organization_id, deleted_at=None)
-        if not access.is_org_admin(request, organization.id):
-            raise PermissionDenied("Only this organisation's admins manage its roles.")
-        return organization
-
     def get(self, request, organization_id):
-        organization = self._organization(request, organization_id)
+        organization = administered_organization(request, organization_id)
         roles = organization.role_assignments.select_related("profile").order_by("role", "id")
         return Response(RoleAssignmentSerializer(roles, many=True).data)
 
     def post(self, request, organization_id):
-        organization = self._organization(request, organization_id)
+        organization = administered_organization(request, organization_id)
         data = GrantRoleSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        profile = find_profile_by_email(data.validated_data["email"])
-        assignment, created = RoleAssignment.objects.get_or_create(
-            profile=profile,
-            organization=organization,
-            role=data.validated_data["role"],
-            defaults={"granted_by": access.profile_of(request)},
+        invitation = invitations.invite(
+            Invitation.Kind.ORG_ROLE, data.validated_data["email"], access.profile_of(request),
+            organization=organization, role=data.validated_data["role"],
         )
-        return Response(
-            RoleAssignmentSerializer(assignment).data,
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        )
+        return Response(InvitationSerializer(invitation).data, status=status.HTTP_201_CREATED)
 
     def delete(self, request, organization_id, role_id):
-        organization = self._organization(request, organization_id)
+        organization = administered_organization(request, organization_id)
         get_object_or_404(RoleAssignment, id=role_id, organization=organization).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class OrganizationInvitationsView(APIView):
+    """Role invitations still waiting for an answer."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, organization_id):
+        organization = administered_organization(request, organization_id)
+        pending = organization.invitations.filter(kind=Invitation.Kind.ORG_ROLE, status=Invitation.Status.PENDING)
+        return Response(InvitationSerializer(pending.select_related("profile"), many=True).data)
 
 
 class OrganizationApplicationsView(APIView):

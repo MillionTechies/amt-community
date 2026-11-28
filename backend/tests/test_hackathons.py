@@ -21,6 +21,7 @@ from apps.hackathons.models import (
     TeamMember,
 )
 from apps.hackathons.scoring import leaderboard
+from apps.invitations.models import Invitation
 from tests.conftest import in_days, sign_in
 
 Status = Hackathon.Status
@@ -438,20 +439,65 @@ def test_teams_submit_their_project_before_the_deadline(bob, carol, org):
     assert bob.put(submit, submission_data(), format="json").json() == ["Submissions for this hackathon are closed."]
 
 
-def test_managers_add_and_remove_judges_by_email(admin, bob, judy, hackathon):
+def test_managers_invite_judges_and_participants_by_email(admin, bob, judy, hackathon):
+    invite = url("hackathon-invitations", hackathon)
     judges = url("hackathon-judges", hackathon)
     make_team(hackathon, bob)
-    assert bob.post(judges, {"email": "judy@example.com"}, format="json").status_code == 403
-    taking_part = admin.post(judges, {"email": "bob@example.com"}, format="json")
-    assert taking_part.json() == {"email": "This member takes part in the hackathon."}
-    added = admin.post(judges, {"email": "judy@example.com"}, format="json").json()
+    body = {"kind": "judge", "emails": ["judy@example.com", "bob@example.com", "new@example.com", "JUDY@example.com"]}
+    assert bob.post(invite, body, format="json").status_code == 403
+    sent = admin.post(invite, body, format="json")
+    assert sent.json() == {"refused": {"bob@example.com": "They take part in this hackathon."}}
+    participants = admin.post(invite, {"kind": "participant", "emails": ["guest@example.com"]}, format="json")
+    assert participants.json() == {"refused": {}}
+    pending = admin.get(invite).json()
+    assert sorted((i["kind"], i["email"]) for i in pending) == [
+        ("judge", "judy@example.com"), ("judge", "new@example.com"), ("participant", "guest@example.com"),
+    ]
+
+    token = Invitation.objects.get(email="judy@example.com").token
+    judy.post(reverse("invitation-accept", kwargs={"token": token}))
+    added = admin.get(judges).json()
     assert [(j["email"], j["evaluations"]) for j in added] == [("judy@example.com", 0)]
+    assert judy.get(reverse("me")).json()["judges_anything"] is True
 
     remove = url("hackathon-remove-judge", hackathon, judge_id=added[0]["id"])
     assert bob.delete(remove).status_code == 403
     assert admin.delete(remove).status_code == 204
     assert admin.get(judges).json() == []
     assert admin.delete(remove).status_code == 404
+
+
+def test_leaders_invite_teammates_by_email_or_from_the_looking_list(bob, carol, dan, org):
+    hackathon = make_hackathon(org, max_team_size=3)
+    make_team(hackathon, bob)
+    invite = url("hackathon-invite-teammate", hackathon)
+    baker.make(Participant, hackathon=hackathon, profile=carol.profile, looking_for_team=True)
+
+    assert bob.post(invite, {}, format="json").json() == {"email": ["Give an email address."]}
+    assert bob.post(invite, {"sub": dan.profile.sub}, format="json").json() == {
+        "sub": ["This person is not registered for the hackathon."]
+    }
+    by_sub = bob.post(invite, {"sub": carol.profile.sub}, format="json").json()
+    assert [i["name"] for i in by_sub["pending_invitations"]] == ["Carol"]
+    assert bob.post(invite, {"email": "friend@example.com"}, format="json").status_code == 201
+    # Two members' worth of invitations fill a team of three.
+    assert bob.post(invite, {"email": "third@example.com"}, format="json").json() == {
+        "email": "Your team is full, counting the invitations already sent."
+    }
+    assert carol.post(invite, {"email": "x@example.com"}, format="json").status_code == 404
+
+    token = Invitation.objects.get(email="carol@example.com").token
+    carol.post(reverse("invitation-accept", kwargs={"token": token}))
+    team = bob.get(url("hackathon-my-team", hackathon)).json()
+    assert [m["person"]["name"] for m in team["members"]] == ["Bob", "Carol"]
+    assert [i["name"] for i in team["pending_invitations"]] == ["friend@example.com"]
+    assert carol.post(invite, {"email": "y@example.com"}, format="json").json() == {
+        "detail": "Only the team leader invites people."
+    }
+    Hackathon.objects.filter(pk=hackathon.pk).update(registration_deadline=timezone.now())
+    assert bob.post(invite, {"email": "late@example.com"}, format="json").json() == [
+        "Registration has closed, so teams can no longer grow."
+    ]
 
 
 @pytest.fixture

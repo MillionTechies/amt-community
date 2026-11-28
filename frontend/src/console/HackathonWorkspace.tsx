@@ -5,15 +5,16 @@ import type { FormEvent } from 'react'
 import { Link, Outlet, useNavigate, useOutletContext, useParams } from 'react-router-dom'
 
 import { api } from '../api'
-import type { Announcement, Hackathon, Judge, LeaderboardRow, Team } from '../api'
+import type { Announcement, Hackathon, Judge, LeaderboardRow, SentInvitation, Team } from '../api'
 import { Leaderboard } from '../components/hackathon'
 import { DataTable, downloadCsv } from '../components/DataTable'
 import type { Col } from '../components/DataTable'
 import { Icon } from '../components/icons'
+import { PendingInvitations } from '../components/invitations'
 import { RichText } from '../components/RichText'
 import { RichTextEditor } from '../components/RichTextEditor'
 import {
-  Badge, Button, Empty, ErrorNote, Field, Input, Notice, Spinner, StatusBadge, formatDate, formatDateTime,
+  Badge, Button, Empty, ErrorNote, Field, Input, Notice, Spinner, StatusBadge, Textarea, formatDate, formatDateTime,
 } from '../components/ui'
 import { useConfirm, useToast } from '../components/feedback'
 import type { ConfirmOptions, ToastOptions } from '../components/feedback'
@@ -457,7 +458,8 @@ export function HackathonTeams() {
     },
   ]
   return (
-    <div className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+    <div className="grid gap-6 lg:grid-cols-3">
+    <div className="overflow-hidden rounded-xl border border-stone-200 bg-white lg:col-span-2">
       <DataTable
         rows={teams.data}
         columns={columns}
@@ -484,6 +486,65 @@ export function HackathonTeams() {
         }
       />
     </div>
+    <InvitePanel kind="participant" />
+    </div>
+  )
+}
+
+const inviteWords = {
+  judge: { title: 'Invite judges', after: 'They can score projects once they accept.' },
+  participant: { title: 'Invite participants', after: 'They are registered once they accept, even after registration closes.' },
+}
+
+/** Invite judges or participants by email, many at once, whether or not they have an account. */
+function InvitePanel({ kind }: { kind: 'judge' | 'participant' }) {
+  const h = useHackathon()
+  const toast = useToast()
+  const [text, setText] = useState('')
+  const [refused, setRefused] = useState<Record<string, string>>({})
+  const pending = useQuery({
+    queryKey: ['hackathon', h.slug, 'invitations'],
+    queryFn: () => api<SentInvitation[]>(`/hackathons/${h.slug}/invitations/`),
+  })
+  const send = useAct((emails: string[]) =>
+    api<{ refused: Record<string, string> }>(`/hackathons/${h.slug}/invitations/`, { method: 'POST', body: { kind, emails } }),
+  )
+  const words = inviteWords[kind]
+  return (
+    <Panel title={words.title}>
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const emails = [...new Set(text.split(/[\s,;]+/).filter(Boolean))]
+          send.mutate(emails, {
+            onSuccess: (result) => {
+              const sent = emails.length - Object.keys(result.refused).length
+              if (sent) toast({ title: `${sent} ${sent === 1 ? 'invitation' : 'invitations'} sent`, message: words.after })
+              setRefused(result.refused)
+              setText(Object.keys(result.refused).join('\n'))
+            },
+          })
+        }}
+      >
+        <Field label="Emails" hint="One or more, separated by commas or new lines. New people create an account, then accept.">
+          <Textarea required rows={3} value={text} onChange={(e) => setText(e.target.value)} />
+        </Field>
+        {Object.keys(refused).length > 0 && (
+          <Notice tone="amber">
+            Not sent:
+            <ul className="mt-1 list-disc pl-5">
+              {Object.entries(refused).map(([email, reason]) => <li key={email}>{email}: {reason}</li>)}
+            </ul>
+          </Notice>
+        )}
+        <ErrorNote error={send.error} />
+        <Button type="submit" disabled={send.isPending}><Icon name="plus" className="h-4 w-4" />Send invitations</Button>
+      </form>
+      <div className="mt-5 empty:hidden">
+        <PendingInvitations invitations={(pending.data ?? []).filter((i) => i.kind === kind)} />
+      </div>
+    </Panel>
   )
 }
 
@@ -492,8 +553,6 @@ export function HackathonTeams() {
 export function HackathonJudges() {
   const h = useHackathon()
   const judges = useJudges(h.slug)
-  const [email, setEmail] = useState('')
-  const add = useAct(() => api(`/hackathons/${h.slug}/judges/`, { method: 'POST', body: { email } }))
   const remove = useAct((judge: number) => api(`/hackathons/${h.slug}/judges/${judge}/`, { method: 'DELETE' }))
   const confirm = useConfirm()
   const toast = useToast()
@@ -560,26 +619,7 @@ export function HackathonJudges() {
           )}
         </div>
       </div>
-      <Panel title="Invite a judge">
-        <form
-          className="space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault()
-            add.mutate(undefined, {
-              onSuccess: () => {
-                toast({ title: 'Judge added', message: `${email} can now score projects.` })
-                setEmail('')
-              },
-            })
-          }}
-        >
-          <Field label="Email" hint="They must have signed in to Community at least once.">
-            <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          </Field>
-          <ErrorNote error={add.error} />
-          <Button type="submit" disabled={add.isPending}><Icon name="plus" className="h-4 w-4" />Add judge</Button>
-        </form>
-      </Panel>
+      <InvitePanel kind="judge" />
     </div>
   )
 }

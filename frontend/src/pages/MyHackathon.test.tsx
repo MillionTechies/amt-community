@@ -35,6 +35,7 @@ const myTeam = (overrides: Partial<MyTeam> = {}): MyTeam => ({
   spots_left: 2,
   invite_code: '482913',
   submission: null,
+  pending_invitations: [],
   ...overrides,
 })
 
@@ -320,5 +321,26 @@ describe('Hackathon workspace', () => {
     expect(await screen.findByText(/Registration has closed and you did not join a team/)).toBeInTheDocument()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument()
+  })
+
+  it('lets the leader invite teammates by email or from the looking-for-team list', async () => {
+    const { user, fetch } = show(inTeam({ registration_open: true }), {
+      [TEAM]: myTeam({ pending_invitations: [{ id: 4, name: 'friend@example.com', created_at: '2026-11-21T08:00:00Z' }] }),
+      [PEOPLE]: [participant({ id: 9, looking_for_team: true, person: teammate({ sub: 'user-9', name: 'Akinyi' }) })],
+      [`POST ${BASE}/my-team/invitations/`]: sequence(reply(400, { email: 'Your team is full, counting the invitations already sent.' }), reply(201, {}), reply(201, {})),
+    })
+    expect(await screen.findByText(/Room for 1 more/)).toBeInTheDocument()
+    expect(screen.getByText('friend@example.com')).toBeInTheDocument()
+    const email = screen.getByRole('textbox', { name: 'Invite by email' })
+    await user.type(email, 'mate@example.com')
+    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+    expect(await screen.findByText('Your team is full, counting the invitations already sent.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+    expect(await screen.findByText('Invitation sent')).toBeInTheDocument()
+    expect(email).toHaveValue('')
+
+    await user.click(await screen.findByRole('button', { name: 'Invite' }))
+    expect(await screen.findByText('Akinyi is invited')).toBeInTheDocument()
+    expect(sentBody(fetch, `POST ${BASE}/my-team/invitations/`)).toEqual({ sub: 'user-9' })
   })
 })

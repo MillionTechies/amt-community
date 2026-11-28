@@ -359,6 +359,50 @@ export interface Team {
 export interface MyTeam extends Team {
   invite_code: string
   submission: Submission | null
+  /** Invitations the leader sent that are still waiting for an answer. */
+  pending_invitations: TeamInvitation[]
+}
+
+export type InvitationKind = 'org_role' | 'judge' | 'participant' | 'team'
+export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'revoked'
+
+/** An invitation as the people who sent it see it. */
+export interface SentInvitation {
+  id: number
+  kind: InvitationKind
+  email: string
+  /** The invitee's name when they were picked from a list, else their email. */
+  name: string
+  role: string
+  status: InvitationStatus
+  sent_count: number
+  created_at: string
+}
+
+/** A team's pending invitation: a member's name, never their email. */
+export interface TeamInvitation {
+  id: number
+  name: string
+  created_at: string
+}
+
+/** What the link in an invitation email shows (/api/invitations/<token>/). */
+export interface Invitation {
+  token: string
+  kind: InvitationKind
+  status: InvitationStatus
+  /** The invited address, masked: "w***@example.com". */
+  email_hint: string
+  /** Finishes "You are invited to …": "judge Climate hack". */
+  summary: string
+  invited_by: string
+  organization: string | null
+  role: string
+  hackathon: { slug: string; title: string } | null
+  team: string | null
+  /** Whether the signed-in member has the invited address. */
+  is_for_you: boolean
+  created_at: string
 }
 
 export interface Evaluation {

@@ -80,23 +80,39 @@ describe('Team', () => {
     expect(await screen.findByText('Otieno Barasa is no longer a hackathon manager.')).toBeInTheDocument()
   })
 
-  it('gives someone a role', async () => {
+  it('invites someone to a role, and resends or withdraws invitations waiting for an answer', async () => {
+    const pending = { id: 9, kind: 'org_role', email: 'kim@example.com', name: 'kim@example.com', role: 'event_organiser', status: 'pending', sent_count: 1, created_at: '2026-11-20T08:00:00Z' }
     const { user, fetch } = renderConsole('/manage/team', {
       'GET /organizations/org-1/roles/': [],
-      'POST /organizations/org-1/roles/': sequence(reply(400, { email: ['No member with that email.'] }), reply(201, {})),
+      'GET /organizations/org-1/invitations/': [pending],
+      'POST /organizations/org-1/roles/': sequence(reply(400, { email: 'They already have this role.' }), reply(201, {})),
+      'POST /invitations/sent/9/': sequence(reply(400, { detail: 'Too soon.' }), {}),
+      'DELETE /invitations/sent/9/': reply(204),
     }, { member: soleAdmin })
     expect(await screen.findByText('Nobody has been given a role yet.')).toBeInTheDocument()
-    const email = screen.getByLabelText("Member's email")
+    const email = screen.getByLabelText('Email')
     await user.type(email, 'new@example.com')
     expect(screen.getByRole('radio', { name: /Event organiser/ })).toBeChecked()
     await user.click(screen.getByRole('radio', { name: /Hackathon manager/ }))
-    await user.click(screen.getByRole('button', { name: 'Give role' }))
-    expect(await screen.findByText('No member with that email.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+    expect(await screen.findByText('They already have this role.')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Give role' }))
-    // The form clears once the role is given.
+    await user.click(screen.getByRole('button', { name: 'Send invitation' }))
+    expect(await screen.findByText('Invitation sent')).toBeInTheDocument()
     await waitFor(() => expect(email).toHaveValue(''))
     expect(sentBody(fetch, 'POST /organizations/org-1/roles/')).toEqual({ email: 'new@example.com', role: 'hackathon_manager' })
+
+    expect(await screen.findByText('Waiting for an answer (1)')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Resend' }))
+    expect(await screen.findByText('Too soon.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Resend' }))
+    expect(await screen.findByText('Invitation sent again')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Withdraw' }))
+    await user.click(within(screen.getByRole('alertdialog', { name: 'Withdraw the invitation to kim@example.com?' })).getByRole('button', { name: 'Cancel' }))
+    expect(callsTo(fetch, 'DELETE /invitations/sent/9/')).toHaveLength(0)
+    await user.click(screen.getByRole('button', { name: 'Withdraw' }))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Withdraw' }))
+    expect(await screen.findByText('Invitation withdrawn')).toBeInTheDocument()
   })
 
   it('waits for the member, turns away a non-admin, and shows why the people did not load', async () => {
