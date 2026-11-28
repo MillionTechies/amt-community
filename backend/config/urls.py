@@ -16,6 +16,7 @@ urlpatterns = [
     path("api/", include("apps.integrations.urls")),
     path("api/", include("apps.events.urls")),
     path("api/", include("apps.hackathons.urls")),
+    path("api/", include("apps.invitations.urls")),
     path("api/", include("apps.content.urls")),
     path("api/", include("apps.configuration.urls")),
     path("api/", include("apps.platform_admin.urls")),

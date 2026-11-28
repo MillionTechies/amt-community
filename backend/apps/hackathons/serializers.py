@@ -1,7 +1,7 @@
 from amt_auth.django.models import Organization
 from rest_framework import serializers
 
-from apps.accounts.serializers import OrganizationSerializer, PersonSerializer, initials
+from apps.accounts.serializers import OrganizationSerializer, PersonSerializer, TeammateSerializer, initials
 from apps.content import richtext
 from apps.hackathons.models import (
     Announcement,
@@ -10,10 +10,12 @@ from apps.hackathons.models import (
     Evaluation,
     Hackathon,
     Judge,
+    Participant,
     Submission,
     Team,
     TeamMember,
 )
+from apps.invitations.serializers import TeamInvitationSerializer
 
 MAX_PRIZES = 20
 
@@ -47,6 +49,9 @@ class HackathonSerializer(serializers.ModelSerializer):
     can_manage = serializers.SerializerMethodField()
     is_judge = serializers.SerializerMethodField()
     my_team_id = serializers.SerializerMethodField()
+    is_registered = serializers.SerializerMethodField()
+    join_code = serializers.SerializerMethodField()
+    my_scores = serializers.SerializerMethodField()
     participant_preview = serializers.SerializerMethodField()
 
     class Meta:
@@ -57,7 +62,8 @@ class HackathonSerializer(serializers.ModelSerializer):
             "registration_deadline", "submission_deadline", "min_team_size", "max_team_size",
             "status", "cancelled_from", "challenges", "criteria", "team_count", "participant_count",
             "submission_count", "registration_open", "submissions_open", "results_published",
-            "can_manage", "is_judge", "my_team_id", "participant_preview", "created_at",
+            "can_manage", "is_judge", "my_team_id", "is_registered", "join_code", "my_scores", "listed",
+            "participant_preview", "created_at",
         ]
         read_only_fields = ["status", "cancelled_from", "created_at"]
 
@@ -99,6 +105,17 @@ class HackathonSerializer(serializers.ModelSerializer):
     def get_my_team_id(self, hackathon) -> int | None:
         return self.context.get("my_teams", {}).get(hackathon.id)
 
+    def get_is_registered(self, hackathon) -> bool:
+        return hackathon.id in self.context.get("registered_ids", ())
+
+    def get_join_code(self, hackathon) -> str | None:
+        """The 6-digit code is the managers' to share."""
+        return hackathon.join_code if self.get_can_manage(hackathon) else None
+
+    def get_my_scores(self, hackathon) -> int | None:
+        """How many projects the member has scored, when they judge this hackathon."""
+        return self.context.get("judge_scored", {}).get(hackathon.id, 0) if self.get_is_judge(hackathon) else None
+
     def validate_organization_id(self, value):
         if not Organization.objects.filter(id=value, deleted_at=None).exists():
             raise serializers.ValidationError("Unknown organisation.")
@@ -135,7 +152,7 @@ class HackathonSerializer(serializers.ModelSerializer):
 
 
 class TeamMemberSerializer(serializers.ModelSerializer):
-    person = PersonSerializer(source="profile", read_only=True)
+    person = TeammateSerializer(source="profile", read_only=True)
 
     class Meta:
         model = TeamMember
@@ -166,22 +183,38 @@ class SubmissionSerializer(serializers.ModelSerializer):
 class TeamSerializer(serializers.ModelSerializer):
     members = TeamMemberSerializer(many=True, read_only=True)
     has_submission = serializers.SerializerMethodField()
+    spots_left = serializers.SerializerMethodField()
 
     class Meta:
         model = Team
-        fields = ["id", "name", "members", "has_submission", "created_at"]
+        fields = ["id", "name", "members", "has_submission", "is_open", "spots_left", "created_at"]
 
     def get_has_submission(self, team) -> bool:
         return hasattr(team, "submission")
 
+    def get_spots_left(self, team) -> int:
+        return max(0, team.hackathon.max_team_size - len(team.members.all()))
+
+
+class TeamSettingsSerializer(serializers.ModelSerializer):
+    """What a leader changes about their team."""
+
+    class Meta:
+        model = Team
+        fields = ["name", "is_open"]
+
 
 class MyTeamSerializer(TeamSerializer):
-    """The team as its own members see it, with the invite code and submission."""
+    """The team as its own members see it, with the invite code, submission and invitations sent."""
 
     submission = serializers.SerializerMethodField()
+    pending_invitations = serializers.SerializerMethodField()
 
     class Meta(TeamSerializer.Meta):
-        fields = TeamSerializer.Meta.fields + ["invite_code", "submission"]
+        fields = TeamSerializer.Meta.fields + ["invite_code", "submission", "pending_invitations"]
+
+    def get_pending_invitations(self, team) -> list[dict]:
+        return TeamInvitationSerializer(team.pending_invitations, many=True).data
 
     def get_submission(self, team):
         return SubmissionSerializer(team.submission).data if hasattr(team, "submission") else None
@@ -195,6 +228,37 @@ class JoinTeamSerializer(serializers.Serializer):
     invite_code = serializers.CharField(max_length=24)
 
 
+class JoinByCodeSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=20)
+
+    def validate_code(self, value):
+        # People paste "482 913" or "482-913".
+        code = "".join(ch for ch in value if ch.isdigit())
+        if len(code) != 6:
+            raise serializers.ValidationError("Enter the 6-digit code.")
+        return code
+
+
+class RegistrationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Participant
+        fields = ["id", "looking_for_team", "registered_at"]
+
+
+class ParticipantSerializer(serializers.ModelSerializer):
+    """Someone registered, as fellow participants and managers see them."""
+
+    person = TeammateSerializer(source="profile", read_only=True)
+    team_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Participant
+        fields = ["id", "person", "looking_for_team", "team_name", "registered_at"]
+
+    def get_team_name(self, participant) -> str | None:
+        return self.context["teams"].get(participant.profile_id)
+
+
 class JudgeSerializer(serializers.ModelSerializer):
     person = PersonSerializer(source="profile", read_only=True)
     email = serializers.EmailField(source="profile.email", read_only=True)
@@ -205,8 +269,23 @@ class JudgeSerializer(serializers.ModelSerializer):
         fields = ["id", "person", "email", "evaluations", "created_at"]
 
 
-class AddJudgeSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+class TeammateInviteSerializer(serializers.Serializer):
+    """An email address, or the `sub` of a participant from the looking-for-team list."""
+
+    email = serializers.EmailField(required=False)
+    sub = serializers.CharField(required=False)
+
+    def validate(self, attrs):
+        if "sub" in attrs:
+            participant = (
+                self.context["hackathon"].participants.select_related("profile").filter(profile_id=attrs["sub"]).first()
+            )
+            if participant is None:
+                raise serializers.ValidationError({"sub": "This person is not registered for the hackathon."})
+            return {"email": participant.profile.email, "profile": participant.profile}
+        if "email" in attrs:
+            return attrs
+        raise serializers.ValidationError({"email": "Give an email address."})
 
 
 class ScoreInputSerializer(serializers.Serializer):

@@ -128,8 +128,9 @@ describe('a signed-in member', () => {
     expect(screen.getByText('Judging page')).toBeInTheDocument()
     expect(header().getByRole('link', { name: 'Token Name' })).toHaveAttribute('href', '/profile')
 
-    loadProfile(me({ full_name: 'Wanjiru Kamau' }))
+    loadProfile(me({ full_name: 'Wanjiru Kamau', judges_anything: true }))
     expect(await header().findByRole('link', { name: 'Wanjiru Kamau' })).toBeInTheDocument()
+    expect(header().getByRole('link', { name: 'Judging' })).toHaveAttribute('href', '/judging')
     expect(callsTo(fetch, 'GET /me/')[0][1]?.headers).toEqual({ Authorization: 'Bearer abc' })
 
     await user.click(header().getByRole('link', { name: 'My activity' }))

@@ -31,7 +31,12 @@ export default function Judging() {
       <PageHeader
         title={`Judging: ${h.title}`}
         subtitle={submissions.data && `You have scored ${done} of ${submissions.data.length} projects.`}
-        action={<LinkButton to={`/hackathons/${h.slug}`} variant="secondary">Hackathon page</LinkButton>}
+        action={
+          <div className="flex gap-2">
+            <LinkButton to="/judging" variant="secondary">All your judging</LinkButton>
+            <LinkButton to={`/hackathons/${h.slug}`} variant="secondary">Hackathon page</LinkButton>
+          </div>
+        }
       />
       {!open && (
         <div className="mb-4">

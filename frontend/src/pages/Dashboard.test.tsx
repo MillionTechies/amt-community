@@ -2,9 +2,9 @@ import { screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { signIn } from '../test/auth'
-import { mockFetch, page, reply } from '../test/fetch'
+import { mockFetch, page, reply, sequence } from '../test/fetch'
 import { event, hackathon, me, registration } from '../test/fixtures'
-import { renderApp } from '../test/render'
+import { currentPath, renderApp } from '../test/render'
 import Dashboard from './Dashboard'
 
 const UPCOMING = 'GET /events/?scope=mine&when=upcoming&ordering=starts_at'
@@ -39,8 +39,8 @@ describe('Dashboard', () => {
       ]),
       [HACKATHONS]: page([
         hackathon({ slug: 'h1', title: 'Judge hack', is_judge: true, status: 'judging', submission_count: 4 }),
-        hackathon({ slug: 'h2', title: 'Team hack', my_team_id: 5, submissions_open: true }),
-        hackathon({ slug: 'h3', title: 'Open hack', registration_open: true }),
+        hackathon({ slug: 'h2', title: 'Team hack', is_registered: true, my_team_id: 5, submissions_open: true }),
+        hackathon({ slug: 'h3', title: 'Open hack', is_registered: true, registration_open: true }),
         hackathon({ slug: 'h4', title: 'Done hack', status: 'completed', results_published: true }),
         hackathon({ slug: 'h5', title: 'Old hack', ends_at: '2026-11-01T06:00:00Z' }),
       ]),
@@ -61,7 +61,7 @@ describe('Dashboard', () => {
     expect(screen.queryByText(/You are on the waiting list/)).not.toBeInTheDocument()
 
     const schedule = within(panel('Your schedule')).getAllByRole('link')
-    expect(schedule.map((l) => l.getAttribute('href'))).toEqual(['/hackathons/h1', '/hackathons/h2', '/hackathons/h3', '/events/later', '/events/last'])
+    expect(schedule.map((l) => l.getAttribute('href'))).toEqual(['/hackathons/h1', '/hackathons/h2/workspace', '/hackathons/h3/workspace', '/events/later', '/events/last'])
     expect(schedule[0]).toHaveTextContent('Judge')
     expect(schedule[1]).toHaveTextContent('Open')
     expect(schedule[3]).toHaveTextContent('Waitlisted')
@@ -138,4 +138,29 @@ describe('Dashboard', () => {
     expect(screen.getByRole('link', { name: 'See hackathons' })).toHaveAttribute('href', '/hackathons')
   })
 
+
+  it('shows invitations sent before the member joined, to accept or decline', async () => {
+    at(9)
+    const invite = (token: string, summary: string) => ({
+      token, kind: 'judge', status: 'pending', email_hint: 'm***@example.com', summary, invited_by: 'Alice',
+      organization: null, role: '', hackathon: { slug: 'climate-hack', title: 'Climate hack' }, team: null, is_for_you: true,
+      created_at: '2026-11-20T08:00:00Z',
+    })
+    mockFetch({
+      [UPCOMING]: page([]), [PAST]: page([]), [HACKATHONS]: page([]),
+      'GET /me/invitations/': [invite('a', 'judge Climate hack'), invite('b', 'judge Water hack')],
+      'POST /invitations/b/decline/': {},
+      'POST /invitations/a/accept/': sequence(reply(400, { detail: 'You take part in this hackathon.' }), invite('a', 'judge Climate hack')),
+    })
+    const { user } = renderApp(<Dashboard />)
+    const invitations = await screen.findByRole('heading', { name: 'Invitations (2)' })
+    const list = within(invitations.closest('section')!)
+    expect(list.getByText(/invited you to judge Water hack/)).toBeInTheDocument()
+    await user.click(list.getAllByRole('button', { name: 'Decline' })[1])
+    await user.click(list.getAllByRole('button', { name: 'Accept' })[0])
+    expect(await screen.findByText('You take part in this hackathon.')).toBeInTheDocument()
+    await user.click(list.getAllByRole('button', { name: 'Accept' })[0])
+    expect(await screen.findByText('Invitation accepted')).toBeInTheDocument()
+    expect(currentPath()).toBe('/judging')
+  })
 })

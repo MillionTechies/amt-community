@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.events",
     "apps.hackathons",
+    "apps.invitations",
     "apps.content",
     "apps.integrations",
     "apps.notifications",

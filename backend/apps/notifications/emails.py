@@ -1,6 +1,7 @@
 """What Community emails, and to whom. Each function queues emails, then hands them to `deliver`.
 
 - welcome, the first time a new member signs in
+- an invitation to a role, a hackathon or a team, for people with or without an account
 - an organization application was received, approved or declined
 - registration confirmed (with the ticket QR code and a calendar invite), or waitlisted
 - moved off the waiting list
@@ -11,6 +12,7 @@
 """
 
 import json
+from types import SimpleNamespace
 from datetime import UTC, timedelta
 from urllib.parse import quote, urlencode, urlparse
 from zoneinfo import ZoneInfo
@@ -226,6 +228,29 @@ def welcome(profile) -> None:
             "teammates know who you are.",
         ],
         button_url=settings.COMMUNITY_URL, button_label="Explore Community",
+    )
+    deliver([email] if email else [])
+
+
+# --- invitations ---------------------------------------------------------------------
+
+
+def invitation(invitation) -> None:
+    """Invite someone who may not have an account yet; the link lets them sign up, then accept."""
+    inviter = invitation.invited_by.display_name if invitation.invited_by else "Someone"
+    # The invitee may have no profile yet; only their address is needed.
+    recipient = SimpleNamespace(email=invitation.email)
+    email = _queue(
+        "invitation", recipient, f"{inviter} invited you to {invitation.summary}",
+        key=f"invitation:{invitation.id}:{invitation.sent_count}",
+        preheader=f"Accept to {invitation.summary}.",
+        eyebrow="You're invited", heading=f"Join {inviter} on Community",
+        paragraphs=[
+            f"{inviter} invited you to {invitation.summary} on A Million Techies Community.",
+            "Open the invitation to accept it. New to Community? You will create a free account "
+            f"with {invitation.email} first, then come straight back to accept.",
+        ],
+        button_url=f"{settings.COMMUNITY_URL}/invitations/{invitation.token}", button_label="View invitation",
     )
     deliver([email] if email else [])
 

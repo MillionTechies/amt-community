@@ -12,6 +12,7 @@
 import { onTestFinished, vi } from 'vitest'
 
 import type {
+  Teammate,
   Announcement,
   ConfigField,
   ConfigGroup,
@@ -42,6 +43,15 @@ export const person = (overrides: Partial<Person> = {}): Person => ({
   name: 'Wanjiru Kamau',
   headline: '',
   institution: '',
+  ...overrides,
+})
+
+// A person as fellow hackers see them, with skills and links.
+export const teammate = (overrides: Partial<Teammate> = {}): Teammate => ({
+  ...person(),
+  skills: [],
+  github_url: '',
+  linkedin_url: '',
   ...overrides,
 })
 
@@ -117,8 +127,10 @@ export const judge = (overrides: Partial<Judge> = {}): Judge => ({
 export const team = (overrides: Partial<Team> = {}): Team => ({
   id: 1,
   name: 'Team Rocket',
-  members: [{ id: 1, person: person(), is_leader: true }],
+  members: [{ id: 1, person: teammate(), is_leader: true }],
   has_submission: false,
+  is_open: false,
+  spots_left: 3,
   ...overrides,
 })
 

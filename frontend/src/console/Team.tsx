@@ -3,12 +3,14 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { api } from '../api'
-import type { RoleAssignment } from '../api'
+import type { RoleAssignment, SentInvitation } from '../api'
 import { DataTable } from '../components/DataTable'
+import { PendingInvitations } from '../components/invitations'
 import { Icon } from '../components/icons'
 import { Badge, Button, Empty, ErrorNote, Field, Input, Select, Spinner, label } from '../components/ui'
 import { useConfirm, useToast } from '../components/feedback'
 import { useAct } from '../hooks'
+import { Positions } from './Positions'
 import { ConsoleHeader, FilterChips, Panel, useAccess } from './shared'
 
 const ROLES = [
@@ -24,6 +26,11 @@ export function Team() {
   const roles = useQuery({
     queryKey: ['roles', organizationId],
     queryFn: () => api<RoleAssignment[]>(`/organizations/${organizationId}/roles/`),
+    enabled: !!organizationId,
+  })
+  const invitations = useQuery({
+    queryKey: ['roles', organizationId, 'invitations'],
+    queryFn: () => api<SentInvitation[]>(`/organizations/${organizationId}/invitations/`),
     enabled: !!organizationId,
   })
   const [email, setEmail] = useState('')
@@ -53,8 +60,8 @@ export function Team() {
   return (
     <>
       <ConsoleHeader
-        title="Team and roles"
-        subtitle="Choose who can run events and hackathons. Admins can do everything and are managed in Keycloak."
+        title="Team, positions and roles"
+        subtitle="Invite people to run events and hackathons. Admins can do everything and are managed in Keycloak."
         actions={
           organizations.length > 1 && (
             <label className="flex items-center gap-2 text-sm">
@@ -67,7 +74,8 @@ export function Team() {
         }
       />
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <div className="space-y-6 lg:col-span-2">
+          <Positions key={organizationId} organizationId={current!.id} organizationName={current!.name} />
           <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-5 py-3">
               <h2 className="font-semibold">People at {current?.name}</h2>
@@ -118,15 +126,20 @@ export function Team() {
             )}
           </div>
         </div>
-        <Panel title="Give someone a role">
+        <Panel title="Invite someone to a role">
           <form
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault()
-              grant.mutate(undefined, { onSuccess: () => setEmail('') })
+              grant.mutate(undefined, {
+                onSuccess: () => {
+                  toast({ title: 'Invitation sent', message: `${email} gets the role once they accept.` })
+                  setEmail('')
+                },
+              })
             }}
           >
-            <Field label="Member's email" hint="They must have signed in to Community at least once.">
+            <Field label="Email" hint="Anyone with an email address. New people create an account, then accept.">
               <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
             </Field>
             <fieldset className="space-y-2">
@@ -142,8 +155,9 @@ export function Team() {
               ))}
             </fieldset>
             <ErrorNote error={grant.error} />
-            <Button type="submit" disabled={grant.isPending} className="w-full"><Icon name="plus" className="h-4 w-4" />Give role</Button>
+            <Button type="submit" disabled={grant.isPending} className="w-full"><Icon name="plus" className="h-4 w-4" />Send invitation</Button>
           </form>
+          <div className="mt-5 empty:hidden"><PendingInvitations invitations={invitations.data ?? []} /></div>
         </Panel>
       </div>
     </>

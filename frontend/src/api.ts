@@ -112,6 +112,8 @@ export interface Me {
   github_url: string
   linkedin_url: string
   is_platform_admin: boolean
+  /** Judges at least one hackathon, so the header shows the judging area. */
+  judges_anything: boolean
   organizations: MyOrganization[]
 }
 
@@ -141,6 +143,13 @@ export interface Person {
   name: string
   headline: string
   institution: string
+}
+
+/** A person as fellow hackers see them, to pick teammates. */
+export interface Teammate extends Person {
+  skills: string[]
+  github_url: string
+  linkedin_url: string
 }
 
 export type EventStatus = 'draft' | 'published' | 'completed' | 'cancelled'
@@ -291,13 +300,36 @@ export interface Hackathon {
   can_manage: boolean
   is_judge: boolean
   my_team_id: number | null
+  is_registered: boolean
+  /** The 6-digit code that registers people; only its managers see it. */
+  join_code: string | null
+  /** Projects the member has scored, when they judge this hackathon. */
+  my_scores: number | null
+  /** Off the public list when false; the page and code still work. */
+  listed: boolean
   /** Initials of the first few people taking part. */
   participant_preview: string[]
 }
 
+/** The member's own registration for a hackathon. */
+export interface HackathonRegistration {
+  id: number
+  looking_for_team: boolean
+  registered_at: string
+}
+
+/** Someone registered for a hackathon, as other participants see them. */
+export interface Participant {
+  id: number
+  person: Teammate
+  looking_for_team: boolean
+  team_name: string | null
+  registered_at: string
+}
+
 export interface TeamMember {
   id: number
-  person: Person
+  person: Teammate
   is_leader: boolean
 }
 
@@ -319,11 +351,58 @@ export interface Team {
   name: string
   members: TeamMember[]
   has_submission: boolean
+  /** Anyone registered may join with one click while there is room. */
+  is_open: boolean
+  spots_left: number
 }
 
 export interface MyTeam extends Team {
   invite_code: string
   submission: Submission | null
+  /** Invitations the leader sent that are still waiting for an answer. */
+  pending_invitations: TeamInvitation[]
+}
+
+export type InvitationKind = 'org_role' | 'position' | 'judge' | 'participant' | 'team'
+export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'revoked'
+
+/** An invitation as the people who sent it see it. */
+export interface SentInvitation {
+  id: number
+  kind: InvitationKind
+  email: string
+  /** The invitee's name when they were picked from a list, else their email. */
+  name: string
+  role: string
+  status: InvitationStatus
+  sent_count: number
+  created_at: string
+}
+
+/** A team's pending invitation: a member's name, never their email. */
+export interface TeamInvitation {
+  id: number
+  name: string
+  created_at: string
+}
+
+/** What the link in an invitation email shows (/api/invitations/<token>/). */
+export interface Invitation {
+  token: string
+  kind: InvitationKind
+  status: InvitationStatus
+  /** The invited address, masked: "w***@example.com". */
+  email_hint: string
+  /** Finishes "You are invited to …": "judge Climate hack". */
+  summary: string
+  invited_by: string
+  organization: string | null
+  role: string
+  hackathon: { slug: string; title: string } | null
+  team: string | null
+  /** Whether the signed-in member has the invited address. */
+  is_for_you: boolean
+  created_at: string
 }
 
 export interface Evaluation {
@@ -350,6 +429,25 @@ export interface LeaderboardRow {
   evaluations: number
   judges: number
   submission: Submission
+}
+
+/** An office in an organisation's leadership, as its admins manage it. */
+export interface Position {
+  id: number
+  title: string
+  order: number
+  /** Roles its holder gets while they hold it. */
+  roles: string[]
+  is_public: boolean
+  holder: Person | null
+  holder_email: string | null
+  /** The invitation waiting for an answer, if someone was asked to take it. */
+  invitation: TeamInvitation | null
+}
+
+/** An organisation's public page (/api/organizations/<alias>/page/). */
+export interface OrganizationPage extends Organization {
+  leadership: { id: number; title: string; person: Person }[]
 }
 
 export interface RoleAssignment {

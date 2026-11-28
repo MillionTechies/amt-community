@@ -14,12 +14,14 @@ from apps.hackathons.models import (
     Evaluation,
     Hackathon,
     Judge,
+    Participant,
     Score,
     Submission,
     Team,
     TeamMember,
 )
 from apps.hackathons.scoring import leaderboard
+from apps.invitations.models import Invitation
 from tests.conftest import in_days, sign_in
 
 Status = Hackathon.Status
@@ -41,6 +43,9 @@ def make_hackathon(org, **fields):
 
 
 def make_team(hackathon, leader, *members, name="Byte Me"):
+    Participant.objects.bulk_create(
+        [Participant(hackathon=hackathon, profile=person.profile) for person in (leader, *members)]
+    )
     team = baker.make(Team, hackathon=hackathon, name=name)
     baker.make(TeamMember, team=team, hackathon=hackathon, profile=leader.profile, is_leader=True)
     TeamMember.objects.bulk_create(
@@ -251,11 +256,116 @@ def test_members_form_teams_with_invite_codes(admin, bob, carol, dan, hackathon)
 
     detail = bob.get(url("hackathon-detail", hackathon)).json()
     assert (detail["team_count"], detail["participant_count"], detail["my_team_id"]) == (1, 2, created.json()["id"])
-    # Only its managers list the teams, and never see invite codes.
+    # Managers and registered participants list the teams; nobody sees their codes.
     assert dan.get(teams).status_code == 403
     listed = admin.get(teams).json()
     assert listed[0]["name"] == "Byte Me" and "invite_code" not in listed[0]
+    assert listed[0]["spots_left"] == 0
     assert dan.get(url("hackathon-my-team", hackathon)).status_code == 404
+    baker.make(Participant, hackathon=hackathon, profile=dan.profile)
+    assert [t["name"] for t in dan.get(teams).json()] == ["Byte Me"]
+
+
+def test_members_register_before_they_find_a_team(admin, bob, carol, anonymous, hackathon):
+    registration = url("hackathon-registration", hackathon)
+    participants = url("hackathon-participants", hackathon)
+    assert bob.patch(registration, {"looking_for_team": True}, format="json").status_code == 404
+    assert bob.post(registration).status_code == 201
+    assert bob.post(registration).json() == ["You are already registered for this hackathon."]
+    detail = bob.get(url("hackathon-detail", hackathon)).json()
+    assert (detail["is_registered"], detail["my_team_id"], detail["participant_count"]) == (True, None, 1)
+    assert bob.patch(registration, {"looking_for_team": True}, format="json").json()["looking_for_team"] is True
+
+    assert carol.get(participants).status_code == 403
+    assert anonymous.get(participants).status_code == 401
+    looking = admin.get(participants).json()
+    assert [(p["person"]["name"], p["looking_for_team"], p["team_name"]) for p in looking] == [("Bob", True, None)]
+    assert "skills" in looking[0]["person"]
+
+    team = make_team(hackathon, carol)
+    baker.make(TeamMember, team=team, hackathon=hackathon, profile=bob.profile)
+    assert bob.get(participants).json()[0]["team_name"] == "Byte Me"
+    assert bob.delete(registration).json() == ["Leave your team before you withdraw."]
+    TeamMember.objects.filter(profile=bob.profile).delete()
+    Hackathon.objects.filter(pk=hackathon.pk).update(status=Status.JUDGING)
+    assert bob.delete(registration).json() == ["You can only withdraw while the hackathon is open."]
+    Hackathon.objects.filter(pk=hackathon.pk).update(status=Status.PUBLISHED)
+    assert bob.delete(registration).status_code == 204
+    assert not Participant.objects.filter(profile=bob.profile).exists()
+
+
+def test_six_digit_codes_register_for_a_hackathon_or_join_a_team(bob, carol, dan, hackathon):
+    join = reverse("join")
+    spaced = f"{hackathon.join_code[:3]} {hackathon.join_code[3:]}"
+    assert bob.post(join, {"code": spaced}, format="json").json() == {"hackathon": hackathon.slug, "team_id": None}
+    assert Participant.objects.filter(hackathon=hackathon, profile=bob.profile).exists()
+
+    team = make_team(hackathon, carol)
+    joined = dan.post(join, {"code": team.invite_code}, format="json").json()
+    assert joined == {"hackathon": hackathon.slug, "team_id": team.id}
+    assert team.members.count() == 2
+
+    assert bob.post(join, {"code": "12"}, format="json").json() == {"code": ["Enter the 6-digit code."]}
+    taken = {hackathon.join_code, team.invite_code}
+    unused = next(c for c in ("000000", "000001", "000002") if c not in taken)
+    assert bob.post(join, {"code": unused}, format="json").json() == {"code": "No hackathon or team has this code."}
+
+
+def test_codes_never_repeat(monkeypatch, hackathon):
+    from apps.hackathons import models
+
+    picks = iter([hackathon.join_code, "000123"])
+    monkeypatch.setattr(models, "_six_digits", lambda: next(picks))
+    assert models.new_code() == "000123"
+    # Teams made before 6-digit codes keep their old ones, which still work.
+    assert len(models.new_invite_code()) == 12
+
+
+def test_hackathons_from_before_join_codes_get_one_when_next_saved(admin, org):
+    hackathon = make_hackathon(org)
+    baker.make(Criterion, hackathon=hackathon)
+    Hackathon.objects.filter(pk=hackathon.pk).update(join_code=None)
+    admin.post(url("hackathon-transition", hackathon), {"status": "judging"}, format="json")
+    assert len(Hackathon.objects.get(pk=hackathon.pk).join_code) == 6
+
+
+def test_leaders_open_their_team_to_anyone(bob, carol, dan, hackathon):
+    team = make_team(hackathon, bob)
+    make_team(hackathon, dan, name="Taken")
+    my_team = url("hackathon-my-team", hackathon)
+    join_open = url("hackathon-join-open-team", hackathon, team_id=team.id)
+
+    assert carol.post(join_open).json() == {"detail": "This team is invite only. Ask its leader for the code."}
+    assert bob.patch(my_team, {"name": "Taken"}, format="json").json() == {"name": "A team with this name already exists."}
+    opened = bob.patch(my_team, {"is_open": True, "name": "Open Door"}, format="json").json()
+    assert (opened["is_open"], opened["name"], opened["spots_left"]) == (True, "Open Door", 1)
+    assert carol.post(join_open).status_code == 201
+    assert carol.patch(my_team, {"is_open": False}, format="json").status_code == 403
+    assert dan.post(join_open).json() == ["You are already in a team for this hackathon."]
+
+    Hackathon.objects.filter(pk=hackathon.pk).update(status=Status.JUDGING)
+    assert bob.patch(my_team, {"is_open": False}, format="json").json() == ["Teams are fixed once judging starts."]
+
+
+def test_unlisted_hackathons_stay_off_the_public_list(admin, bob, anonymous, org):
+    hidden = make_hackathon(org, listed=False)
+    make_team(hidden, bob)
+
+    def slugs(client, **params):
+        return [h["slug"] for h in client.get(reverse("hackathon-list"), params).json()["results"]]
+
+    assert slugs(anonymous) == slugs(bob) == []
+    assert slugs(bob, scope="mine") == slugs(admin) == [hidden.slug]
+    assert anonymous.get(url("hackathon-detail", hidden)).json()["join_code"] is None
+    assert admin.get(url("hackathon-detail", hidden)).json()["join_code"] == hidden.join_code
+
+
+def test_judges_see_the_hackathons_they_judge_and_their_progress(judy, bob, hackathon, entries):
+    _, submissions, judge = entries
+    baker.make(Evaluation, judge=judge, submission=submissions[0])
+    judging = judy.get(reverse("hackathon-list"), {"scope": "judging"}).json()["results"]
+    assert [(h["slug"], h["my_scores"]) for h in judging] == [(hackathon.slug, 1)]
+    assert bob.get(url("hackathon-detail", hackathon)).json()["my_scores"] is None
 
 
 @pytest.mark.parametrize(
@@ -329,20 +439,65 @@ def test_teams_submit_their_project_before_the_deadline(bob, carol, org):
     assert bob.put(submit, submission_data(), format="json").json() == ["Submissions for this hackathon are closed."]
 
 
-def test_managers_add_and_remove_judges_by_email(admin, bob, judy, hackathon):
+def test_managers_invite_judges_and_participants_by_email(admin, bob, judy, hackathon):
+    invite = url("hackathon-invitations", hackathon)
     judges = url("hackathon-judges", hackathon)
     make_team(hackathon, bob)
-    assert bob.post(judges, {"email": "judy@example.com"}, format="json").status_code == 403
-    taking_part = admin.post(judges, {"email": "bob@example.com"}, format="json")
-    assert taking_part.json() == {"email": "This member takes part in the hackathon."}
-    added = admin.post(judges, {"email": "judy@example.com"}, format="json").json()
+    body = {"kind": "judge", "emails": ["judy@example.com", "bob@example.com", "new@example.com", "JUDY@example.com"]}
+    assert bob.post(invite, body, format="json").status_code == 403
+    sent = admin.post(invite, body, format="json")
+    assert sent.json() == {"refused": {"bob@example.com": "They take part in this hackathon."}}
+    participants = admin.post(invite, {"kind": "participant", "emails": ["guest@example.com"]}, format="json")
+    assert participants.json() == {"refused": {}}
+    pending = admin.get(invite).json()
+    assert sorted((i["kind"], i["email"]) for i in pending) == [
+        ("judge", "judy@example.com"), ("judge", "new@example.com"), ("participant", "guest@example.com"),
+    ]
+
+    token = Invitation.objects.get(email="judy@example.com").token
+    judy.post(reverse("invitation-accept", kwargs={"token": token}))
+    added = admin.get(judges).json()
     assert [(j["email"], j["evaluations"]) for j in added] == [("judy@example.com", 0)]
+    assert judy.get(reverse("me")).json()["judges_anything"] is True
 
     remove = url("hackathon-remove-judge", hackathon, judge_id=added[0]["id"])
     assert bob.delete(remove).status_code == 403
     assert admin.delete(remove).status_code == 204
     assert admin.get(judges).json() == []
     assert admin.delete(remove).status_code == 404
+
+
+def test_leaders_invite_teammates_by_email_or_from_the_looking_list(bob, carol, dan, org):
+    hackathon = make_hackathon(org, max_team_size=3)
+    make_team(hackathon, bob)
+    invite = url("hackathon-invite-teammate", hackathon)
+    baker.make(Participant, hackathon=hackathon, profile=carol.profile, looking_for_team=True)
+
+    assert bob.post(invite, {}, format="json").json() == {"email": ["Give an email address."]}
+    assert bob.post(invite, {"sub": dan.profile.sub}, format="json").json() == {
+        "sub": ["This person is not registered for the hackathon."]
+    }
+    by_sub = bob.post(invite, {"sub": carol.profile.sub}, format="json").json()
+    assert [i["name"] for i in by_sub["pending_invitations"]] == ["Carol"]
+    assert bob.post(invite, {"email": "friend@example.com"}, format="json").status_code == 201
+    # Two members' worth of invitations fill a team of three.
+    assert bob.post(invite, {"email": "third@example.com"}, format="json").json() == {
+        "email": "Your team is full, counting the invitations already sent."
+    }
+    assert carol.post(invite, {"email": "x@example.com"}, format="json").status_code == 404
+
+    token = Invitation.objects.get(email="carol@example.com").token
+    carol.post(reverse("invitation-accept", kwargs={"token": token}))
+    team = bob.get(url("hackathon-my-team", hackathon)).json()
+    assert [m["person"]["name"] for m in team["members"]] == ["Bob", "Carol"]
+    assert [i["name"] for i in team["pending_invitations"]] == ["friend@example.com"]
+    assert carol.post(invite, {"email": "y@example.com"}, format="json").json() == {
+        "detail": "Only the team leader invites people."
+    }
+    Hackathon.objects.filter(pk=hackathon.pk).update(registration_deadline=timezone.now())
+    assert bob.post(invite, {"email": "late@example.com"}, format="json").json() == [
+        "Registration has closed, so teams can no longer grow."
+    ]
 
 
 @pytest.fixture

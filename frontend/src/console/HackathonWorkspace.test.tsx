@@ -3,7 +3,7 @@ import type { UserEvent } from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Announcement, Hackathon } from '../api'
-import { announcement, captureDownloads, judge, person, renderConsole, team } from '../test/console'
+import { announcement, captureDownloads, judge, person, renderConsole, team, teammate } from '../test/console'
 import { callsTo, reply, sentBody, sequence } from '../test/fetch'
 import { hackathon, leaderboardRow } from '../test/fixtures'
 import { currentPath } from '../test/render'
@@ -162,7 +162,7 @@ describe('HackathonOverview', () => {
 
   it('shows the stage, numbers, dates and set-up of an open hackathon', async () => {
     const { user } = open('', {
-      participant_count: 14, team_count: 4, submission_count: 2,
+      participant_count: 14, team_count: 4, submission_count: 2, join_code: '482913',
       challenges: [challenge(1, 'Water')],
       criteria: [criterion(1, 'Impact', 2), criterion(2, 'Polish')],
     }, {
@@ -186,6 +186,13 @@ describe('HackathonOverview', () => {
     expect(setup.getByText('out of 10, ×2')).toBeInTheDocument()
     expect(setup.getByText('out of 10')).toBeInTheDocument()
 
+    const code = await panel('Join code')
+    expect(code.getByText('482913')).toBeInTheDocument()
+    expect(code.getByText('People register on the hackathon page, or with this code.')).toBeInTheDocument()
+    await user.click(code.getByRole('button', { name: 'Copy join link' }))
+    expect(await code.findByRole('button', { name: 'Link copied' })).toBeInTheDocument()
+    expect(await navigator.clipboard.readText()).toBe(`${window.location.origin}/join?code=482913`)
+
     const steps = await panel('Getting it right')
     expect(steps.getByText('4 of 6')).toBeInTheDocument()
     await user.click(steps.getByRole('link', { name: 'Start judging after submissions close' }))
@@ -193,8 +200,9 @@ describe('HackathonOverview', () => {
   })
 
   it('guides a new draft through set-up', async () => {
-    const { user } = open('', { status: 'draft' }, { [`GET ${API}/judges/`]: [] })
+    const { user } = open('', { status: 'draft', listed: false, join_code: '111222' }, { [`GET ${API}/judges/`]: [] })
     await title()
+    expect(await screen.findByText('Unlisted: people find this hackathon only through this code or link.')).toBeInTheDocument()
     expect(stage('Draft')).toHaveClass('border-brand-600')
     expect(kpi('Projects submitted')).toHaveTextContent('No teams yet')
     expect(await screen.findByText('0 judges, 0 criteria')).toBeInTheDocument()
@@ -277,11 +285,25 @@ describe('HackathonSetup', () => {
 describe('HackathonTeams', () => {
   const teams = [
     team({ id: 1, name: 'Rockets', has_submission: true, members: [
-      { id: 1, person: person({ name: 'Wanjiru' }), is_leader: true },
-      { id: 2, person: person({ name: 'Otieno' }), is_leader: false },
+      { id: 1, person: teammate({ name: 'Wanjiru' }), is_leader: true },
+      { id: 2, person: teammate({ name: 'Otieno' }), is_leader: false },
     ] }),
     team({ id: 2, name: 'Comets' }),
   ]
+
+  it('invites participants by email, even people without an account', async () => {
+    const { user, fetch } = open('/teams', {}, {
+      [`GET ${API}/teams/`]: [],
+      [`GET ${API}/invitations/`]: [],
+      [`POST ${API}/invitations/`]: { refused: {} },
+    })
+    const invite = await panel('Invite participants')
+    await user.type(invite.getByLabelText('Emails'), 'a@example.com;b@example.com')
+    await user.click(invite.getByRole('button', { name: 'Send invitations' }))
+    expect(await screen.findByText('2 invitations sent')).toBeInTheDocument()
+    expect(sentBody(fetch, `POST ${API}/invitations/`)).toEqual({ kind: 'participant', emails: ['a@example.com', 'b@example.com'] })
+    expect(invite.getByLabelText('Emails')).toHaveValue('')
+  })
 
   it('lists teams and who submitted, and exports them once there are any', async () => {
     const empty = open('/teams', {}, { [`GET ${API}/teams/`]: [] })
@@ -338,21 +360,36 @@ describe('HackathonJudges', () => {
     expect(callsTo(fetch, `DELETE ${API}/judges/2/`)).toHaveLength(0)
   })
 
-  it('invites a judge by email', async () => {
+  it('invites judges by email, reports who could not be invited, and lists who has not answered', async () => {
     const { user, fetch } = open('/judges', {}, {
       [`GET ${API}/judges/`]: [],
-      [`POST ${API}/judges/`]: sequence(reply(400, { email: ['No member with that email.'] }), reply(201, {})),
+      [`GET ${API}/invitations/`]: [
+        { id: 3, kind: 'judge', email: 'kim@example.com', name: 'kim@example.com', role: '', status: 'pending', sent_count: 1, created_at: '2026-11-20T08:00:00Z' },
+        { id: 4, kind: 'participant', email: 'pat@example.com', name: 'pat@example.com', role: '', status: 'pending', sent_count: 1, created_at: '2026-11-20T08:00:00Z' },
+      ],
+      [`POST ${API}/invitations/`]: sequence(
+        reply(400, { emails: { 0: ['Enter a valid email address.'] } }),
+        { refused: { 'bob@example.com': 'They take part in this hackathon.' } },
+        { refused: { 'bob@example.com': 'They take part in this hackathon.' } },
+      ),
     })
     expect(await screen.findByText('Judges (0)')).toBeInTheDocument()
-    const invite = await panel('Invite a judge')
-    await user.type(invite.getByLabelText('Email'), 'new@example.com')
-    await user.click(invite.getByRole('button', { name: 'Add judge' }))
-    expect(await invite.findByText('No member with that email.')).toBeInTheDocument()
-
-    await user.click(invite.getByRole('button', { name: 'Add judge' }))
-    expect(await screen.findByText('new@example.com can now score projects.')).toBeInTheDocument()
-    expect(sentBody(fetch, `POST ${API}/judges/`)).toEqual({ email: 'new@example.com' })
-    expect(invite.getByLabelText('Email')).toHaveValue('')
+    const invite = await panel('Invite judges')
+    expect(await invite.findByText('kim@example.com')).toBeInTheDocument()
+    expect(invite.queryByText('pat@example.com')).not.toBeInTheDocument()
+    const emails = invite.getByLabelText('Emails')
+    await user.type(emails, 'new@example.com, bob@example.com{enter}new@example.com')
+    await user.click(invite.getByRole('button', { name: 'Send invitations' }))
+    expect(await invite.findByRole('alert')).toBeInTheDocument()
+    await user.click(invite.getByRole('button', { name: 'Send invitations' }))
+    expect(await screen.findByText('1 invitation sent')).toBeInTheDocument()
+    expect(sentBody(fetch, `POST ${API}/invitations/`)).toEqual({ kind: 'judge', emails: ['new@example.com', 'bob@example.com'] })
+    expect(invite.getByText('bob@example.com: They take part in this hackathon.')).toBeInTheDocument()
+    expect(emails).toHaveValue('bob@example.com')
+    // Nothing new to send: no toast, the reason stays.
+    await user.click(invite.getByRole('button', { name: 'Send invitations' }))
+    await waitFor(() => expect(callsTo(fetch, `POST ${API}/invitations/`)).toHaveLength(3))
+    expect(screen.getAllByText(/invitations? sent/)).toHaveLength(1)
   })
 })
 

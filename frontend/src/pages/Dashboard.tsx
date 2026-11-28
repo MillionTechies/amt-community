@@ -1,15 +1,17 @@
 /** The member's home: what is next, what needs doing, and what they have taken part in. */
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { api } from '../api'
-import type { CommunityEvent, Hackathon, Paginated } from '../api'
+import type { CommunityEvent, Hackathon, Invitation, Paginated } from '../api'
 import { DateBlock } from '../components/cards'
 import { Icon } from '../components/icons'
 import type { IconName } from '../components/icons'
-import { Badge, LinkButton, Spinner, StatusBadge, formatDate, formatRange, label } from '../components/ui'
+import { useToast } from '../components/feedback'
+import { Badge, Button, ErrorNote, LinkButton, Spinner, StatusBadge, formatDate, formatRange, label } from '../components/ui'
 import { Kpi, Panel, relative } from '../console/shared'
-import { useMe } from '../hooks'
+import { useAct, useMe } from '../hooks'
+import { destination } from '../invitations'
 
 const list = <T,>(path: string) => () => api<Paginated<T>>(path)
 
@@ -44,6 +46,48 @@ function EmptyState({ icon, title, text, to, action }: { icon: IconName; title: 
       <p className="mb-4 text-sm text-stone-600">{text}</p>
       <LinkButton to={to} variant="secondary">{action}</LinkButton>
     </div>
+  )
+}
+
+/** Invitations sent to the member's address, including those sent before they had an account. */
+function Invitations() {
+  const navigate = useNavigate()
+  const toast = useToast()
+  const invitations = useQuery({ queryKey: ['me', 'invitations'], queryFn: () => api<Invitation[]>('/me/invitations/') })
+  const answer = useAct(({ invitation, verb }: { invitation: Invitation; verb: 'accept' | 'decline' }) =>
+    api<Invitation>(`/invitations/${invitation.token}/${verb}/`, { method: 'POST' }),
+  )
+  const list = invitations.data ?? []
+  return (
+    list.length > 0 && (
+      <Panel title={`Invitations (${list.length})`} flush>
+        <div className="px-5 empty:hidden"><ErrorNote error={answer.error} /></div>
+        <ul className="divide-y divide-stone-100">
+          {list.map((i) => (
+            <li key={i.token} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700"><Icon name="inbox" className="h-5 w-5" /></span>
+              <p className="min-w-0 flex-1 text-sm">
+                <span className="font-semibold">{i.invited_by}</span> invited you to {i.summary}
+              </p>
+              <Button
+                disabled={answer.isPending}
+                onClick={() =>
+                  answer.mutate({ invitation: i, verb: 'accept' }, {
+                    onSuccess: (done) => {
+                      toast({ title: 'Invitation accepted', message: `You can now ${done.summary}.` })
+                      navigate(destination(done))
+                    },
+                  })
+                }
+              >
+                Accept
+              </Button>
+              <Button variant="ghost" disabled={answer.isPending} onClick={() => answer.mutate({ invitation: i, verb: 'decline' })}>Decline</Button>
+            </li>
+          ))}
+        </ul>
+      </Panel>
+    )
   )
 }
 
@@ -122,6 +166,8 @@ export default function Dashboard() {
     (h) => (h.status === 'published' || h.status === 'judging') && new Date(h.ends_at).getTime() >= now - 7 * 86_400_000,
   )
   const [next, ...later] = coming
+  // Participants work in their workspace; judges and others see the hackathon page.
+  const hackathonLink = (h: Hackathon) => (h.is_registered ? `/hackathons/${h.slug}/workspace` : `/hackathons/${h.slug}`)
 
   const todos: Todo[] = []
   for (const h of allHackathons) {
@@ -134,12 +180,12 @@ export default function Dashboard() {
       todos.push({
         key: `submit-${h.slug}`, icon: 'clock', tone: 'amber', title: `Submit your project for ${h.title}`,
         detail: `Submissions close ${relative(h.submission_deadline)}, on ${formatDate(h.submission_deadline)}.`,
-        to: `/hackathons/${h.slug}`, action: 'Open',
+        to: hackathonLink(h), action: 'Open',
       })
-    if (!h.my_team_id && !h.is_judge && h.registration_open)
+    if (h.is_registered && !h.my_team_id && h.registration_open)
       todos.push({
         key: `team-${h.slug}`, icon: 'users', tone: 'blue', title: `Join a team for ${h.title}`,
-        detail: 'Create a team or join one with an invite code.', to: `/hackathons/${h.slug}`, action: 'Open',
+        detail: 'Start a team, join an open one, or enter a team code.', to: hackathonLink(h), action: 'Open',
       })
   }
   for (const e of attended) {
@@ -179,8 +225,11 @@ export default function Dashboard() {
         <div className="flex flex-wrap gap-2">
           <LinkButton to="/events">Find events</LinkButton>
           <LinkButton to="/hackathons" variant="secondary">Hackathons</LinkButton>
+          <LinkButton to="/join" variant="secondary">Enter a code</LinkButton>
         </div>
       </div>
+
+      <Invitations />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Kpi label="Upcoming" value={coming.length} icon="calendar" note="Events you are going to" />
@@ -208,7 +257,7 @@ export default function Dashboard() {
                     badge: e.my_registration?.status === 'waitlisted' ? <StatusBadge status="waitlisted" /> : null,
                   })),
                   ...activeHackathons.map((h) => ({
-                    key: `h-${h.slug}`, date: h.starts_at, title: h.title, to: `/hackathons/${h.slug}`,
+                    key: `h-${h.slug}`, date: h.starts_at, title: h.title, to: hackathonLink(h),
                     meta: `Hackathon · ${formatDate(h.starts_at)} to ${formatDate(h.ends_at)}`,
                     badge: h.is_judge ? <Badge tone="amber">Judge</Badge> : <StatusBadge status={h.status} />,
                   })),
@@ -307,14 +356,14 @@ export default function Dashboard() {
               <ul className="divide-y divide-stone-100">
                 {allHackathons.slice(0, 5).map((h) => (
                   <li key={h.slug}>
-                    <Link to={`/hackathons/${h.slug}`} className="group block px-5 py-3.5 transition hover:bg-stone-50">
+                    <Link to={hackathonLink(h)} className="group block px-5 py-3.5 transition hover:bg-stone-50">
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate text-sm font-semibold group-hover:text-brand-700">{h.title}</span>
                         <StatusBadge status={h.status} />
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
                         <span>{formatDate(h.starts_at)} to {formatDate(h.ends_at)}</span>
-                        {h.my_team_id && <span className="font-semibold text-brand-700">Taking part</span>}
+                        {h.is_registered && <span className="font-semibold text-brand-700">{h.my_team_id ? 'Taking part' : 'Registered, no team yet'}</span>}
                         {h.is_judge && <span className="font-semibold text-amber-700">Judge</span>}
                         {h.results_published && <span>Results out</span>}
                       </div>

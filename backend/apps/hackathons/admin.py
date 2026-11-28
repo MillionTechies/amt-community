@@ -11,6 +11,6 @@ class HackathonAdmin(admin.ModelAdmin):
 
 
 admin.site.register(
-    [models.Challenge, models.Criterion, models.Team, models.TeamMember, models.Submission,
+    [models.Challenge, models.Criterion, models.Team, models.Participant, models.TeamMember, models.Submission,
      models.Judge, models.Evaluation, models.Score, models.Announcement]
 )

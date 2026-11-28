@@ -98,6 +98,7 @@ export default function HackathonForm() {
   })
   const [form, setForm] = useState(blank)
   const [prizes, setPrizes] = useState<Prize[]>([emptyPrize()])
+  const [listed, setListed] = useState(true)
   const set = (field: keyof typeof blank) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [field]: e.target.value }))
 
@@ -122,6 +123,7 @@ export default function HackathonForm() {
       max_team_size: String(h.max_team_size),
     })
     setPrizes(h.prizes.length ? h.prizes : [emptyPrize()])
+    setListed(h.listed)
   }, [existing.data])
 
   const organizationId = form.organization_id || organizations[0]?.id || ''
@@ -131,6 +133,7 @@ export default function HackathonForm() {
       body: {
         ...form,
         prizes,
+        listed,
         organization_id: organizationId,
         ...Object.fromEntries(dates.map((d) => [d, fromLocalInput(form[d])])),
         min_team_size: Number(form.min_team_size),
@@ -197,6 +200,13 @@ export default function HackathonForm() {
             <Input type="number" min={1} required value={form.max_team_size} onChange={set('max_team_size')} />
           </Field>
         </div>
+        <label className="flex cursor-pointer items-start gap-3">
+          <input type="checkbox" className="mt-1 accent-brand-600" checked={listed} onChange={(e) => setListed(e.target.checked)} />
+          <span>
+            <span className="block text-sm font-semibold">Listed publicly</span>
+            <span className="block text-sm text-stone-600">Untick for a private hackathon: it stays off the hackathons list, and people join with its 6-digit code or link.</span>
+          </span>
+        </label>
         <ErrorNote error={save.error} />
         <div className="flex gap-3">
           <Button type="submit" disabled={save.isPending}>{slug ? 'Save changes' : 'Save draft'}</Button>

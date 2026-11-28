@@ -47,6 +47,7 @@ export const me = (overrides: Partial<Me> = {}): Me => ({
   github_url: '',
   linkedin_url: '',
   is_platform_admin: false,
+  judges_anything: false,
   organizations: [],
   ...overrides,
 })
@@ -123,6 +124,10 @@ export const hackathon = (overrides: Partial<Hackathon> = {}): Hackathon => ({
   can_manage: false,
   is_judge: false,
   my_team_id: null,
+  is_registered: false,
+  join_code: null,
+  my_scores: null,
+  listed: true,
   participant_preview: [],
   ...overrides,
 })
