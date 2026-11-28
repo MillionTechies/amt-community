@@ -55,8 +55,8 @@ class Hackathon(models.Model):
     min_team_size = models.PositiveSmallIntegerField(default=1)  # 1 allows individuals
     max_team_size = models.PositiveSmallIntegerField(default=4)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
-    # Six digits that register a member for the hackathon (see `new_code`).
-    join_code = models.CharField(max_length=6, unique=True, default=new_code)
+    # Six digits that register a member for the hackathon (see `new_code`), set on save.
+    join_code = models.CharField(max_length=6, unique=True, null=True, editable=False)
     # Unlisted hackathons stay off the public list; their page and code still work.
     listed = models.BooleanField(default=True)
     # Where a cancelled hackathon was (open or judging), so restoring puts it back there.
@@ -74,6 +74,11 @@ class Hackathon(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = make_slug(self.title, Hackathon)
+        if not self.join_code:
+            # Hackathons from before join codes get theirs the next time they are saved.
+            self.join_code = new_code()
+            if kwargs.get("update_fields"):
+                kwargs["update_fields"] = [*kwargs["update_fields"], "join_code"]
         super().save(*args, **kwargs)
 
     @property

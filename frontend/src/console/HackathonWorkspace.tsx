@@ -298,7 +298,7 @@ export function HackathonOverview() {
           </Panel>
         </div>
         <div className="space-y-6">
-        {(h.status === 'draft' || h.status === 'published') && <JoinCode hackathon={h} />}
+        {h.join_code && (h.status === 'draft' || h.status === 'published') && <JoinCode hackathon={h} />}
         <Panel title="Getting it right" action={<span className="text-xs font-semibold tabular-nums text-stone-500">{doneCount} of {steps.length}</span>}>
           <div className="mb-4"><Meter value={doneCount} max={steps.length} label="Steps done" /></div>
           <ul className="space-y-2.5">
