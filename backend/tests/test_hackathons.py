@@ -320,6 +320,14 @@ def test_codes_never_repeat(monkeypatch, hackathon):
     assert len(models.new_invite_code()) == 12
 
 
+def test_hackathons_from_before_join_codes_get_one_when_next_saved(admin, org):
+    hackathon = make_hackathon(org)
+    baker.make(Criterion, hackathon=hackathon)
+    Hackathon.objects.filter(pk=hackathon.pk).update(join_code=None)
+    admin.post(url("hackathon-transition", hackathon), {"status": "judging"}, format="json")
+    assert len(Hackathon.objects.get(pk=hackathon.pk).join_code) == 6
+
+
 def test_leaders_open_their_team_to_anyone(bob, carol, dan, hackathon):
     team = make_team(hackathon, bob)
     make_team(hackathon, dan, name="Taken")

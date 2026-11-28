@@ -200,7 +200,7 @@ describe('HackathonOverview', () => {
   })
 
   it('guides a new draft through set-up', async () => {
-    const { user } = open('', { status: 'draft', listed: false }, { [`GET ${API}/judges/`]: [] })
+    const { user } = open('', { status: 'draft', listed: false, join_code: '111222' }, { [`GET ${API}/judges/`]: [] })
     await title()
     expect(await screen.findByText('Unlisted: people find this hackathon only through this code or link.')).toBeInTheDocument()
     expect(stage('Draft')).toHaveClass('border-brand-600')
