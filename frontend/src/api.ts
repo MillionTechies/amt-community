@@ -363,7 +363,7 @@ export interface MyTeam extends Team {
   pending_invitations: TeamInvitation[]
 }
 
-export type InvitationKind = 'org_role' | 'judge' | 'participant' | 'team'
+export type InvitationKind = 'org_role' | 'position' | 'judge' | 'participant' | 'team'
 export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'revoked'
 
 /** An invitation as the people who sent it see it. */
@@ -429,6 +429,25 @@ export interface LeaderboardRow {
   evaluations: number
   judges: number
   submission: Submission
+}
+
+/** An office in an organisation's leadership, as its admins manage it. */
+export interface Position {
+  id: number
+  title: string
+  order: number
+  /** Roles its holder gets while they hold it. */
+  roles: string[]
+  is_public: boolean
+  holder: Person | null
+  holder_email: string | null
+  /** The invitation waiting for an answer, if someone was asked to take it. */
+  invitation: TeamInvitation | null
+}
+
+/** An organisation's public page (/api/organizations/<alias>/page/). */
+export interface OrganizationPage extends Organization {
+  leadership: { id: number; title: string; person: Person }[]
 }
 
 export interface RoleAssignment {

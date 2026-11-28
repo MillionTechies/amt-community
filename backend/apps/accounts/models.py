@@ -47,6 +47,10 @@ class RoleAssignment(models.Model):
     granted_by = models.ForeignKey(
         Profile, on_delete=models.SET_NULL, null=True, related_name="roles_granted"
     )
+    # Set when the role comes with a position (see `positions`), so vacating it takes the role away.
+    position = models.ForeignKey(
+        "Position", on_delete=models.SET_NULL, null=True, blank=True, related_name="granted_roles"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -58,6 +62,33 @@ class RoleAssignment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.profile} is {self.get_role_display()} at {self.organization}"
+
+
+class Position(models.Model):
+    """An office in an organization's leadership: Chairperson, Secretary, Treasurer, or its own.
+
+    A position can carry roles, which its holder gets while they hold it. Public positions
+    show on the organization's page, so members know who runs it.
+    """
+
+    organization = models.ForeignKey(
+        "amt_auth.Organization", on_delete=models.CASCADE, related_name="positions"
+    )
+    title = models.CharField(max_length=100)
+    order = models.PositiveSmallIntegerField(default=0)
+    # RoleAssignment.Role values the holder gets.
+    roles = models.JSONField(default=list, blank=True)
+    holder = models.ForeignKey(
+        Profile, on_delete=models.SET_NULL, null=True, blank=True, related_name="positions"
+    )
+    is_public = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.title}, {self.organization}"
 
 
 class OrganizationApplication(models.Model):

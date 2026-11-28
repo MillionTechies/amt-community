@@ -10,6 +10,7 @@ import { Icon } from '../components/icons'
 import { Badge, Button, Empty, ErrorNote, Field, Input, Select, Spinner, label } from '../components/ui'
 import { useConfirm, useToast } from '../components/feedback'
 import { useAct } from '../hooks'
+import { Positions } from './Positions'
 import { ConsoleHeader, FilterChips, Panel, useAccess } from './shared'
 
 const ROLES = [
@@ -59,7 +60,7 @@ export function Team() {
   return (
     <>
       <ConsoleHeader
-        title="Team and roles"
+        title="Team, positions and roles"
         subtitle="Invite people to run events and hackathons. Admins can do everything and are managed in Keycloak."
         actions={
           organizations.length > 1 && (
@@ -73,7 +74,8 @@ export function Team() {
         }
       />
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <div className="space-y-6 lg:col-span-2">
+          <Positions key={organizationId} organizationId={current!.id} organizationName={current!.name} />
           <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-5 py-3">
               <h2 className="font-semibold">People at {current?.name}</h2>

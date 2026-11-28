@@ -28,6 +28,7 @@ class Invitation(models.Model):
 
     class Kind(models.TextChoices):
         ORG_ROLE = "org_role", "Organisation role"
+        POSITION = "position", "Position"
         JUDGE = "judge", "Judge"
         PARTICIPANT = "participant", "Participant"
         TEAM = "team", "Team member"
@@ -49,6 +50,9 @@ class Invitation(models.Model):
         "amt_auth.Organization", on_delete=models.CASCADE, null=True, blank=True, related_name="invitations"
     )
     role = models.CharField(max_length=32, choices=RoleAssignment.Role.choices, blank=True)
+    position = models.ForeignKey(
+        "accounts.Position", on_delete=models.CASCADE, null=True, blank=True, related_name="invitations"
+    )
     hackathon = models.ForeignKey(
         "hackathons.Hackathon", on_delete=models.CASCADE, null=True, blank=True, related_name="invitations"
     )
@@ -73,6 +77,8 @@ class Invitation(models.Model):
         """What accepting does, to finish "You are invited to …"."""
         if self.kind == self.Kind.ORG_ROLE:
             return f"be {a_or_an(self.get_role_display().lower())} at {self.organization.name}"
+        if self.kind == self.Kind.POSITION:
+            return f"be {self.position.title} of {self.organization.name}"
         if self.kind == self.Kind.JUDGE:
             return f"judge {self.hackathon.title}"
         if self.kind == self.Kind.PARTICIPANT:

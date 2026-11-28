@@ -29,6 +29,7 @@ import JoinOrganization from './pages/JoinOrganization'
 import JudgeDesk from './pages/JudgeDesk'
 import Judging from './pages/Judging'
 import MyHackathon from './pages/MyHackathon'
+import Organization from './pages/Organization'
 import Profile from './pages/Profile'
 
 /** Old addresses for organiser pages now live in the console. */
@@ -209,6 +210,7 @@ export default function App() {
         <Route path="/judging" element={<Private><JudgeDesk /></Private>} />
         <Route path="/certificates/:code" element={<CertificatePage />} />
         <Route path="/organizations/join" element={<JoinOrganization />} />
+        <Route path="/organizations/:alias" element={<Organization />} />
         <Route path="/dashboard" element={<Private><Dashboard /></Private>} />
         <Route path="/profile" element={<Private><Profile /></Private>} />
         <Route path="*" element={<Empty>This page does not exist. <Link className="font-semibold text-brand-700" to="/">Go home</Link></Empty>} />
