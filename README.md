@@ -149,6 +149,18 @@ every change comes with its tests. Migrations, `config/asgi.py`, `config/wsgi.py
 - CI (`.github/workflows/ci.yml`) runs the branch rule, the backend tests and the
   frontend lint, build and tests on every pull request into `develop` or `main`.
 
+To cut a release, branch `release/X.Y.Z` off `develop`, merge `main` into it, then write
+its changelog and commit it there before opening the pull request into `main`:
+
+```bash
+python3 scripts/makechangelog.py 0.3.0 --dry-run   # see it first
+python3 scripts/makechangelog.py 0.3.0             # adds it to the top of CHANGELOG.md
+```
+
+It lists the pull requests merged since the last release (`origin/main`), grouped by
+branch prefix (`feat/` Features, `fix/` Fixes, the rest Maintenance), each with the
+subjects of its commits. Good commit subjects make a good changelog.
+
 The backend tests sign members in with made-up token claims, so they do not need Keycloak.
 
 ## Production
