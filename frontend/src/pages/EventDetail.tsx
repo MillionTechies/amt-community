@@ -78,7 +78,7 @@ export default function EventDetail() {
           {e.status !== 'published' && <StatusBadge status={e.status} />}
         </div>
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{e.title}</h1>
-        <p className="mt-1 text-stone-600">Hosted by {e.organization.name}</p>
+        <p className="mt-1 text-stone-600">Hosted by <Link className="font-semibold hover:text-brand-700" to={`/organizations/${e.organization.alias}`}>{e.organization.name}</Link></p>
         <ul className="mt-4 space-y-2 text-sm">
           <Fact icon="clock">{formatRange(e.starts_at, e.ends_at)}</Fact>
           <Fact icon="pin">{eventPlace(e)}</Fact>

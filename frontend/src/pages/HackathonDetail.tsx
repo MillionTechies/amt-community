@@ -44,7 +44,7 @@ export default function HackathonDetail() {
           {h.theme && <Badge tone="blue">{h.theme}</Badge>}
         </div>
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{h.title}</h1>
-        <p className="mt-1 text-stone-600">Hosted by {h.organization.name}</p>
+        <p className="mt-1 text-stone-600">Hosted by <Link className="font-semibold hover:text-brand-700" to={`/organizations/${h.organization.alias}`}>{h.organization.name}</Link></p>
         <ul className="mt-4 space-y-2 text-sm">
           <Fact icon="calendar">{formatRange(h.starts_at, h.ends_at)}</Fact>
           <Fact icon="pin">{h.venue || 'Online'}</Fact>

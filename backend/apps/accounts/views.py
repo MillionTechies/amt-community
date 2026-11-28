@@ -1,26 +1,30 @@
 from amt_auth.django.models import Organization
 from amt_auth.django.permissions import IsPlatformAdmin
 from amt_auth.exceptions import AdminAPIError
+from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts import access
-from apps.accounts.models import OrganizationApplication, RoleAssignment
+from apps.accounts import access, positions
+from apps.accounts.models import OrganizationApplication, Position, RoleAssignment
 from apps.accounts.serializers import (
     GrantRoleSerializer,
+    LeaderSerializer,
     OrganizationApplicationSerializer,
     OrganizationSerializer,
+    PositionSerializer,
     ProfileSerializer,
     RoleAssignmentSerializer,
 )
 from apps.accounts.sync import locked_sync_all
 from apps.invitations import services as invitations
 from apps.invitations.models import Invitation
-from apps.invitations.serializers import InvitationSerializer
+from apps.invitations.serializers import InvitationSerializer, InviteSerializer
 from apps.notifications import emails
 
 
@@ -149,6 +153,73 @@ class OrganizationInvitationsView(APIView):
         organization = administered_organization(request, organization_id)
         pending = organization.invitations.filter(kind=Invitation.Kind.ORG_ROLE, status=Invitation.Status.PENDING)
         return Response(InvitationSerializer(pending.select_related("profile"), many=True).data)
+
+
+class PositionViewSet(viewsets.ModelViewSet):
+    """An organization's admins set up its leadership: positions, who holds them, and their roles."""
+
+    serializer_class = PositionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def organization(self):
+        return administered_organization(self.request, self.kwargs["organization_id"])
+
+    def get_queryset(self):
+        pending = Invitation.objects.filter(status=Invitation.Status.PENDING).select_related("profile")
+        return (
+            self.organization().positions.select_related("holder")
+            .prefetch_related(Prefetch("invitations", queryset=pending, to_attr="pending_invitations"))
+        )
+
+    def perform_create(self, serializer):
+        organization = self.organization()
+        serializer.save(organization=organization, order=organization.positions.count())
+
+    def perform_update(self, serializer):
+        positions.sync_roles(serializer.save())
+
+    def perform_destroy(self, position):
+        positions.vacate(position)
+        position.delete()
+
+    def _fresh(self, position, status_code=status.HTTP_200_OK):
+        return Response(PositionSerializer(self.get_queryset().get(pk=position.pk)).data, status=status_code)
+
+    @action(detail=True, methods=["post"])
+    def invite(self, request, organization_id=None, pk=None):
+        """Invite someone, with or without an account, to take the position."""
+        position = self.get_object()
+        data = InviteSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        invitations.invite(
+            Invitation.Kind.POSITION, data.validated_data["email"], access.profile_of(request),
+            organization=position.organization, position=position,
+        )
+        return self._fresh(position, status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def vacate(self, request, organization_id=None, pk=None):
+        position = self.get_object()
+        positions.vacate(position)
+        return self._fresh(position)
+
+    @action(detail=False, methods=["post"])
+    def committee(self, request, organization_id=None):
+        """Add the usual committee in one go: chair, vice chair, secretaries and treasurer."""
+        positions.add_committee(self.organization())
+        return Response(PositionSerializer(self.get_queryset(), many=True).data, status=status.HTTP_201_CREATED)
+
+
+class OrganizationPageView(APIView):
+    """An organization's public page: who it is and who leads it."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, alias):
+        organization = get_object_or_404(Organization, alias=alias, deleted_at=None)
+        leaders = organization.positions.filter(is_public=True, holder__isnull=False).select_related("holder")
+        return Response({**OrganizationSerializer(organization).data, "leadership": LeaderSerializer(leaders, many=True).data})
 
 
 class OrganizationApplicationsView(APIView):

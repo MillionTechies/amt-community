@@ -124,7 +124,7 @@ describe('Team', () => {
     expect(await screen.findByText('You do not administer an organisation.')).toBeInTheDocument()
     organiser.unmount()
 
-    renderConsole('/manage/team', { 'GET /organizations/org-1/roles/': reply(403, { detail: 'Not an admin.' }) }, { member: soleAdmin })
+    renderConsole('/manage/team', { 'GET /organizations/org-1/roles/': reply(403, { detail: 'Not an admin.' }), 'GET /organizations/org-1/positions/': [] }, { member: soleAdmin })
     expect(await screen.findByRole('alert')).toHaveTextContent('Not an admin.')
   })
 })

@@ -4,7 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from apps.accounts import access
+from apps.accounts import access, positions
 from apps.accounts.models import RoleAssignment
 from apps.hackathons import participation
 from apps.hackathons.models import Judge, Participant, TeamMember
@@ -22,6 +22,12 @@ def _org_role_taken(email, target):
         profile__email__iexact=email, organization=target["organization"], role=target["role"]
     ).exists():
         raise ValidationError({"email": "They already have this role."})
+
+
+def _position_taken(email, target):
+    holder = target["position"].holder
+    if holder and holder.email.lower() == email:
+        raise ValidationError({"email": "They already hold this position."})
 
 
 def _hackathon_taken(email, hackathon):
@@ -45,6 +51,7 @@ def _team_taken(email, target):
 
 TAKEN = {
     Kind.ORG_ROLE: _org_role_taken,
+    Kind.POSITION: _position_taken,
     Kind.JUDGE: lambda email, target: _hackathon_taken(email, target["hackathon"]),
     Kind.PARTICIPANT: lambda email, target: _hackathon_taken(email, target["hackathon"]),
     Kind.TEAM: _team_taken,
@@ -91,6 +98,7 @@ def _accept_judge(invitation, profile):
 
 ACCEPT = {
     Kind.ORG_ROLE: _accept_org_role,
+    Kind.POSITION: lambda invitation, profile: positions.fill(invitation.position, profile, invitation.invited_by),
     Kind.JUDGE: _accept_judge,
     Kind.PARTICIPANT: lambda invitation, profile: participation.register(invitation.hackathon, profile, invited=True),
     Kind.TEAM: lambda invitation, profile: participation.join(invitation.team, profile, invited=True),
@@ -130,7 +138,7 @@ def revoke(invitation) -> None:
 
 
 def can_administer(request, invitation) -> bool:
-    if invitation.kind == Kind.ORG_ROLE:
+    if invitation.kind in (Kind.ORG_ROLE, Kind.POSITION):
         return access.is_org_admin(request, invitation.organization_id)
     if invitation.kind == Kind.TEAM:
         return invitation.team.members.filter(profile=access.profile_of(request), is_leader=True).exists()

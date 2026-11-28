@@ -72,6 +72,12 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [toasts, setToasts] = useState<(ToastOptions & { id: number })[]>([])
   const nextId = useRef(0)
+  // Toast timers, cleared if the provider goes away before they fire.
+  const timers = useRef(new Set<number>())
+  useEffect(() => {
+    const pending = timers.current
+    return () => pending.forEach((timer) => window.clearTimeout(timer))
+  }, [])
 
   const confirm = useCallback(
     (options: ConfirmOptions) => new Promise<boolean>((resolve) => setDialog({ kind: 'confirm', options, resolve })),
@@ -86,7 +92,11 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     (options: ToastOptions) => {
       const id = nextId.current++
       setToasts((all) => [...all.slice(-2), { ...options, id }])
-      window.setTimeout(() => dismiss(id), options.tone === 'error' ? 7000 : 4500)
+      const timer = window.setTimeout(() => {
+        timers.current.delete(timer)
+        dismiss(id)
+      }, options.tone === 'error' ? 7000 : 4500)
+      timers.current.add(timer)
     },
     [dismiss],
   )

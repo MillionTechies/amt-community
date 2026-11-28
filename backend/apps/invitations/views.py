@@ -9,7 +9,7 @@ from apps.invitations import services
 from apps.invitations.models import Invitation, mask
 from apps.invitations.serializers import InvitationSerializer, PublicInvitationSerializer
 
-RELATED = ["organization", "hackathon", "team", "invited_by"]
+RELATED = ["organization", "position", "hackathon", "team", "invited_by"]
 
 
 def _public(request, invitation):

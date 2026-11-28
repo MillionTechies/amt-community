@@ -1,7 +1,7 @@
 from amt_auth.django.models import Organization
 from rest_framework import serializers
 
-from apps.accounts.models import OrganizationApplication, Profile, RoleAssignment
+from apps.accounts.models import OrganizationApplication, Position, Profile, RoleAssignment
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -54,6 +54,39 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
 class GrantRoleSerializer(serializers.Serializer):
     email = serializers.EmailField()
     role = serializers.ChoiceField(choices=RoleAssignment.Role.choices)
+
+
+class PositionSerializer(serializers.ModelSerializer):
+    """A position as its organization's admins manage it."""
+
+    holder = PersonSerializer(read_only=True)
+    holder_email = serializers.EmailField(source="holder.email", read_only=True, default=None)
+    invitation = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Position
+        fields = ["id", "title", "order", "roles", "is_public", "holder", "holder_email", "invitation"]
+
+    def validate_roles(self, value):
+        known = set(RoleAssignment.Role.values)
+        if not isinstance(value, list) or not set(value) <= known:
+            raise serializers.ValidationError("Choose roles from event organiser and hackathon manager.")
+        return list(dict.fromkeys(value))
+
+    def get_invitation(self, position) -> dict | None:
+        """The invitation waiting for an answer, if someone has been asked to take it."""
+        pending = getattr(position, "pending_invitations", [])
+        return {"id": pending[0].id, "name": pending[0].invitee_name, "created_at": pending[0].created_at} if pending else None
+
+
+class LeaderSerializer(serializers.ModelSerializer):
+    """A filled public position, on the organization's page."""
+
+    person = PersonSerializer(source="holder", read_only=True)
+
+    class Meta:
+        model = Position
+        fields = ["id", "title", "person"]
 
 
 class OrganizationApplicationSerializer(serializers.ModelSerializer):
