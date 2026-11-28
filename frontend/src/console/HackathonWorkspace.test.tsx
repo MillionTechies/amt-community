@@ -291,6 +291,20 @@ describe('HackathonTeams', () => {
     team({ id: 2, name: 'Comets' }),
   ]
 
+  it('invites participants by email, even people without an account', async () => {
+    const { user, fetch } = open('/teams', {}, {
+      [`GET ${API}/teams/`]: [],
+      [`GET ${API}/invitations/`]: [],
+      [`POST ${API}/invitations/`]: { refused: {} },
+    })
+    const invite = await panel('Invite participants')
+    await user.type(invite.getByLabelText('Emails'), 'a@example.com;b@example.com')
+    await user.click(invite.getByRole('button', { name: 'Send invitations' }))
+    expect(await screen.findByText('2 invitations sent')).toBeInTheDocument()
+    expect(sentBody(fetch, `POST ${API}/invitations/`)).toEqual({ kind: 'participant', emails: ['a@example.com', 'b@example.com'] })
+    expect(invite.getByLabelText('Emails')).toHaveValue('')
+  })
+
   it('lists teams and who submitted, and exports them once there are any', async () => {
     const empty = open('/teams', {}, { [`GET ${API}/teams/`]: [] })
     expect(await screen.findByRole('button', { name: 'Export CSV' })).toBeDisabled()
@@ -346,21 +360,36 @@ describe('HackathonJudges', () => {
     expect(callsTo(fetch, `DELETE ${API}/judges/2/`)).toHaveLength(0)
   })
 
-  it('invites a judge by email', async () => {
+  it('invites judges by email, reports who could not be invited, and lists who has not answered', async () => {
     const { user, fetch } = open('/judges', {}, {
       [`GET ${API}/judges/`]: [],
-      [`POST ${API}/judges/`]: sequence(reply(400, { email: ['No member with that email.'] }), reply(201, {})),
+      [`GET ${API}/invitations/`]: [
+        { id: 3, kind: 'judge', email: 'kim@example.com', name: 'kim@example.com', role: '', status: 'pending', sent_count: 1, created_at: '2026-11-20T08:00:00Z' },
+        { id: 4, kind: 'participant', email: 'pat@example.com', name: 'pat@example.com', role: '', status: 'pending', sent_count: 1, created_at: '2026-11-20T08:00:00Z' },
+      ],
+      [`POST ${API}/invitations/`]: sequence(
+        reply(400, { emails: { 0: ['Enter a valid email address.'] } }),
+        { refused: { 'bob@example.com': 'They take part in this hackathon.' } },
+        { refused: { 'bob@example.com': 'They take part in this hackathon.' } },
+      ),
     })
     expect(await screen.findByText('Judges (0)')).toBeInTheDocument()
-    const invite = await panel('Invite a judge')
-    await user.type(invite.getByLabelText('Email'), 'new@example.com')
-    await user.click(invite.getByRole('button', { name: 'Add judge' }))
-    expect(await invite.findByText('No member with that email.')).toBeInTheDocument()
-
-    await user.click(invite.getByRole('button', { name: 'Add judge' }))
-    expect(await screen.findByText('new@example.com can now score projects.')).toBeInTheDocument()
-    expect(sentBody(fetch, `POST ${API}/judges/`)).toEqual({ email: 'new@example.com' })
-    expect(invite.getByLabelText('Email')).toHaveValue('')
+    const invite = await panel('Invite judges')
+    expect(await invite.findByText('kim@example.com')).toBeInTheDocument()
+    expect(invite.queryByText('pat@example.com')).not.toBeInTheDocument()
+    const emails = invite.getByLabelText('Emails')
+    await user.type(emails, 'new@example.com, bob@example.com{enter}new@example.com')
+    await user.click(invite.getByRole('button', { name: 'Send invitations' }))
+    expect(await invite.findByRole('alert')).toBeInTheDocument()
+    await user.click(invite.getByRole('button', { name: 'Send invitations' }))
+    expect(await screen.findByText('1 invitation sent')).toBeInTheDocument()
+    expect(sentBody(fetch, `POST ${API}/invitations/`)).toEqual({ kind: 'judge', emails: ['new@example.com', 'bob@example.com'] })
+    expect(invite.getByText('bob@example.com: They take part in this hackathon.')).toBeInTheDocument()
+    expect(emails).toHaveValue('bob@example.com')
+    // Nothing new to send: no toast, the reason stays.
+    await user.click(invite.getByRole('button', { name: 'Send invitations' }))
+    await waitFor(() => expect(callsTo(fetch, `POST ${API}/invitations/`)).toHaveLength(3))
+    expect(screen.getAllByText(/invitations? sent/)).toHaveLength(1)
   })
 })
 

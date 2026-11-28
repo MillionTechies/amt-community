@@ -60,7 +60,9 @@ back to the platform's value, then to `backend/.env`.
 
 ### Email
 
-Community emails people when they register, come off the waiting list, or get an
+Community emails people when they are invited (to a role, to judge, to take part in a
+hackathon or to join a team; they need no account first: the link lets them sign up, then
+accept), when they register, come off the waiting list, or get an
 announcement, when an event's time, place or link changes, when it is cancelled, and a
 day and an hour before it starts. Invites (`.ics`) are attached, so the event lands in
 Google, Outlook or Apple Calendar and updates there when it changes.

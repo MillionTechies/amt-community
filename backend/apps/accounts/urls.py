@@ -9,6 +9,11 @@ urlpatterns = [
     path("organizations/sync/", views.OrganizationSyncView.as_view(), name="organizations-sync"),
     path("organizations/<str:organization_id>/roles/", views.OrganizationRolesView.as_view(), name="organization-roles"),
     path(
+        "organizations/<str:organization_id>/invitations/",
+        views.OrganizationInvitationsView.as_view(),
+        name="organization-invitations",
+    ),
+    path(
         "organizations/<str:organization_id>/roles/<int:role_id>/",
         views.OrganizationRolesView.as_view(),
         name="organization-role",
